@@ -7,8 +7,13 @@
 // swap and the whole atomic bundle with it. Small swaps are left alone: the
 // 0.3% fee on both of the searcher's legs eats the edge.
 
-const FEE_NUM = 997n;
-const FEE_DEN = 1000n;
+// 0.05%. MUST match SwapPool.sol FEE_NUM/FEE_DEN exactly. If this is higher
+// than the pool's real fee the searcher under-sizes its front-run, decides
+// `worthIt` is false on swaps that are genuinely profitable, and falls through
+// to honest inclusion. The public lane then shows an unsandwiched fill and no
+// error is logged anywhere.
+const FEE_NUM = 9995n;
+const FEE_DEN = 10000n;
 
 /**
  * Headroom the searcher leaves under the victim's revert floor, in basis points.

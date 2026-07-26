@@ -17,6 +17,8 @@ import {
   fromWad,
   getAmountOut,
   getConfig,
+  FEE_DEN,
+  FEE_NUM,
   getPealResult,
   getPublicResult,
   getState,
@@ -64,9 +66,12 @@ const COIN: Record<Sym, string> = {
   USDC: '<i class="mp-coin mp-coin-usdc"></i>USDC',
   ETH: '<i class="mp-coin mp-coin-eth"></i>ETH',
 };
-/** Default pay amount per token (~$9-10k). The pool is shallow enough that
- * swaps from ~$5k up get sandwiched. */
-const DEFAULT_AMT: Record<Sym, string> = { USDC: '10000', ETH: '3' };
+/** Default pay amount per token, both ~$10k so the two directions are
+ * symmetric. The ETH leg used to default to 3 (~$5.6k), which sat close enough
+ * to the sandwich threshold that the flagship demo could land on the "too small
+ * to sandwich" branch depending on the live price. At the current depth a
+ * searcher bites from ~$2.5k up. */
+const DEFAULT_AMT: Record<Sym, string> = { USDC: '10000', ETH: '5.3' };
 
 // Cap the demo order so nobody drains the per-swap reset pools with a huge
 // trade: ~$100k of either side (USDC 1:1, ETH via the live pool price).
@@ -190,6 +195,12 @@ export function renderMempool(root: HTMLElement): () => void {
                 </select>
               </div>
               <div class="mp-info-row"><span>Min received</span><span id="mp-min" class="mono">·</span></div>
+              <!-- The difference between what you pay and what you receive is
+                   the fee plus the price impact, and nothing else. Showing the
+                   two separately is the difference between a quote a visitor
+                   can check and an unexplained shortfall. -->
+              <div class="mp-info-row"><span>Fee (0.05%)</span><span id="mp-fee" class="mono">·</span></div>
+              <div class="mp-info-row"><span>Price impact</span><span id="mp-impact" class="mono">·</span></div>
             </div>
             <button type="button" class="mp-swap-btn" id="mp-go">Swap</button>
             <p class="mp-swap-foot">you sign nothing. the relayer sponsors the transaction.</p>
@@ -254,6 +265,8 @@ export function renderMempool(root: HTMLElement): () => void {
     const recvEl = appEl.querySelector<HTMLElement>('#mp-recv')!;
     const rateEl = appEl.querySelector<HTMLElement>('#mp-rate')!;
     const minEl = appEl.querySelector<HTMLElement>('#mp-min')!;
+    const feeEl = appEl.querySelector<HTMLElement>('#mp-fee')!;
+    const impactEl = appEl.querySelector<HTMLElement>('#mp-impact')!;
     const payUsdEl = appEl.querySelector<HTMLElement>('#mp-pay-usd')!;
     const recvUsdEl = appEl.querySelector<HTMLElement>('#mp-recv-usd')!;
     const payTokEl = appEl.querySelector<HTMLElement>('#mp-pay-token')!;
@@ -278,7 +291,17 @@ export function renderMempool(root: HTMLElement): () => void {
         minEl.textContent = `${num(fromWad(floor))} ${recvToken()}`;
         const payUsd = toUsd(Number(payEl.value) || 0, payToken(), price);
         payUsdEl.textContent = usd0(payUsd);
-        recvUsdEl.textContent = usd0(toUsd(Number(fromWad(out)), recvToken(), price));
+        const recvUsd = toUsd(Number(fromWad(out)), recvToken(), price);
+        recvUsdEl.textContent = usd0(recvUsd);
+        // Account for the pay/receive difference exactly. The fee is a flat cut
+        // of the input; whatever is left of the shortfall is price impact, i.e.
+        // the pool moving under your own order. Deriving impact as the residual
+        // rather than modelling it separately means the two rows always add up
+        // to the number on screen, even at the wei rounding.
+        const feeUsd = payUsd * (Number(FEE_DEN - FEE_NUM) / Number(FEE_DEN));
+        const impactUsd = Math.max(0, payUsd - recvUsd - feeUsd);
+        feeEl.textContent = usd2(feeUsd);
+        impactEl.textContent = payUsd > 0 ? `${((100 * impactUsd) / payUsd).toFixed(3)}%` : '·';
         // Enforce the demo cap: over ~$100k, block the swap and say why.
         const over = payUsd > MAX_SWAP_USD;
         go.disabled = over;

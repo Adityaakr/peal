@@ -141,8 +141,13 @@ export function getPealResult(conditionId: string): Promise<PealResult> {
 
 // ---- amounts, at contract precision ------------------------------------
 
-const FEE_NUM = 997n;
-const FEE_DEN = 1000n;
+// 0.05%. MUST match SwapPool.sol FEE_NUM/FEE_DEN exactly: this is the quote
+// the visitor is shown and the minOut the order is sealed with, so a desync
+// here puts a wrong number on screen on a page whose pitch is that nothing is
+// simulated. Lowering it below the contract's fee does not revert, it silently
+// over-delivers, so nothing alarms you.
+export const FEE_NUM = 9995n;
+export const FEE_DEN = 10000n;
 
 /** Matches SwapPool.getAmountOut exactly. */
 export function getAmountOut(amountIn: bigint, reserveIn: bigint, reserveOut: bigint): bigint {

@@ -411,7 +411,17 @@ KEY MODELLING RESULT (do not regress): a sandwich is bounded by the VICTIM'S
 SLIPPAGE TOLERANCE, not the searcher's appetite. The searcher front-runs to
 exactly the edge where the victim's amountOutMin would revert. So the loss lands
 precisely on the slippage setting (0.5% tolerance -> 0.5% stolen), and small
-swaps are not sandwiched at all because the 0.3% fee on both legs eats the edge.
+swaps are not sandwiched at all.
+
+CORRECTED 2026-07-26: the clause "because the 0.3% fee on both legs eats the
+edge" had the causality backwards. What kills a small sandwich is the CAPITAL
+needed to reach the victim's revert wall, which scales with POOL DEPTH, and the
+fee is charged on that whole round trip. Closed form, verified against the
+shipped bisection at 30+ points: net ~= slippage x (swapSize - fee x depth), so
+the searcher gives up above depth = swapSize / fee. Corollary that governs the
+quote: gap = fee + swapSize/depth, and profitability needs swapSize/depth > fee,
+therefore gap > 2 x fee for as long as the sandwich pays. A 0.30% fee put a hard
+0.60% floor under the visitor's own quote. That is why the fee is now 0.05%.
 An earlier unconstrained optimizer said the searcher front-runs with the whole
 reserve and takes 72% of the swap - absurd, and it would have been an
 embarrassing overclaim on screen. `bestSandwich()` bisects for the revert wall.
@@ -709,3 +719,47 @@ scoped only after the EVM/Tempo demo lands. Do NOT bridge; native Move or nothin
 - models: main loop + 1 explorer subagent; gates (executable) replaced skeptic panels
 - claims: all DoD rows verified in-session except "CI green" (supported: same commands local)
 - fleet: 1 subagent · overhead vs single-pass ≈ 1.1x
+
+## Decision (2026-07-26): swap quote 1.39% -> 0.25%, fee 0.30% -> 0.05%, depth 900k -> 5M
+
+Trigger: the swap card showed $10,000 in -> $9,861 out and looked broken.
+
+The gap was never a bug. gap = fee + swapSize/depth: $30 fee + $109 price impact
+from routing $10k through a $900k pool pinned to the live CoinGecko price, i.e.
+~20x what the same trade costs on a real venue.
+
+The governing constraint (verified against the shipped bisection at 30+ points):
+
+    searcher net ~= slippage x (swapSize - fee x depth)   -> dies above depth = swapSize/fee
+    gap = fee + swapSize/depth, and profit needs swapSize/depth > fee
+    => gap > 2 x fee  for as long as the sandwich pays
+
+So a 0.30% fee put a hard 0.60% floor under the visitor's own quote NO MATTER
+the depth. Deepening alone is strictly worse: at 30M/0.30% the searcher is
+$361 underwater on a $10k order and the demo shows nothing. The fee was the only
+lever that relaxes both sides at once.
+
+Chosen: 0.05% (the tier ETH/USDC actually trades at on v3 at size) + 5M depth.
+Result: $10k -> $9,975 (0.249%), searcher still takes $33.79, sandwich threshold
+~$2.5k, i.e. today's drama preserved exactly with a 5.6x better quote.
+
+Rejected 0.01%: gives a prettier $9,996 but it is the STABLECOIN tier. Inventing
+a venue that does not exist for an ETH pair to make a headline number look good
+is the exact failure this file warned about at the "72% overclaim" note above.
+Rejected doubling default slippage to 1.0% (would double the on-screen theft at
+zero quote cost, but buys drama by making the demo's default victim careless).
+
+INVARIANT: the fee is duplicated in FOUR places and they must move atomically -
+contracts/src/SwapPool.sol, packages/mempool-agents/src/sandwich.ts,
+packages/explorer/src/mempool/chain.ts, contracts/test/EncryptedMempool.t.sol.
+FEE_DEN must be 10000; 0.05% is inexpressible in thousandths and FEE_NUM=9995
+with FEE_DEN=1000 is a NEGATIVE fee. A desync does NOT revert loudly: a client
+fee below the pool's silently over-delivers, and a searcher fee above the pool's
+makes it decline profitable sandwiches and fall through to honest inclusion with
+nothing logged.
+
+DANGER: the TS constants are already at 0.05% but the LIVE Tempo contracts still
+charge 0.30%. This branch is inert-but-wrong until the pools are redeployed;
+shipping it before then breaks the 0.1% slippage option (minOut lands above what
+the pool will pay). Redeploy needs --gas-estimate-multiplier 2000 and
+initOperator is one-shot, so a partial broadcast is not patchable in place.

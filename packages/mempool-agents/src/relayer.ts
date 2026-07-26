@@ -103,10 +103,22 @@ async function state() {
 // Reset target. The USDC-side depth is fixed; the ETH reserve is derived from
 // the live ETH/USD price so the pool's implied rate tracks the real market.
 // Keeping the USDC depth constant means the sandwich behaviour is identical at
-// any price (a searcher sandwiches swaps from ~$5k up). Both lanes are reset to
-// exactly this before each swap, so the only difference between them is the
+// any price (a searcher sandwiches swaps from ~$2.5k up). Both lanes are reset
+// to exactly this before each swap, so the only difference between them is the
 // sandwich, never independent pool drift.
-const TARGET_BASE = 900_000n * 10n ** 18n;
+//
+// Depth is load-bearing in BOTH directions and the two bounds are tight:
+//   too shallow -> price impact (swap/depth) dominates the quote. At the old
+//     900k a $10k swap cost 1.39% against a pool pinned to the live price,
+//     ~20x what the same trade costs on a real venue.
+//   too deep    -> the searcher must move a bigger pool to reach the same
+//     revert wall, and it pays the fee on that larger round trip. Profit is
+//     ~slippage x (swap - fee x depth), so it dies above depth = swap/fee.
+// At a 0.05% fee that breakeven is $20M for a $10k order; 5M sits at a quarter
+// of it, which keeps the searcher's take (~$34) where it was at 900k while the
+// quote gap drops from 1.39% to 0.25%. Do not raise this without re-checking
+// that the searcher still bites: the failure is silent, not a revert.
+const TARGET_BASE = 5_000_000n * 10n ** 18n;
 const FALLBACK_ETH_USD = 2500;
 
 // Live ETH/USD from CoinGecko, cached 60s. Falls back to the last good value

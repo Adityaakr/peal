@@ -14,17 +14,27 @@ import {PealMempool} from "../src/PealMempool.sol";
 ///   RELAYER_ADDRESS       gets a trading balance (sponsors visitor swaps)
 ///   SEARCHER_ADDRESS      gets a trading balance (the sandwich bot)
 ///
-/// The two lanes get identical pools ($6M: 3,000,000 mUSDC / 1000 mETH). The
+/// The two lanes get identical pools, seeded to BASE_RESERVE/QUOTE_RESERVE. The
 /// deployer mints trading balances to the relayer and searcher, but each of
 /// those must approve the pools from its own key on boot (approval can only
 /// come from the token holder). Prints a JSON blob of addresses for the
 /// services and the explorer to consume.
 contract DeployMempool is Script {
-    // Deep pool ($90M: 30,000,000 mUSDC / 10,000 mETH, ETH at $3,000) so many
-    // demo swaps barely drift the price. The sandwich is bounded by the victim's
-    // slippage, not pool depth, so the drama is unchanged; the drift is ~10x
-    // smaller than a $6M pool. Traders hold enough for the larger front-runs a
-    // deep pool needs.
+    // SEED ONLY. These are not the live depth: relayer.ts TARGET_BASE resets
+    // both pools via adminSetReserves before every swap, so whatever is seeded
+    // here is overwritten within seconds. Treat it as the reseed buffer.
+    //
+    // This comment used to claim a deep pool left "the drama unchanged" because
+    // a sandwich is bounded by the victim's slippage rather than pool depth.
+    // The bound is real; the conclusion drawn from it was wrong. Extraction is
+    // capped by slippage, but PROFITABILITY falls with depth: reaching the same
+    // revert wall in a deeper pool needs a proportionally larger front-run, and
+    // the searcher pays the fee on that whole round trip. Net is roughly
+    // slippage x (swapSize - fee x depth), so the searcher stops bothering above
+    // depth = swapSize / fee. At these 30,000,000 reserves and the old 0.30%
+    // fee, a $10k order was unprofitable to sandwich by ~$361 and the demo
+    // would have shown nothing at all. Nobody caught it because TARGET_BASE
+    // discards these values before a searcher ever sees them.
     uint256 constant BASE_RESERVE = 30_000_000 ether;
     uint256 constant QUOTE_RESERVE = 10_000 ether;
     uint256 constant TRADER_USDC = 20_000_000 ether;

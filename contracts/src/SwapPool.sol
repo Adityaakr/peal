@@ -8,7 +8,7 @@ interface IERC20 {
 }
 
 /// @title SwapPool
-/// @notice A constant-product (x*y=k) AMM with the uniswap-v2 0.3% fee, holding
+/// @notice A constant-product (x*y=k) AMM with a 0.05% fee, holding
 /// two ERC-20 reserves. Swaps are gated to a single immutable `operator` (the
 /// block builder allowed to move the pool). Deploy it twice:
 ///   - public lane: operator = PublicBuilder (an unprotected mempool)
@@ -33,8 +33,18 @@ contract SwapPool {
     /// between them is the sandwich, never independent pool drift.
     address public immutable admin;
 
-    uint256 internal constant FEE_NUM = 997;
-    uint256 internal constant FEE_DEN = 1000;
+    /// @notice 0.05%, the tier ETH/USDC actually trades at on uniswap v3 at
+    /// size. NOT the v2 0.30% general-purpose tier: at 0.30% the quote gap a
+    /// visitor sees can never beat 2x the fee while a sandwich is still
+    /// profitable (gap = fee + swap/depth, and profit needs swap/depth > fee),
+    /// so 0.30% put a 0.60% floor under the demo's own quote. The denominator
+    /// is 10000, not 1000: 0.05% is inexpressible in thousandths, and setting
+    /// FEE_NUM = 9995 while leaving FEE_DEN = 1000 mints a NEGATIVE fee.
+    /// Mirrored in mempool-agents/src/sandwich.ts and explorer/src/mempool/
+    /// chain.ts; all three must move together or the browser quote and the
+    /// searcher's revert-wall bisection silently diverge from execution.
+    uint256 internal constant FEE_NUM = 9995;
+    uint256 internal constant FEE_DEN = 10000;
 
     event Swapped(
         address indexed payer,
@@ -88,7 +98,7 @@ contract SwapPool {
         reserveQuote = quote.balanceOf(address(this));
     }
 
-    /// @notice Constant-product quote net of the 0.3% fee.
+    /// @notice Constant-product quote net of the 0.05% fee.
     function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut)
         public
         pure

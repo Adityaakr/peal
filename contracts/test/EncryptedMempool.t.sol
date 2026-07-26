@@ -68,10 +68,10 @@ contract EncryptedMempoolTest is Test {
     // ---- pool math + access ------------------------------------------------
 
     function test_getAmountOut_matches_constant_product() public view {
-        // 50,000 USDC into a 3,000,000 / 1000 pool, 0.3% fee.
+        // 50,000 USDC into a 3,000,000 / 1000 pool, 0.05% fee.
         uint256 out = publicPool.getAmountOut(50_000 ether, BASE_RESERVE, QUOTE_RESERVE);
-        uint256 inWithFee = 50_000 ether * 997;
-        uint256 expected = (QUOTE_RESERVE * inWithFee) / (BASE_RESERVE * 1000 + inWithFee);
+        uint256 inWithFee = 50_000 ether * 9995;
+        uint256 expected = (QUOTE_RESERVE * inWithFee) / (BASE_RESERVE * 10000 + inWithFee);
         assertEq(out, expected);
         assertGt(out, 16 ether); // ballpark 16.3 ETH
         assertLt(out, 17 ether);
