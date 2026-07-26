@@ -26,6 +26,7 @@ import {
   toWad,
   txUrl,
   type MempoolConfig,
+  type PublicResult,
 } from '../mempool/chain';
 import {
   createFxBatch,
@@ -49,6 +50,13 @@ import { esc, fmtCountdown, truncMiddle } from '../util';
 // fast-finality chain and lands the full swap in ~9-10s.
 const ROUND_SECS = 5;
 const POLL_MS = 1500;
+// How long the public lane waits for a builder to include the order before it
+// gives up. PublicBuilder defers every order until someone includes it, so if
+// the searcher is down or its bundle reverts, the order sits there forever and
+// this lane would otherwise spin on "the searcher is reading your order" while
+// the sealed lane has long since settled. Generous enough to cover a slow
+// block plus a searcher retry, short enough that nobody is left staring.
+const PUBLIC_DEADLINE_MS = 45_000;
 const SLIP_BPS: Record<string, bigint> = { '0.001': 10n, '0.005': 50n, '0.01': 100n, '0.03': 300n };
 
 type Sym = 'USDC' | 'ETH';
@@ -444,7 +452,7 @@ export function renderMempool(root: HTMLElement): () => void {
     });
 
     const [pubOut, pealOut] = await Promise.all([
-      pollPublic(pub.orderId, fair, { recvUnit, payUnit, price: midPrice }, publicRes),
+      pollPublic(pub.orderId, fair, { recvUnit, payUnit, price: midPrice, submitTx: pub.txHash }, publicRes),
       pollPeal(conditionId, fair, recvUnit, pealRes, committee),
     ]);
     if (dead) return;
@@ -455,7 +463,13 @@ export function renderMempool(root: HTMLElement): () => void {
     // Both lanes started from identical reserves (prepareSwap), so peal is never
     // worse than public; clamp to guard against wei rounding.
     const keptUsd = Math.max(0, toUsd(Number(pealOut.fill) - Number(pubOut.victimOut), recvUnit, midPrice));
-    if (pubOut.sandwiched && keptUsd > 0.01) {
+    if (pubOut.stalled) {
+      // There is no comparison to draw: the public lane produced no fill. Own
+      // that plainly rather than counting a missing fill as money saved.
+      diff.innerHTML =
+        `<span class="mp-diff-kicker">the sealed lane settled. the public lane did not.</span>` +
+        `<span class="mp-diff-cap">your order opened on Peal and filled on-chain, but no builder ever included the public copy, so there is no public fill to compare against. that is a gap in this live demo's own searcher, not a claim about either mempool. swap again to retry.</span>`;
+    } else if (pubOut.sandwiched && keptUsd > 0.01) {
       diff.innerHTML =
         `<span class="mp-diff-kicker">same swap, two mempools</span>` +
         `<span class="mp-diff-num">${usd2(keptUsd)}</span>` +
@@ -504,6 +518,28 @@ export function renderMempool(root: HTMLElement): () => void {
         proofRow('the searcher took', `nothing, too small to sandwich`) +
         proofRow('on-chain', `${link(txHash)}`);
     appEl.querySelector<HTMLElement>('#mp-pstep-3')?.classList.add('is-done');
+  }
+
+  /** Step 3 when no builder ever included the order. The demo's whole claim is
+   * that nothing here is simulated, so say what actually happened rather than
+   * inventing a fill or blaming the mempool for a bot that was not running. */
+  function fillPubStalled(submitTx: string): void {
+    appEl.querySelector<HTMLElement>('#mp-pdata-3')!.innerHTML =
+      proofRow('you received', `<span class="mp-danger">nothing yet</span>`) +
+      proofRow('why', `no builder included your order`) +
+      proofRow('still readable', `<span class="mp-danger">sitting in the mempool, in the clear</span>`) +
+      (submitTx ? proofRow('submitted', `${link(submitTx)}`) : '');
+    appEl.querySelector<HTMLElement>('#mp-pstep-3')?.classList.add('is-done');
+  }
+
+  /** The public lane's result when it never settled. */
+  function stalledHtml(stillPending: boolean, submitTx: string): string {
+    const why = stillPending
+      ? `no builder included your order. it is still sitting in the public mempool, readable by anyone.`
+      : `the public lane never reported a fill.`;
+    return `
+      <div class="mp-result-num mp-got-ok">&mdash;</div>
+      <div class="mp-result-line">${why} ${submitTx ? link(submitTx) : ''}</div>`;
   }
 
   // ---- the 4 Peal pipeline steps (real BTE artifacts) -------------------
@@ -593,19 +629,42 @@ export function renderMempool(root: HTMLElement): () => void {
     sandwiched: boolean;
     victimOut: string;
     profit: string;
+    /** No builder ever included the order: this lane produced no fill at all. */
+    stalled?: boolean;
   }
 
   function pollPublic(
     orderId: string,
     fairWei: bigint,
-    ctx: { recvUnit: Sym; payUnit: Sym; price: number },
+    ctx: { recvUnit: Sym; payUnit: Sym; price: number; submitTx: string },
     resEl: HTMLElement,
   ): Promise<PubOut> {
     return new Promise((resolve) => {
+      const startedAt = Date.now();
+      let fails = 0;
       const tick = async () => {
         if (dead) return resolve({ sandwiched: false, victimOut: fromWad(fairWei), profit: '0' });
-        const r = await getPublicResult(orderId).catch(() => ({ done: false }) as never);
-        if (!r.done) return;
+        let r: PublicResult;
+        try {
+          r = await getPublicResult(orderId);
+          fails = 0;
+        } catch {
+          // Do not swallow this silently forever: a relayer that has stopped
+          // answering looks exactly like a searcher that has not acted yet, and
+          // the lane would keep showing a caption that is no longer true.
+          r = { done: false };
+          if (++fails === 3) resEl.innerHTML = laneStatus('the relayer stopped answering. retrying…');
+        }
+        if (!r.done) {
+          if (Date.now() - startedAt < PUBLIC_DEADLINE_MS) return;
+          // Deadline. The sealed lane settled long ago; end the comparison
+          // honestly instead of spinning on a lane that will never resolve.
+          clearInterval(id);
+          sandwich?.resolve({ stalled: true });
+          resEl.innerHTML = stalledHtml(r.pending !== false, ctx.submitTx);
+          fillPubStalled(ctx.submitTx);
+          return resolve({ sandwiched: false, victimOut: '0', profit: '0', stalled: true });
+        }
         clearInterval(id);
         const fair = Number(fromWad(fairWei));
         if (r.sandwiched) {

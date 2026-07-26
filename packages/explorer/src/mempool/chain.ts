@@ -114,6 +114,9 @@ export function submitPublicSwap(body: {
 
 export interface PublicResult {
   done: boolean;
+  /** Only meaningful while `done` is false: the order is on the builder's book
+   * and still waiting for someone to include it. Older relayers omit it. */
+  pending?: boolean;
   sandwiched?: boolean;
   victimOut?: string;
   profit?: string;

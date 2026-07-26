@@ -44,6 +44,16 @@ export const publicBuilderAbi = [
     outputs: [{ name: 'victimOut', type: 'uint256' }, { name: 'searcherProfit', type: 'uint256' }] },
   { type: 'function', name: 'executed', stateMutability: 'view',
     inputs: [{ name: 'id', type: 'bytes32' }], outputs: [{ type: 'bool' }] },
+  // The public `pending` mapping's getter. A zero trader means the builder has
+  // never seen this id, which is how the relayer tells "no such order" apart
+  // from "submitted and still waiting for a builder".
+  { type: 'function', name: 'pending', stateMutability: 'view',
+    inputs: [{ name: 'id', type: 'bytes32' }],
+    outputs: [
+      { name: 'trader', type: 'address' }, { name: 'baseToQuote', type: 'bool' },
+      { name: 'amountIn', type: 'uint256' }, { name: 'minOut', type: 'uint256' },
+      { name: 'to', type: 'address' },
+    ] },
   { type: 'event', name: 'Pending', inputs: [
     { name: 'id', type: 'bytes32', indexed: true }, { name: 'trader', type: 'address', indexed: true },
     { name: 'baseToQuote', type: 'bool', indexed: false }, { name: 'amountIn', type: 'uint256', indexed: false },

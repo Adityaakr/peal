@@ -15,8 +15,10 @@ export interface Scene {
   el: HTMLElement;
   /** Enter the "in flight" look (searcher circling / clamps loaded). */
   play(): void;
-  /** Land the outcome. `lostUsd` (sandwich) or the fill is shown by the page. */
-  resolve(opts: { lostUsd?: number; kept?: boolean }): void;
+  /** Land the outcome. `lostUsd` (sandwich) or the fill is shown by the page.
+   * `stalled` is the public lane's third outcome: no builder ever included the
+   * order, so there was neither a sandwich nor a fill to land. */
+  resolve(opts: { lostUsd?: number; kept?: boolean; stalled?: boolean }): void;
   reset(): void;
   destroy(): void;
 }
@@ -72,7 +74,13 @@ export function createSandwichScene(): Scene {
       root.dataset.phase = 'racing';
       loss.textContent = '';
     },
-    resolve({ lostUsd }) {
+    resolve({ lostUsd, stalled }) {
+      if (stalled) {
+        // The order never executed, so nothing clamped shut. Keep the slabs in
+        // flight: they are still pending, which is exactly what happened.
+        loss.innerHTML = `<span class="mp3d-loss-cap">still pending, still readable</span>`;
+        return;
+      }
       root.dataset.phase = 'attacked';
       if (lostUsd && lostUsd > 0) {
         loss.innerHTML = `<span class="mp3d-loss-num">-$${Math.round(lostUsd).toLocaleString('en-US')}</span><span class="mp3d-loss-cap">taken by the searcher</span>`;

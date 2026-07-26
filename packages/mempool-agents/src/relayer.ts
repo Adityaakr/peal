@@ -183,6 +183,9 @@ async function publicSwap(body: { amountIn: string; minOut: string; baseToQuote:
       /* not a builder event */
     }
   }
+  // Without an id there is nothing to poll, and returning null here would only
+  // surface later as a lane that never resolves. Fail the submission instead.
+  if (!orderId) throw new Error(`submitOrder ${hash} emitted no Pending event`);
   return { txHash: hash, orderId };
 }
 
@@ -200,7 +203,19 @@ async function commit(body: { conditionId: string; ctHash: string }) {
   return { txHash: hash };
 }
 
-/** The public order's fate: sandwiched (with the numbers) or honestly filled. */
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+/** An orderId is a bytes32. Reject anything else at the edge: viem throws deep
+ * inside getContractEvents on a malformed topic, and a 500 there is
+ * indistinguishable to the browser from "the searcher has not acted yet". */
+const BYTES32 = /^0x[0-9a-fA-F]{64}$/;
+
+/** The public order's fate: sandwiched (with the numbers), honestly filled, or
+ * still sitting unincluded in the builder's pending map.
+ *
+ * That third case has to be distinguishable from "not yet". PublicBuilder
+ * defers every order until a builder includes it, so an order no searcher picks
+ * up stays pending forever, and a caller that cannot tell the two apart polls
+ * forever on a lane that will never resolve. */
 async function publicResult(orderId: Hex) {
   const fromBlock = await scanFrom();
   const [sandwiched, executed] = await Promise.all([
@@ -225,7 +240,10 @@ async function publicResult(orderId: Hex) {
     const a = executed[0].args as { amountOut: bigint };
     return { done: true, sandwiched: false, victimOut: formatEther(a.amountOut), profit: '0', txHash: executed[0].transactionHash };
   }
-  return { done: false };
+  const order = (await pub.readContract({
+    address: d.publicBuilder, abi: publicBuilderAbi, functionName: 'pending', args: [orderId],
+  })) as readonly [Address, boolean, bigint, bigint, Address];
+  return { done: false, pending: order[0] !== ZERO_ADDRESS };
 }
 
 /** The sealed order's fate: settled on-chain at reveal, with the fill. */
@@ -289,8 +307,9 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/config') return send(res, 200, await config());
     if (req.method === 'GET' && url.pathname === '/state') return send(res, 200, await state());
     if (req.method === 'GET' && url.pathname === '/public-result') {
-      const id = url.searchParams.get('orderId') as Hex;
-      return send(res, 200, await publicResult(id));
+      const id = url.searchParams.get('orderId') ?? '';
+      if (!BYTES32.test(id)) return send(res, 400, { error: 'orderId must be a bytes32 hex string' });
+      return send(res, 200, await publicResult(id as Hex));
     }
     if (req.method === 'GET' && url.pathname === '/peal-result') {
       return send(res, 200, await pealResult(url.searchParams.get('conditionId') ?? ''));

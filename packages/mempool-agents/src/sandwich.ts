@@ -10,6 +10,19 @@
 const FEE_NUM = 997n;
 const FEE_DEN = 1000n;
 
+/**
+ * Headroom the searcher leaves under the victim's revert floor, in basis points.
+ *
+ * The bisection below finds the largest front-run that still clears minOut
+ * against the reserves read a moment ago. The sandwich is atomic, so if the
+ * pool moves at all between that read and inclusion, the victim's leg reverts
+ * and takes the whole bundle down with it. A reverted bundle leaves the order
+ * sitting unexecuted in PublicBuilder.pending, which is exactly the state that
+ * strands the demo's public lane. Sizing to a floor a few bps above minOut
+ * costs the searcher a sliver of profit and survives ordinary drift.
+ */
+const MARGIN_BPS = 5n;
+
 /** Matches SwapPool.getAmountOut exactly (integer division, truncating). */
 export function getAmountOut(amountIn: bigint, reserveIn: bigint, reserveOut: bigint): bigint {
   if (amountIn <= 0n) return 0n;
@@ -62,12 +75,14 @@ export function planSandwich(
 ): SandwichPlan {
   const [rIn, rOut] = forDir(r, baseToQuote);
 
-  // Bisect the revert wall.
+  // Bisect the revert wall, held MARGIN_BPS above the victim's actual floor so
+  // a small reserve move before inclusion does not revert the bundle.
+  const floor = minOut + (minOut * MARGIN_BPS) / 10_000n;
   let lo = 0n;
   let hi = rIn; // an absurd upper bound; the wall is far below it
   for (let i = 0; i < 256 && hi - lo > 1n; i++) {
     const mid = (lo + hi) / 2n;
-    if (victimOutAfterFront(r, baseToQuote, victimIn, mid) >= minOut) lo = mid;
+    if (victimOutAfterFront(r, baseToQuote, victimIn, mid) >= floor) lo = mid;
     else hi = mid;
   }
   const frontIn = lo;
