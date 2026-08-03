@@ -70,7 +70,7 @@ export function createCeremony({ n, t }: CeremonyOpts): Ceremony {
   core.innerHTML =
     '<span class="cer-core-glow" aria-hidden="true"></span>' +
     '<span class="cer-core-face" aria-hidden="true"></span>' +
-    '<img class="cer-core-logo" src="/peal-logo.svg" alt="" aria-hidden="true" />';
+    '<img class="cer-core-logo" src="/peal-logo.png" alt="" aria-hidden="true" />';
   stage.appendChild(core);
 
   interface Node {

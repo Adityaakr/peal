@@ -38,3 +38,51 @@
 .peal-landing *::after {
   box-sizing: border-box;
 }
+
+.landing-nav-logo {
+  display: block;
+  width: 36px;
+  height: 36px;
+  margin: -7px;
+}
+
+.product-hunt-badge {
+  display: inline-flex;
+  width: 250px;
+  height: 54px;
+  max-width: 100%;
+  pointer-events: auto;
+  transition:
+    filter 160ms ease,
+    transform 160ms ease;
+}
+
+.product-hunt-badge-row {
+  margin-bottom: 20px;
+}
+
+.product-hunt-badge img {
+  display: block;
+  width: 250px;
+  height: 54px;
+  max-width: 100%;
+}
+
+.product-hunt-badge:hover {
+  filter: brightness(0.95);
+}
+
+.product-hunt-badge:active {
+  transform: translateY(1px);
+}
+
+.product-hunt-badge:focus-visible {
+  outline: 3px solid rgb(255 97 84 / 35%);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .product-hunt-badge-row {
+    margin-bottom: 0;
+  }
+}

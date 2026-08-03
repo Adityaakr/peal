@@ -77,8 +77,9 @@ body {
 
 .site-logo {
   display: block;
-  width: 24px;
-  height: 24px;
+  width: 40px;
+  height: 40px;
+  margin: -8px;
 }
 
 .site-title:hover {
@@ -2360,8 +2361,8 @@ body.landing-page main {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 30px;
-  height: 30px;
+  width: 50px;
+  height: 50px;
   transform: translate(-50%, -50%);
   object-fit: contain;
 }
@@ -2634,8 +2635,8 @@ body.landing-page main {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 26px;
-  height: 26px;
+  width: 44px;
+  height: 44px;
   transform: translate(-50%, -50%);
   object-fit: contain;
 }

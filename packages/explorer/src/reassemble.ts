@@ -28,7 +28,7 @@ export function createGathering(shares: number): HTMLElement {
   core.className = 'rga-core';
   core.innerHTML =
     '<span class="rga-core-face" aria-hidden="true"></span>' +
-    '<img class="rga-core-logo" src="/peal-logo.svg" alt="" aria-hidden="true" />';
+    '<img class="rga-core-logo" src="/peal-logo.png" alt="" aria-hidden="true" />';
   stage.appendChild(core);
 
   // Motes start on a circle and animate toward the center (via left/top, which

@@ -6,8 +6,8 @@ _Status: active_ (renamed from bte 2026-07-07; design spec from the original bui
 
 - Product name: **Peal**. Domain: peal.network. Site title: **Peal Network**.
 - The explorer surface is titled **Peal Network**.
-- Logo: the teal leaf at packages/explorer/public/peal-logo.svg (also the
-  favicon). Leaf teals #00737F / #005866 are LOGO-ONLY colors, never UI
+- Logo: the teal network mark at packages/explorer/public/peal-logo.png (also the
+  favicon). Logo teals are LOGO-ONLY colors, never UI
   accents; the UI accent stays #2563eb.
 - Identity line: "peal — the programmable disclosure network." (user-approved
   em-dash exception, 2026-07-07; everywhere else the no-em-dash rule holds)
