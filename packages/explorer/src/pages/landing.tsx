@@ -76,7 +76,7 @@ function Navbar() {
     <div className="fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-5xl z-50 pointer-events-none">
       <nav className="pointer-events-auto flex items-center justify-between rounded-full border border-black/10 bg-transparent backdrop-blur-md pl-6 pr-2 py-2">
         <a href="#/" className="flex items-center gap-2">
-          <img src="/peal-logo.svg" alt="" width={22} height={22} />
+          <img className="landing-nav-logo" src="/peal-logo.png" alt="" width={36} height={36} />
           <span className="font-instrument text-[28px] tracking-tight text-[#1a1a1a] leading-none">
             Peal
           </span>
@@ -106,6 +106,24 @@ function Navbar() {
         </a>
       </nav>
     </div>
+  );
+}
+
+function ProductHuntBadge() {
+  return (
+    <a
+      className="product-hunt-badge"
+      href="https://www.producthunt.com/products/peal-network?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-peal-network"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <img
+        src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1212832&theme=light&t=1785731867952"
+        alt="Peal Network - secrets that open themselves | Product Hunt"
+        width={250}
+        height={54}
+      />
+    </a>
   );
 }
 
@@ -139,16 +157,12 @@ function Hero() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.2, delay: 0.3, ease: EASE }}
-          className="flex justify-center"
+          transition={{ duration: 1.2, delay: 0.2, ease: EASE }}
+          className="product-hunt-badge-row flex justify-center"
         >
-          <a
-            href="#/app"
-            className="pointer-events-auto group relative overflow-hidden rounded-full bg-[#1a1a1a] px-8 py-3.5 font-sans text-[15px] text-white shadow-[inset_0_-4px_4px_rgba(255,255,255,0.15)]"
-          >
-            Launch App
-          </a>
+          <ProductHuntBadge />
         </motion.div>
+
       </div>
     </section>
   );
