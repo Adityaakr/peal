@@ -1,4 +1,5 @@
 # bte — project model
+<!-- updated 2026-08-03 by prism-understand (Vara.eth evaluation: NO for now, measured) -->
 <!-- updated 2026-07-14 by prism-understand (verification story: the reveal check was circular) -->
 <!-- updated 2026-07-12 (timing trust hole; Railway volume fix; landing prompt handoff) -->
 <!-- updated 2026-07-09 by prism-understand (OG/social-card feasibility for shared links) -->
@@ -498,9 +499,11 @@ DONE and committed (branch encrypted-mempool-playground):
   links, honest trust-gap note. Old float amm.ts deleted.
 
 Proven in a real browser (Playwright): $50k swap -> public victim pushed to
-15.7394 ETH (its exact 0.5% floor), searcher took $212.99 on-chain; SAME swap
-sealed -> settled by PealMempool.executeBatch at the cue (30.5s) for 15.8186 ETH
-(full quote), searcher $0. Real tx refs on both lanes, no page errors.
+15.7394 ETH (its exact 0.5% floor), $212.99 lost to the sandwich on-chain
+(victim's execution shortfall vs the fair quote, NOT the searcher's net profit —
+the attacker also pays LP fees and gas); SAME swap sealed -> settled by
+PealMempool.executeBatch at the cue (30.5s) for 15.8186 ETH (full quote), $0
+lost. Real tx refs on both lanes, no page errors.
 
 Local stack wiring that worked: anvil :8546 (chain 31337), deploy addresses in
 packages/mempool-agents/deployments/31337.json, relayer :8799, searcher, settler
@@ -696,6 +699,149 @@ User wants a clean, engaging visual (current page too text-heavy). Direction:
 - Move the "what is real here" trust text into an FAQ section at the bottom.
 Pools redeployed DEEP (30M USDC / 10k ETH = $3000/ETH) so repeated demo swaps
 barely drift the price; addresses in deployments/42431.json (updated).
+
+## Vara.eth (eth.vara.network) — EVALUATED 2026-08-03, verdict NO for now
+
+Asked: should Peal add Vara.eth as a chain? Answer: it is not a chain you can add,
+and the one angle that would be strategically interesting is blocked by a measured
+hard gas ceiling plus a trust model that contradicts the product.
+
+### What Vara.eth actually is (grounded, wiki.vara.network/docs/vara-eth + gear-tech/gear source)
+- NOT a rollup, NOT a chain, NOT EVM. Off-chain WASM execution network ("ethexe")
+  whose state commits to Ethereum L1 via a Router contract, one `Mirror` contract
+  per program. Its own docs: "It's an application layer, not a new chain."
+- Chain id MAINNET = **1** (literally Ethereum mainnet, Router
+  `0x9C13FE9242dfe2ba2Cd446480A9308279aA74cb6`, live since block 24,734,869 /
+  2026-03-25). TESTNET = **560048** (Hoodi). Explorer is etherscan.
+- Programs are Rust -> WASM (`sails-rs` with `features=["ethexe"]`), target
+  `wasm32v1-none`, `no_std` mandatory, uploaded as an EIP-4844 blob. **Solidity
+  cannot be deployed to it.** Foundry/forge/hardhat appear nowhere in its docs.
+- Solidity can only CALL INTO it: `mirror.sendMessage(payload)` returns a message
+  id, never program output. Every Solidity<->Vara.eth call is a 2-tx async round
+  trip needing an off-chain keeper.
+- Reverse gas: user pays ETH for the L1 tx (~60-100k gas); the PROGRAM pays compute
+  from an `executableBalance` denominated in **wVARA** (decimals = **12** on-chain;
+  two wiki pages wrongly say 18). Prefund via `approve` + `executableBalanceTopUp`.
+- Forbidden syscalls on ethexe: `CreateProgram` (a program cannot spawn programs),
+  `Random` (no on-chain randomness), indefinite `Wait`, all gas-reservation and
+  `*WGas` variants. `wait_for`/`wake`/delayed sends ARE allowed.
+- Undocumented hard caps (source only, `ethexe/runtime/common/src/lib.rs`):
+  MAX_OUTGOING_MESSAGES_PER_EXECUTION = 4, PER_RUN = 16, 4 KiB payload budget per
+  run. That kills any fan-out settlement design (e.g. 64-slot batch execution).
+
+### Why NOT the encrypted-mempool demo
+- Porting = rewriting all 5 Solidity contracts in Rust. ~250 of 491 `src/` lines
+  port mechanically (all of `BteAnchor.sol`, the merkle half of `PealMempool`,
+  `DemoToken` -> VFT, `getAmountOut`). The other ~240 do NOT, and they are the
+  demo: `PublicBuilder.sandwich` (`PublicBuilder.sol:73-93`) needs three
+  synchronous `pool.swap` calls with a data dependency and all-or-nothing
+  atomicity (`:67-71`). In an actor model each becomes an awaited message, there
+  is no cross-message rollback, and other traffic interleaves at every await.
+  `test_public_sandwich_reverts_when_it_breaches_victim_floor`
+  (`contracts/test/EncryptedMempool.t.sol:130-144`) becomes unimplementable.
+  **An actor-model port WEAKENS the demo's own thesis**: the sandwich stops being
+  deterministic, which is a worse story than "the order was readable."
+- `PealMempool.executeBatch`'s swap loop (`PealMempool.sol:76-83`) becomes N
+  awaited round trips, and `settledRoot` is written at `:73` BEFORE any swap, so a
+  mid-loop failure = permanently-partial settlement with no re-entry (`:69`).
+- The fix is to merge PealMempool+SwapPool into one program per lane, dissolving
+  the 4-contract topology the demo's apples-to-apples framing depends on.
+- `abi.decode` of the order payload (`PealMempool.sol:78-79`) would become SCALE
+  or Borsh, which changes the leaf preimage and therefore every merkle root.
+  Coordinator `merkle.rs` + SDK `anchor.ts` would have to switch codecs in lockstep.
+- Hoodi (560048) was ALREADY evaluated and rejected in the 2026-07-12 chain rubric
+  above ("12s slot kills the 2s feel"). Vara.eth testnet settles to exactly Hoodi.
+  Vara.eth mainnet is Ethereum mainnet = real money, violates testnet-first.
+
+### The one interesting angle, and why it is blocked (MEASURED, not estimated)
+ROADMAP item 5 (`spec/ROADMAP.md:19-23`) wants an on-chain verifier and gates it on
+EIP-2537 because Solidity cannot do pairings. A Rust ethexe program needs no
+precompile at all: it links arkworks directly, and `crates/bte-wasm` already
+compiles the full verify path to wasm32 (`bte-wasm/Cargo.toml:11-13`,
+`src/lib.rs:60-70`). So "no BLS builtin on ethexe" is NOT the blocker. The blocker
+is gas, and it was measured directly (arkworks built for `wasm32v1-none`, run
+through `gear-wasm-instrument` 2.0.0 + `gear-core` 2.0.0, executed under wasmtime,
+`gear_gas` global read):
+
+| workload | native | measured gear gas | vs 1e12 ceiling |
+|---|---|---|---|
+| 6 pairings | 1.66 ms | 4.84e11 | 0.48x |
+| 15 pairings | 3.19 ms | 9.92e11 | 0.99x (the cliff) |
+| **65 pairings (our B=64)** | **11.67 ms** | **3.83e12** | **3.83x FAIL** |
+
+- Fitted `gas(B) = 1.93e11 + 5.68e10 * B` -> **max batch that fits one message is
+  B ~= 14**. Our `verify_share` (`bte-crypto/src/lib.rs:320-322`) is a multi_pairing
+  over B=64 terms, not ~5 as one might assume from the API shape.
+- The ceiling is HARD: `process_dispatch` does
+  `gas_multiplier.value_to_gas(executable_balance).min(CHUNK_PROCESSING_GAS_LIMIT)`.
+  **Funding the program with more wVARA does not raise it.**
+- Gas-to-wallclock is documented as **1 gas = 1 picosecond**
+  (`vara/node/authorship/README.md:76`), so 1e12 gas = 1.0s of reference compute.
+  But gear OVERCHARGES this workload ~328x vs native (real wasmtime slowdown is
+  only ~10x; the gap is gear's conservative instruction schedule + metering
+  self-charge). Defensible number to quote: **~3 ms of our native compute per
+  Vara.eth message.**
+- `pre_decrypt` (245 ms) = 80x over the message ceiling and 8.9x over the whole
+  BLOCK gas limit. `combine`+`finalize` (37 ms) = 12x over. Both stay off-chain
+  permanently regardless.
+- Vara Network's own wiki says why its Substrate BLS builtin exists: "the Wasm VM
+  used in Vara is not capable ... of processing them quickly enough to fit within
+  the single block time", "would occupy 30+ blocks". ethexe has **zero** builtin
+  actors (`grep -ril builtin ethexe/` = 0 matches across 334 files).
+- THE UNBLOCK TO TRACK: gear-tech/gear **PR #5582** (`gr_crypto` syscall with
+  `Bls12381Verify`, native arkworks behind a syscall) against issue #5456. Would
+  collapse the 328x overcharge to ~1x and make B=64 trivial. Unmerged, weights
+  are placeholders. Until it lands, on-chain verify is B<=12 only, and B=64 is
+  baked into our ceremony CRS (see "Dummy padding" above), so B=12 needs a new ceremony.
+
+### The disqualifier for a trust-minimization product (verified on-chain)
+- `validatorsCount()` = **4**, `validatorsThreshold()` = **3**, all four EOAs on
+  `*-eth.vara.network` domains, **all Gear-operated**.
+- `Router.owner()` = `POAMiddleware.owner()` = `0x19fdA330957933cdF61c09D8793a29F64D43d945`,
+  `eth_getCode` -> `0x`. A plain EOA, not a Safe, not a timelock. It controls
+  `setValidators()` and UUPS `_authorizeUpgrade` on both contracts.
+- It is **not FROST** despite the whitepaper: all 21 mainnet `commitBatch` txs are
+  `signatureType = 1` (ECDSA), hardcoded at `ethexe/ethereum/src/router/mod.rs:480`.
+  No FROST implementation exists in the Rust node.
+- Symbiotic restaking entry points revert `"not implemented"`. No economic
+  security. PoS is roadmapped Q4 2026. No audit.
+- Honest summary: **1-of-1 key over a 3-of-4 quorum run by one company, unaudited.**
+  Enforcing Peal's cue there swaps "trust the coordinator's sqlite" for "trust one
+  Gear key." That does not compose into a trust-minimization story, and per the
+  INVARIANT (2026-07-08) above it would be a launch-blocker-class claim.
+
+### What IS free today (do this instead of an integration)
+Vara.eth settles to Ethereum, and the coordinator already has a per-chain RPC
+registry (`crates/bte-coordinator/src/state.rs:19-20,31-37`). Setting
+`BTE_RPC_URL_1` (or `BTE_RPC_URL_560048` for Hoodi) gives at_block cues on the
+chain Vara.eth commits to, with **zero code change**. Note prod currently has NO
+chain contact at all (SEPOLIA_RPC_URL unset), so this would light up the at_block
+path in production for the first time.
+
+### What would flip the verdict
+`docs/plans/001-peal-next-plan.md:19-23,60-62,118-120` says the one thing that
+changes the calculus is money: Track 1 wants "a grant, or co-development" to pay
+for removing the trusted dealer, and the doc says outright that deferring the hard
+crypto is rational "if the goal is a fast ... demo for a grant. Name the goal."
+So: a funded Vara ecosystem engagement flips this from distraction to rational.
+Unfunded, it competes badly against the cheap high-credibility queue already
+listed above (isReal-not-in-leaf ~3 lines + redeploy; serve share bytes; re-derive
+ct_hash client-side; the phantom BteAnchor).
+
+### If it is ever built, the shape is an ANCHOR/VERIFIER program, not the demo
+Smallest honest target: a Vara.eth program holding `conditionId -> merkle root`
+plus (at B<=12, or post-#5582 at B=64) on-chain share verification and cue
+enforcement. That is the shape of the deferred Solana "anchor tier"
+(`001-peal-next-plan.md:99-101`), NOT a port of the 5-contract swap demo.
+Structural point in its favour that a contracts-first view misses: a Sails crate
+fits the existing cargo workspace (`Cargo.toml:3-9`) and Rust-only CI
+(`.github/workflows/ci.yml`) far more naturally than Solidity ever did.
+HARD CONSTRAINT: the verification UI needs a browser-reachable RPC with
+`access-control-allow-origin: *` (`packages/sdk/src/anchor.ts:119-138`), else
+"verify it yourself" degrades back into the self-consistency trap.
+Practical gotcha found while measuring: `dlmalloc` emits `memory.grow`, which
+gear's gas injector rejects; real gear programs page in via the `gr_alloc` syscall.
+Code size is fine (170-282 KB instrumented vs a 512 KiB limit).
 
 ## APT / Move support (LATER, not now)
 Aptos is Move-VM, not EVM - our Solidity contracts + EVM SDK path do not run on

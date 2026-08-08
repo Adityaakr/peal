@@ -91,7 +91,7 @@ const FLOW_COPY = [
 const PUB_COPY = [
   `On a normal chain your swap waits in the public mempool in plain sight. Anyone watching, including automated searchers, can read the amount, the direction, and the price you are willing to accept, all before it executes.`,
   `Seeing your trade coming, the searcher places its own buy just ahead of yours. That pushes the pool price up, so your swap is now lined up to fill at a worse rate than you were quoted.`,
-  `Your swap executes at the price the searcher left behind, and the searcher immediately sells back into it. You receive less than your quote, and that difference, sized to your own slippage limit, becomes the searcher's profit.`,
+  `Your swap executes at the price the searcher left behind, and the searcher immediately sells back into it. You receive less than your quote, and that difference, sized to your own slippage limit, is what the sandwich costs you.`,
 ];
 
 function flowStep(pub: boolean, n: number, chip: string, title: string, copy: string): string {
@@ -473,7 +473,7 @@ export function renderMempool(root: HTMLElement): () => void {
       diff.innerHTML =
         `<span class="mp-diff-kicker">same swap, two mempools</span>` +
         `<span class="mp-diff-num">${usd2(keptUsd)}</span>` +
-        `<span class="mp-diff-cap">kept on Peal that the searcher took in the public mempool</span>`;
+        `<span class="mp-diff-cap">kept on Peal, lost to the sandwich in the public mempool</span>`;
     } else {
       diff.innerHTML =
         `<span class="mp-diff-kicker">same swap, two mempools</span>` +
@@ -503,7 +503,7 @@ export function renderMempool(root: HTMLElement): () => void {
     sandwiched: boolean,
     victimOut: string,
     fair: string,
-    profitUsd: number,
+    lostUsd: number,
     recvUnit: Sym,
     txHash: string,
   ): void {
@@ -512,10 +512,10 @@ export function renderMempool(root: HTMLElement): () => void {
     body.innerHTML = sandwiched
       ? proofRow('you received', `<span class="mp-danger"><b>${num(victimOut, dp)}</b> ${recvUnit}</span>`) +
         proofRow('you were quoted', `${num(fair, dp)} ${recvUnit}`) +
-        proofRow('the searcher took', `<span class="mp-danger"><b>${usd2(profitUsd)}</b></span>`) +
+        proofRow('lost to the sandwich', `<span class="mp-danger"><b>${usd2(lostUsd)}</b></span>`) +
         proofRow('on-chain', `${link(txHash)}`)
       : proofRow('you received', `${num(victimOut, dp)} ${recvUnit}, in full`) +
-        proofRow('the searcher took', `nothing, too small to sandwich`) +
+        proofRow('lost to the sandwich', `nothing, too small to sandwich`) +
         proofRow('on-chain', `${link(txHash)}`);
     appEl.querySelector<HTMLElement>('#mp-pstep-3')?.classList.add('is-done');
   }
@@ -669,16 +669,18 @@ export function renderMempool(root: HTMLElement): () => void {
         const fair = Number(fromWad(fairWei));
         if (r.sandwiched) {
           // One figure everywhere: the shortfall from the fair quote, i.e. what
-          // the sandwich cost the victim. The 3D scene, this status line, the
-          // proof row, and the peal-vs-public headline all use it, so the demo
-          // never shows two different "the searcher took" numbers.
+          // the sandwich cost the victim. This is NOT the searcher's net profit
+          // (the attacker also pays LP fees and gas), so every caption phrases
+          // it as the victim's loss. The 3D scene, this status line, the proof
+          // row, and the peal-vs-public headline all use it, so the demo never
+          // shows two different "lost to the sandwich" numbers.
           const lostUsd = toUsd(fair - Number(r.victimOut), ctx.recvUnit, ctx.price);
           sandwich?.resolve({ lostUsd });
           resEl.innerHTML = resultHtml({
             tone: 'bad',
             got: r.victimOut ?? '',
             unit: ctx.recvUnit,
-            line: `the searcher took <b>${usd2(lostUsd)}</b>`,
+            line: `<b>${usd2(lostUsd)}</b> lost to the sandwich`,
             tx: link(r.txHash ?? ''),
           });
           fillPub3(true, r.victimOut ?? '', fromWad(fairWei), lostUsd, ctx.recvUnit, r.txHash ?? '');
@@ -743,7 +745,7 @@ export function renderMempool(root: HTMLElement): () => void {
           tone: 'good',
           got: fill,
           unit: recvUnit,
-          line: `the searcher took <b>$0</b>, opened by executeBatch`,
+          line: `<b>$0</b> lost to the sandwich, opened by executeBatch`,
           tx: link(r.txHash ?? ''),
         });
         // Proof step 3: the real reveal (shares, root, on-chain verification).
@@ -837,7 +839,7 @@ function faqHtml(cfg: MempoolConfig): string {
     ],
     [
       'How does the searcher take money on the public side?',
-      `It reads your pending swap in the clear, buys ahead of you to push the price up (the front-run), lets your swap fill at the worse price, then sells back (the back-run). It sizes the front-run to push you to exactly your slippage floor and no further, so your tolerance is really the quote you hand the searcher.`,
+      `It reads your pending swap in the clear, buys ahead of you to push the price up (the front-run), lets your swap fill at the worse price, then sells back (the back-run). It sizes the front-run to push you to exactly your slippage floor and no further, so your tolerance is really the quote you hand the searcher. The dollar figure this demo reports is your execution shortfall against the protected fill; the searcher's own net profit is smaller, since it also pays LP fees and gas on both of its legs.`,
     ],
     [
       'How does the sealing actually work?',
