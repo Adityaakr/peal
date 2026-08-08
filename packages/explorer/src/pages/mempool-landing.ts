@@ -259,11 +259,11 @@ export function renderMempoolLanding(root: HTMLElement): () => void {
       title: 'you fill worse, it takes the spread',
       chip: 'sandwiched',
       visual: sandwichStack(true),
-      body: "your swap executes at the price the searcher left behind, and the searcher immediately sells back into it. you receive less than your quote, and that difference, sized to your own slippage limit, becomes the searcher's profit.",
+      body: "your swap executes at the price the searcher left behind, and the searcher immediately sells back into it. you receive less than your quote, and that difference, sized to your own slippage limit, is what the sandwich costs you.",
       rows: [
         { label: 'you received', value: '8.1316 ETH', tone: 'bad' },
         { label: 'you were quoted', value: '8.1725 ETH' },
-        { label: 'the searcher took', value: '$103.78', tone: 'bad' },
+        { label: 'lost to the sandwich', value: '$103.78', tone: 'bad' },
         { label: 'on-chain', value: hashCopy('0x0c61cc8e21f4b7d3a95012ef88544c', 8, 4) },
       ],
     },
