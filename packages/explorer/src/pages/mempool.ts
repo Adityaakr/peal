@@ -192,7 +192,6 @@ export function renderMempool(root: HTMLElement): () => void {
               <div class="mp-info-row"><span>Min received</span><span id="mp-min" class="mono">·</span></div>
             </div>
             <button type="button" class="mp-swap-btn" id="mp-go">Swap</button>
-            <p class="mp-swap-foot">you sign nothing. the relayer sponsors the transaction.</p>
             <p class="error" id="mp-error" hidden></p>
           </div>
         </div>
@@ -205,7 +204,7 @@ export function renderMempool(root: HTMLElement): () => void {
               <div class="mp-lane-result" id="mp-res-public"></div>
             </article>
             <article class="mp-lane mp-lane-peal">
-              <header class="mp-lane-head"><h2>peal mempool</h2><span class="mp-lane-chip mp-chip-blue">sealed</span></header>
+              <header class="mp-lane-head"><h2>encrypted mempool</h2><span class="mp-lane-chip mp-chip-blue">sealed</span></header>
               <div class="mp-visual" id="mp-vis-peal"></div>
               <div class="mp-lane-result" id="mp-res-peal"></div>
             </article>
@@ -798,7 +797,6 @@ function swapField(id: 'pay' | 'recv', label: string, sym: Sym, value: string): 
       </div>
       <div class="mp-field-bot">
         <span class="mp-usd" id="mp-${id}-usd">$0</span>
-        <span class="mp-chain">on testnet</span>
       </div>
     </div>`;
 }

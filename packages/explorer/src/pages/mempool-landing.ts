@@ -343,7 +343,7 @@ export function renderMempoolLanding(root: HTMLElement): () => void {
           </div>
           <div class="ml-col ml-col-peal">
             <div class="ml-col-head">
-              <span class="ml-col-title">peal mempool</span>
+              <span class="ml-col-title">encrypted mempool</span>
               <span class="ml-peal-status">
                 <span class="ml-cue-live">${cueTag('cue: block 23,401,882')}</span>
                 <span class="ml-open-live">batch open · everyone hears it at once</span>
