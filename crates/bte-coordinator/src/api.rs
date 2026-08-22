@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use crate::db::{now_ms, unix_now};
-use crate::state::{new_id, App};
+use crate::state::{new_id, new_share_code, App};
 
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 /// Sealed wire blob cap: framing + 48 + 16 + payload cap, with headroom.
@@ -45,6 +45,7 @@ pub fn router(app: App) -> Router {
         .route("/work", get(get_work))
         .route("/shares", post(submit_share))
         .route("/reveals/{condition_id}", get(get_reveal))
+        .route("/seals/{code}", get(resolve_seal))
         .route("/committees", get(list_committees).post(register_committee))
         .route("/committees/{id}", get(get_committee))
         .route("/healthz", get(|| async { Json(json!({"ok": true})) }));
@@ -353,12 +354,59 @@ async fn submit_ciphertext(
         )));
     }
     conn.execute(
-        "INSERT OR IGNORE INTO ciphertexts (ct_hash, condition_id, sealed_blob, is_dummy, created_at)
-         VALUES (?1, ?2, ?3, 0, ?4)",
-        rusqlite::params![ct_hash, req.condition_id, blob, unix_now()],
+        "INSERT OR IGNORE INTO ciphertexts (ct_hash, condition_id, sealed_blob, is_dummy, created_at, code)
+         VALUES (?1, ?2, ?3, 0, ?4, ?5)",
+        rusqlite::params![
+            ct_hash,
+            req.condition_id,
+            blob,
+            unix_now(),
+            new_share_code()
+        ],
     )
     .map_err(internal)?;
-    Ok(Json(json!({"ct_hash": ct_hash})))
+    // OR IGNORE means a replayed seal keeps the original row, so read the code
+    // back rather than returning the candidate we just generated. Rows written
+    // before the code column existed get one backfilled here.
+    conn.execute(
+        "UPDATE ciphertexts SET code = ?2 WHERE ct_hash = ?1 AND code IS NULL",
+        rusqlite::params![ct_hash, new_share_code()],
+    )
+    .map_err(internal)?;
+    let code: String = conn
+        .query_row(
+            "SELECT code FROM ciphertexts WHERE ct_hash = ?1",
+            [&ct_hash],
+            |r| r.get(0),
+        )
+        .map_err(internal)?;
+    Ok(Json(json!({"ct_hash": ct_hash, "code": code})))
+}
+
+/// Resolve a short share code to the seal it names. The code is an opaque
+/// server-issued identifier; the decryption key for a private seal never
+/// reaches here, it stays in the link's URL fragment.
+async fn resolve_seal(
+    State(app): State<App>,
+    Path(code): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    if code.len() > 32 || !code.bytes().all(|b| {
+        b.is_ascii_alphanumeric() || b == b'-' || b == b'_'
+    }) {
+        return Err(bad_request("malformed share code"));
+    }
+    let conn = app.0.db.lock().unwrap();
+    conn.query_row(
+        "SELECT ct_hash, condition_id FROM ciphertexts WHERE code = ?1",
+        [&code],
+        |r| {
+            Ok(Json(json!({
+                "ct_hash": r.get::<_, String>(0)?,
+                "condition_id": r.get::<_, String>(1)?,
+            })))
+        },
+    )
+    .map_err(|_| not_found("unknown share code"))
 }
 
 #[derive(Deserialize)]

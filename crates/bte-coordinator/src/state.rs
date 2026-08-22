@@ -143,3 +143,18 @@ pub fn new_id(prefix: &str) -> String {
     bte_crypto::os_rng().fill(&mut bytes);
     format!("{prefix}_{}", hex::encode(bytes))
 }
+
+/// Short share-link code: 8 random bytes as 11 base64url chars (no padding).
+///
+/// 64 bits, server-issued. It must NOT be derived from the ciphertext: a code
+/// the sender can influence is grindable (ct_hash is sha256 over the wire and
+/// submit-time validation leaves ct1/ct2 free), which would let a sender point
+/// one link at two different seals. Random and server-chosen has nothing to
+/// grind and nothing to squat.
+pub fn new_share_code() -> String {
+    use base64::Engine;
+    let mut bytes = [0u8; 8];
+    use bte_crypto::rand::Rng;
+    bte_crypto::os_rng().fill(&mut bytes);
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
