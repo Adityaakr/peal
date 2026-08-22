@@ -39,6 +39,8 @@ const watched = new Set<string>();
 interface PlaygroundRun {
   conditionId: string;
   ctHash: string;
+  /** Short server-issued share code, minted with the ciphertext. */
+  code?: string;
   scenario: Scenario;
   /** What this tab sealed, for the "you" marker and the capsule view. */
   summary: string;
@@ -90,8 +92,19 @@ function toLocal(d: Date): string {
 /** Recipient-side link: countdown first, content after the cue. Private
  * capsules carry the decryption key in the fragment, which never leaves
  * the browser. */
-function sealLink(run: { conditionId: string; ctHash: string; shareKey?: string }): string {
-  const base = `${location.origin}${location.pathname}#/s/${encodeURIComponent(run.conditionId)}/${run.ctHash}`;
+function sealLink(run: {
+  conditionId: string;
+  ctHash: string;
+  shareKey?: string;
+  code?: string;
+}): string {
+  // Short form when the coordinator minted a code (59 chars with a key, 36
+  // without). The long form stays valid forever and is the fallback for
+  // coordinators predating share codes.
+  const origin = `${location.origin}${location.pathname}`;
+  const base = run.code
+    ? `${origin}#/s/${run.code}`
+    : `${origin}#/s/${run.conditionId}/${run.ctHash}`;
   return run.shareKey ? `${base}/${run.shareKey}` : base;
 }
 
@@ -492,7 +505,7 @@ export function renderPlayground(host: HTMLElement): () => void {
       }
 
       setStep(1, 'active');
-      let sealed: { ctHash: string; sealedB64: string };
+      let sealed: { ctHash: string; sealedB64: string; code?: string };
       try {
         sealed = await client.seal(payload, conditionId);
       } catch (e) {
@@ -509,6 +522,7 @@ export function renderPlayground(host: HTMLElement): () => void {
       run = {
         conditionId,
         ctHash: sealed.ctHash,
+        code: sealed.code,
         scenario,
         summary: fields.summary,
         shareKey,

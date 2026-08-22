@@ -1,4 +1,5 @@
 import './style.css';
+import { resolveSeal } from './api';
 import { renderHome } from './pages/home';
 import { renderCondition } from './pages/condition';
 import { renderLanding } from './pages/landing';
@@ -12,6 +13,52 @@ type Cleanup = () => void;
 
 let cleanup: Cleanup | null = null;
 
+/** Short share links resolve the code to (conditionId, ctHash) once, then hand
+ * off to the normal seal view. The resolve is deliberately NOT in the seal
+ * view's 2s poll loop: one lookup per open, not a per-recipient heartbeat.
+ * The decryption key never enters the request — it stays in the fragment. */
+function renderShortSeal(root: HTMLElement, code: string, shareKey?: string): Cleanup {
+  let inner: Cleanup | null = null;
+  let stale = false;
+  root.innerHTML = `
+    <section class="seal-view">
+      <p class="seal-kicker">someone sealed this for you</p>
+      <div class="card seal-card">
+        <div class="skeleton-row"><span class="skeleton" style="width:220px"></span></div>
+      </div>
+    </section>`;
+  void resolveSeal(code)
+    .then((found) => {
+      if (stale) return;
+      if (!found) {
+        root.innerHTML = `
+          <section class="seal-view">
+            <p class="seal-kicker">this seal could not be found</p>
+            <div class="card seal-card">
+              <p class="muted">the coordinator does not know this link. it may be for a
+              different network, or the devnet was wiped.</p>
+            </div>
+          </section>`;
+        return;
+      }
+      inner = renderSealView(root, found.conditionId, found.ctHash, shareKey);
+    })
+    .catch(() => {
+      if (stale) return;
+      root.innerHTML = `
+        <section class="seal-view">
+          <p class="seal-kicker">could not reach the network</p>
+          <div class="card seal-card">
+            <p class="muted">the coordinator is unreachable. the seal is fine; try again.</p>
+          </div>
+        </section>`;
+    });
+  return () => {
+    stale = true;
+    if (inner) inner();
+  };
+}
+
 function route(): void {
   if (cleanup) cleanup();
   const root = document.getElementById('app');
@@ -22,10 +69,17 @@ function route(): void {
   // hides the standard site header and unclamps <main> (see style.css).
   const isLanding = hash === '#/' || hash === '#';
   document.body.classList.toggle('landing-page', isLanding);
+  // Long form, kept forever: every link ever shared carries the condition id
+  // and the full ct_hash, so it renders with no coordinator round trip.
   const seal = hash.match(/^#\/s\/([^/]+)\/([0-9a-f]{64})(?:\/([A-Za-z0-9_-]{16,64}))?$/);
+  // Short form: an 11-char server-issued share code, resolved before render.
+  // Disjoint from the long form, which always has a mandatory 64-hex segment.
+  const shortSeal = hash.match(/^#\/s\/([A-Za-z0-9_-]{11})(?:\/([A-Za-z0-9_-]{16,64}))?$/);
   const match = hash.match(/^#\/condition\/(.+)$/);
   if (seal) {
     cleanup = renderSealView(root, decodeURIComponent(seal[1]), seal[2], seal[3]);
+  } else if (shortSeal) {
+    cleanup = renderShortSeal(root, shortSeal[1], shortSeal[2]);
   } else if (match) {
     cleanup = renderCondition(root, decodeURIComponent(match[1]));
   } else if (hash === '#/mempool') {

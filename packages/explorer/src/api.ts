@@ -129,3 +129,16 @@ export async function getReveal(conditionId: string): Promise<Reveal | null> {
   }
   return res.json() as Promise<Reveal>;
 }
+
+/** Resolve a short share code to the seal it names. Returns null when the
+ * coordinator does not know it (unknown, or a devnet wipe). The decryption key
+ * is never part of this request: it stays in the link's URL fragment. */
+export async function resolveSeal(
+  code: string,
+): Promise<{ conditionId: string; ctHash: string } | null> {
+  const res = await fetch(`${BASE}/v0/seals/${encodeURIComponent(code)}`);
+  if (res.status === 404 || res.status === 400) return null;
+  if (!res.ok) throw new Error(`GET /v0/seals failed with ${res.status}`);
+  const body = (await res.json()) as { condition_id: string; ct_hash: string };
+  return { conditionId: body.condition_id, ctHash: body.ct_hash };
+}
