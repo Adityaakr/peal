@@ -75,6 +75,14 @@ pub fn open(path: &str) -> Result<Connection> {
     // Migration for databases created before the tag column existed.
     conn.execute("ALTER TABLE conditions ADD COLUMN tag TEXT", [])
         .ok();
+    // Migration for databases created before short share codes existed. Rows
+    // predating this keep code NULL; their long-form share links still resolve
+    // without the code, so there is nothing to backfill.
+    conn.execute("ALTER TABLE ciphertexts ADD COLUMN code TEXT", [])
+        .ok();
+    conn.execute_batch(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_cts_code ON ciphertexts(code) WHERE code IS NOT NULL;",
+    )?;
     Ok(conn)
 }
 
