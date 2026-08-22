@@ -188,7 +188,7 @@ export class BteClient {
     payload: Uint8Array | string,
     conditionId: string,
     opts: { anchor?: AnchorConfig } = {},
-  ): Promise<{ ctHash: string; sealedB64: string }> {
+  ): Promise<{ ctHash: string; sealedB64: string; code?: string }> {
     const bytes =
       typeof payload === 'string' ? new TextEncoder().encode(payload) : payload;
     if (bytes.length > MAX_PAYLOAD_BYTES) {
@@ -204,7 +204,7 @@ export class BteClient {
     if (opts.anchor) {
       await anchorCommit(opts.anchor, conditionId, resp.ct_hash);
     }
-    return { ctHash: resp.ct_hash, sealedB64 };
+    return { ctHash: resp.ct_hash, sealedB64, code: resp.code };
   }
 
   async status(conditionId: string): Promise<ConditionStatus> {
