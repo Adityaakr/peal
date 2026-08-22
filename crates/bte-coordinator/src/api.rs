@@ -390,9 +390,11 @@ async fn resolve_seal(
     State(app): State<App>,
     Path(code): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    if code.len() > 32 || !code.bytes().all(|b| {
-        b.is_ascii_alphanumeric() || b == b'-' || b == b'_'
-    }) {
+    if code.len() > 32
+        || !code
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
         return Err(bad_request("malformed share code"));
     }
     let conn = app.0.db.lock().unwrap();

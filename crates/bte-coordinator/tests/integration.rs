@@ -514,7 +514,10 @@ async fn share_code_migration_preserves_existing_rows() {
         .unwrap();
     assert_eq!(ct_hash, "deadbeef");
     assert_eq!(condition_id, "cond_legacy");
-    assert_eq!(code, None, "legacy rows keep a NULL code, nothing backfilled");
+    assert_eq!(
+        code, None,
+        "legacy rows keep a NULL code, nothing backfilled"
+    );
 
     // The partial index tolerates many NULL codes (a full UNIQUE index would
     // not, and every legacy row has one).
@@ -601,7 +604,11 @@ async fn seals_predating_share_codes_still_reveal_after_upgrade() {
 
     let (status, cond) = get(format!("/v0/conditions/{condition_id}")).await;
     assert_eq!(status, 200, "old condition must still be readable: {cond}");
-    assert_eq!(cond["real_count"], json!(1), "the old seal is still counted");
+    assert_eq!(
+        cond["real_count"],
+        json!(1),
+        "the old seal is still counted"
+    );
 
     // Drive it to reveal, the same path the old link's page polls.
     engine::tick(&app).await.unwrap();
@@ -656,5 +663,8 @@ async fn seals_predating_share_codes_still_reveal_after_upgrade() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(code, None, "pre-existing rows are left exactly as they were");
+    assert_eq!(
+        code, None,
+        "pre-existing rows are left exactly as they were"
+    );
 }
