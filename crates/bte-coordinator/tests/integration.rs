@@ -394,3 +394,267 @@ async fn rejected_share_flagged_never_used_and_stall_recovery() {
     assert_eq!(rejected.len(), 1);
     assert_eq!(rejected[0]["operator_id"], json!(2));
 }
+
+/// Short share codes: minted with the ciphertext, resolve back to the same
+/// seal, stable across a replayed submit, and unguessable-shaped.
+#[tokio::test]
+async fn share_code_minted_and_resolves() {
+    let h = harness().await;
+    let (status, cond) = h
+        .post(
+            "/v0/conditions",
+            json!({"committee_id": h.committee_id, "in_secs": 60}),
+        )
+        .await;
+    assert_eq!(status, 200, "{cond}");
+    let condition_id = cond["id"].as_str().unwrap().to_string();
+
+    let mut rng = bte_crypto::os_rng();
+    let ct = seal(&h.params, b"hello", &mut rng).unwrap();
+    let blob = B64.encode(ct.to_bytes());
+    let (status, resp) = h
+        .post(
+            "/v0/ciphertexts",
+            json!({"condition_id": condition_id, "sealed_blob_b64": blob}),
+        )
+        .await;
+    assert_eq!(status, 200, "{resp}");
+    let ct_hash = resp["ct_hash"].as_str().unwrap().to_string();
+    let code = resp["code"].as_str().expect("submit returns a share code");
+
+    // 8 random bytes as base64url, no padding.
+    assert_eq!(code.len(), 11, "code is 11 chars, got {code}");
+    assert!(
+        code.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'),
+        "code is base64url: {code}"
+    );
+
+    // Resolves to exactly the seal it was minted for.
+    let (status, got) = h.get(&format!("/v0/seals/{code}")).await;
+    assert_eq!(status, 200, "{got}");
+    assert_eq!(got["ct_hash"].as_str().unwrap(), ct_hash);
+    assert_eq!(got["condition_id"].as_str().unwrap(), condition_id);
+
+    // A replayed submit is idempotent: same ct_hash, SAME code, not a fresh
+    // one (INSERT OR IGNORE keeps the original row).
+    let (status, again) = h
+        .post(
+            "/v0/ciphertexts",
+            json!({"condition_id": condition_id, "sealed_blob_b64": blob}),
+        )
+        .await;
+    assert_eq!(status, 200, "{again}");
+    assert_eq!(again["ct_hash"].as_str().unwrap(), ct_hash);
+    assert_eq!(again["code"].as_str().unwrap(), code, "code must be stable");
+
+    // Unknown and malformed codes do not leak a difference in kind.
+    let (status, _) = h.get("/v0/seals/AAAAAAAAAAA").await;
+    assert_eq!(status, 404);
+    let (status, _) = h.get("/v0/seals/not%20a%20code").await;
+    assert_eq!(status, 400);
+
+    // Two seals never share a code.
+    let ct2 = seal(&h.params, b"world", &mut rng).unwrap();
+    let (_, resp2) = h
+        .post(
+            "/v0/ciphertexts",
+            json!({"condition_id": condition_id, "sealed_blob_b64": B64.encode(ct2.to_bytes())}),
+        )
+        .await;
+    assert_ne!(resp2["code"].as_str().unwrap(), code);
+}
+
+/// A database written before share codes existed keeps working: the migration
+/// is additive, pre-existing rows survive, and their long-form share links
+/// still resolve without a code.
+#[tokio::test]
+async fn share_code_migration_preserves_existing_rows() {
+    // A db as it looked before the code column: open(), then drop the column
+    // back out to simulate the old shape.
+    let conn = db::open(":memory:").unwrap();
+    conn.execute_batch(
+        "DROP INDEX IF EXISTS idx_cts_code;
+         ALTER TABLE ciphertexts DROP COLUMN code;",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO committees (id, params_blob, params_digest, n, t, b, created_at)
+         VALUES ('c', x'00', 'c', 3, 2, 4, 0)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO conditions (id, committee_id, kind, fires_at, status, created_at)
+         VALUES ('cond_legacy', 'c', 'at_time', 0, 'pending', 0)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO ciphertexts (ct_hash, condition_id, sealed_blob, is_dummy, created_at)
+         VALUES ('deadbeef', 'cond_legacy', x'00', 0, 0)",
+        [],
+    )
+    .unwrap();
+
+    // Re-running the migration on that db must not drop or alter the row.
+    conn.execute("ALTER TABLE ciphertexts ADD COLUMN code TEXT", [])
+        .ok();
+    conn.execute_batch(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_cts_code ON ciphertexts(code) WHERE code IS NOT NULL;",
+    )
+    .unwrap();
+
+    let (ct_hash, condition_id, code): (String, String, Option<String>) = conn
+        .query_row(
+            "SELECT ct_hash, condition_id, code FROM ciphertexts WHERE ct_hash = 'deadbeef'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(ct_hash, "deadbeef");
+    assert_eq!(condition_id, "cond_legacy");
+    assert_eq!(code, None, "legacy rows keep a NULL code, nothing backfilled");
+
+    // The partial index tolerates many NULL codes (a full UNIQUE index would
+    // not, and every legacy row has one).
+    conn.execute(
+        "INSERT INTO ciphertexts (ct_hash, condition_id, sealed_blob, is_dummy, created_at)
+         VALUES ('cafebabe', 'cond_legacy', x'00', 0, 0)",
+        [],
+    )
+    .expect("a second NULL-code row must be allowed");
+}
+
+/// THE COMPATIBILITY GUARANTEE: seals created before short share codes existed
+/// keep working end to end after the upgrade.
+///
+/// Builds a database in the pre-code shape, seals into it exactly as the old
+/// binary would (no code column at all), then runs the new migration over that
+/// live data and drives the pre-existing seal all the way to reveal. This is
+/// what a link already sitting in someone's DMs depends on.
+#[tokio::test]
+async fn seals_predating_share_codes_still_reveal_after_upgrade() {
+    let mut rng = ChaCha20Rng::seed_from_u64(11);
+    let (params, secrets) = ceremony(3, 2, 4, &mut rng).unwrap();
+
+    // --- old world: a db with no `code` column, holding a real pending seal.
+    let conn = db::open(":memory:").unwrap();
+    conn.execute_batch(
+        "DROP INDEX IF EXISTS idx_cts_code;
+         ALTER TABLE ciphertexts DROP COLUMN code;",
+    )
+    .unwrap();
+    let app = state::App::new(conn, state::Config::from_env()).unwrap();
+    let committee_id = app.register_committee(&params.to_bytes()).unwrap();
+
+    let condition_id = "cond_beforecodes".to_string();
+    let mut os = bte_crypto::os_rng();
+    let ct = seal(&params, b"sealed before the upgrade", &mut os).unwrap();
+    let ct_hash = hex::encode(ct.hash());
+    {
+        let conn = app.0.db.lock().unwrap();
+        conn.execute(
+            "INSERT INTO conditions (id, committee_id, kind, fires_at, status, created_at)
+             VALUES (?1, ?2, 'at_time', 0, 'pending', 0)",
+            rusqlite::params![condition_id, committee_id],
+        )
+        .unwrap();
+        // Note the column list: exactly what the old binary wrote.
+        conn.execute(
+            "INSERT INTO ciphertexts (ct_hash, condition_id, sealed_blob, is_dummy, created_at)
+             VALUES (?1, ?2, ?3, 0, 0)",
+            rusqlite::params![ct_hash, condition_id, ct.to_bytes()],
+        )
+        .unwrap();
+    }
+
+    // --- the upgrade: exactly the migration db::open() now runs on boot.
+    {
+        let conn = app.0.db.lock().unwrap();
+        conn.execute("ALTER TABLE ciphertexts ADD COLUMN code TEXT", [])
+            .ok();
+        conn.execute_batch(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_cts_code ON ciphertexts(code) WHERE code IS NOT NULL;",
+        )
+        .unwrap();
+    }
+
+    // --- new world: the pre-existing seal is untouched and still addressable
+    // by exactly what its long-form link carries: condition id + full ct_hash.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let router = api::router(app.clone());
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let client = reqwest::Client::new();
+    let get = |path: String| {
+        let client = client.clone();
+        let base = base.clone();
+        async move {
+            let resp = client.get(format!("{base}{path}")).send().await.unwrap();
+            let status = resp.status().as_u16();
+            (status, resp.json::<Value>().await.unwrap_or(Value::Null))
+        }
+    };
+
+    let (status, cond) = get(format!("/v0/conditions/{condition_id}")).await;
+    assert_eq!(status, 200, "old condition must still be readable: {cond}");
+    assert_eq!(cond["real_count"], json!(1), "the old seal is still counted");
+
+    // Drive it to reveal, the same path the old link's page polls.
+    engine::tick(&app).await.unwrap();
+    for s in &secrets {
+        let (status, work) = get(format!("/v0/work?operator={}", s.party_index)).await;
+        assert_eq!(status, 200);
+        for batch in work["batches"].as_array().unwrap() {
+            let raw = B64.decode(batch["headers_b64"].as_str().unwrap()).unwrap();
+            let headers: Vec<CtHeader> = raw
+                .chunks(48)
+                .map(|c| header_from_bytes(c).unwrap())
+                .collect();
+            let share = partial(s, &headers).unwrap();
+            let resp = client
+                .post(format!("{base}/v0/shares"))
+                .json(&json!({
+                    "batch_id": batch["batch_id"],
+                    "operator_id": s.party_index,
+                    "share_b64": B64.encode(share.to_bytes()),
+                }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(resp.status().as_u16(), 200);
+        }
+    }
+    engine::tick(&app).await.unwrap();
+
+    // The exact lookup the old share-link page performs: find my slot by the
+    // full ct_hash the link carried, and read the payload back.
+    let (status, reveal) = get(format!("/v0/reveals/{condition_id}")).await;
+    assert_eq!(status, 200, "{reveal}");
+    let slot = reveal["slots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["ct_hash"].as_str() == Some(ct_hash.as_str()))
+        .expect("the pre-upgrade seal must still be findable by its ct_hash");
+    let payload = B64.decode(slot["payload_b64"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        payload, b"sealed before the upgrade",
+        "a link shared before the upgrade must still open its content"
+    );
+    assert_eq!(slot["valid"], json!(true));
+
+    // And it never acquired a share code: nothing backfilled, nothing rewritten.
+    let conn = app.0.db.lock().unwrap();
+    let code: Option<String> = conn
+        .query_row(
+            "SELECT code FROM ciphertexts WHERE ct_hash = ?1",
+            [&ct_hash],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(code, None, "pre-existing rows are left exactly as they were");
+}
