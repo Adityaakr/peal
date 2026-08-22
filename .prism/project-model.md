@@ -855,3 +855,46 @@ scoped only after the EVM/Tempo demo lands. Do NOT bridge; native Move or nothin
 - models: main loop + 1 explorer subagent; gates (executable) replaced skeptic panels
 - claims: all DoD rows verified in-session except "CI green" (supported: same commands local)
 - fleet: 1 subagent · overhead vs single-pass ≈ 1.1x
+
+## Share-link shortening (decided 2026-08-22 by prism-plan, doc: docs/plans/002-short-share-link.md)
+- Link is 142 chars today: origin 21 + `#/s/` 4 + `cond_`+24hex 29 + 64-hex ct_hash 65 + 22-char
+  key 23. Only the 22-char key carries secret bits; the other 93 chars are identifiers.
+- DECISION: 8-byte server-issued random code minted INSIDE submit_ciphertext, returned with
+  ct_hash, resolved via new `GET /v0/seals/{code}`. Link -> 59 chars private / 36 public.
+  Key stays in the fragment. Rejected: ct_hash prefix, self-contained packed blob, HKDF seed.
+- MEASURED (criterion, n=5 t=3 B=64, Apple Silicon): honest seal = 420us = 2,467/s. Junk-hash
+  grind = 3,263,981 candidates/s (1 sha256 each).
+- **`submit_ciphertext` validates almost nothing** — `SealedCiphertext::from_bytes`
+  (`wire.rs:395-405`) checks magic, type byte, G1 subgroup on ct0, length bounds only. `ct1`
+  (128 bits) and `ct2` (<=4096 bytes) are UNCHECKED. FO well-formedness (`ct0==[H_R(K,msg)]_1`)
+  runs only at reveal (`lib.rs:410`). So ct_hash is grindable at sha256/ASIC speed, though the
+  cheap tier yields `valid=false` rows that `seal-view.ts:167` refuses to render.
+- **`seal-view.ts` NEVER imports `verify.ts`** — sole importer is `pages/condition.ts:14`. The
+  recipient page does zero independent verification (no chain read, no re-hash, no merkle). Any
+  claim that the seal page "verifies" anything is false as of this date.
+- **Pre-reveal ct_hashes are NOT publicly enumerable.** `list_conditions` + `get_condition` return
+  counts only; `get_reveal` 404s for the whole pending window (`api.rs:541-575`). Corrects the
+  assumption that the seal index is already public.
+- `sdk/src/index.ts:190` `seal()` already returns an OBJECT `{ctHash, sealedB64}`, so adding a
+  `code` field is additive and non-breaking.
+- Redirect-based shorteners are STRUCTURALLY DEAD here: RFC 9110 sec 10.2.2 inherits the request
+  fragment only when `Location` has none, and a hash router's target always has one. Caddy's
+  `try_files` (`docker/Caddyfile:12`) is an internal rewrite (200, no 3xx), so real path routes
+  need no Caddy change if ever wanted.
+- Shortening buys NOTHING on X (t.co = fixed 23-char weight). The real driver is email/quoted-text
+  wrapping at 76-78 cols, which breaks the link inside the key segment; `seal-view.ts:189-190`
+  already ships the error string for it.
+
+## Live bugs found 2026-08-22 (not yet fixed)
+- **P1 key leak to Google.** `seal-view.ts:81` `const url = location.href` (fragment + AES key)
+  -> `gcalUrl` (`attention.ts:83-91`) puts it in the `details=` query param of a
+  calendar.google.com URL rendered as a live anchor at `seal-view.ts:87`. One click sends the
+  decryption key to Google. `icsHref` (`attention.ts:56-79`) writes it into `URL:`/`DESCRIPTION:`
+  of the .ics. Nothing strips the fragment. Contradicts `privacy.ts:1-4`, `protocol.ts:376-377`,
+  `docs/protocol.html:588-589`, `docs/how-peal-is-built.html:379`.
+- **P2 rate limiter decorative + OOM.** `api.rs:96-106` trusts the FIRST hop of `X-Forwarded-For`
+  with no trusted-proxy check; Caddy appends the real IP, so an attacker-supplied value wins.
+  `state.rs:68` buckets map is keyed by that string and is NEVER pruned (grep: no
+  retain/remove/clear). `cors` is outermost and short-circuits OPTIONS before `rate_limit`.
+- **P3 batch pollution.** Structurally-garbage ciphertexts pass submit and occupy real slots
+  through freeze, surfacing as `valid=false` (see the validation gap above).

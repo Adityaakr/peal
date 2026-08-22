@@ -583,7 +583,7 @@
   client-side layer exists on top.</p>
   <div class="eq">
     <div><span>private payload</span><code>"BTEP1" || iv (12 bytes) || AES-128-GCM(key, text)</code></div>
-    <div><span>share link</span><code>#/s/&lt;condition&gt;/&lt;ct_hash&gt;/&lt;key&gt;</code></div>
+    <div><span>share link</span><code>#/s/&lt;code&gt;/&lt;key&gt;</code></div>
   </div>
   <p>Before sealing, the browser wraps a personal payload in AES-128-GCM. The key never reaches
   any server: it rides only in the share link's hash fragment, which browsers do not transmit.

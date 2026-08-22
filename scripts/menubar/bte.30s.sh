@@ -7,7 +7,8 @@
 #      (the suffix is the refresh interval)
 #   3. paste a seal link into the watch file:
 #        mkdir -p ~/.config/bte
-#        echo 'https://bte-explorer-production.up.railway.app/#/s/<condition>/<cthash>' > ~/.config/bte/watch
+#        echo 'https://peal.network/#/s/<code>' > ~/.config/bte/watch
+#      (the long form .../#/s/<condition>/<cthash> still works too)
 #
 # the menu bar then shows the live countdown; when the seal reveals, the
 # icon flips to open and clicking it opens the link.
@@ -26,14 +27,31 @@ fi
 LINK=$(head -1 "$CONF" | tr -d '[:space:]')
 ORIGIN=${LINK%%/#*}
 REST=${LINK#*#/s/}
-COND=${REST%%/*}
+FIRST=${REST%%/*}
 
 if [ -z "$ORIGIN" ] || [ "$REST" = "$LINK" ]; then
   echo "🔒 peal ?"
   echo "---"
-  echo "watch file is not a seal link (expected .../#/s/<condition>/<cthash>) | color=red"
+  echo "watch file is not a seal link (expected .../#/s/<code>) | color=red"
   exit 0
 fi
+
+# Long form carries the condition id up front. Short form carries an 11-char
+# share code that the coordinator resolves for us.
+case "$FIRST" in
+  cond_*) COND=$FIRST ;;
+  *)
+    COND=$(curl -fsS -m 10 "$ORIGIN/v0/seals/$FIRST" 2>/dev/null \
+      | sed -n 's/.*"condition_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    if [ -z "$COND" ]; then
+      echo "🔒 peal ?"
+      echo "---"
+      echo "could not resolve this seal link | color=red"
+      echo "open the seal | href=$LINK"
+      exit 0
+    fi
+    ;;
+esac
 
 JSON=$(curl -fsS -m 10 "$ORIGIN/v0/conditions/$COND" 2>/dev/null)
 if [ -z "$JSON" ]; then

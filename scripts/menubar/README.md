@@ -9,7 +9,7 @@ Clicking it opens the seal link.
 ```sh
 brew install swiftbar        # or xbar
 mkdir -p ~/.config/bte
-echo 'https://bte-explorer-production.up.railway.app/#/s/<condition>/<cthash>' > ~/.config/bte/watch
+echo 'https://peal.network/#/s/<code>' > ~/.config/bte/watch
 cp scripts/menubar/bte.30s.sh "$HOME/Documents/SwiftBar/"   # your plugin folder
 chmod +x "$HOME/Documents/SwiftBar/bte.30s.sh"
 ```
