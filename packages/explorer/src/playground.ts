@@ -794,6 +794,38 @@ export function renderPlayground(host: HTMLElement): () => void {
 
   /** Scenario-aware results: leaderboard for bids, tally for votes, the
    * plain secret for capsules. Everything comes from the actual reveal. */
+  /** Files revealed in this batch, drawn after the markup lands because a
+   * private one has to be decrypted first and that is async. Public files from
+   * anyone in the batch render; private ones only if this tab holds the key. */
+  async function mountFiles(host: HTMLElement | null, reveal: Reveal): Promise<void> {
+    if (!host || !run) return;
+    releaseFiles();
+    for (const slot of reveal.slots) {
+      if (slot.is_dummy || !slot.valid) continue;
+      let bytes = payloadBytes(slot.payload_b64);
+      if (isPrivatePayload(bytes)) {
+        if (slot.ct_hash !== run.ctHash || !run.shareKey) continue;
+        const plain = await decryptPrivateBytes(bytes, run.shareKey);
+        if (!plain) continue;
+        bytes = plain;
+      }
+      if (!isFilePayload(bytes)) continue;
+      const file = unpackFile(bytes);
+      if (!file) continue;
+      const mount = document.createElement('div');
+      if (slot.ct_hash === run.ctHash) mount.className = 'sealed-file-mine';
+      host.appendChild(mount);
+      fileCleanups.push(renderFile(mount, file));
+    }
+  }
+
+  /** Blob URLs pin their bytes until revoked, so every re-render frees the
+   * previous batch before drawing a new one. */
+  function releaseFiles(): void {
+    for (const off of fileCleanups) off();
+    fileCleanups = [];
+  }
+
   function resultsHtml(reveal: Reveal): string {
     if (!run) return '';
     // Private slots decrypt only for their link holders; ours renders from
