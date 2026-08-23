@@ -59,6 +59,12 @@ export function renderSealView(
   let pollTimer: number | undefined;
   let tickTimer: number | undefined;
   let revealTimer: number | undefined;
+  /** A rendered file pins its bytes behind a blob URL until revoked. */
+  let fileCleanup: (() => void) | null = null;
+  const releaseFile = () => {
+    if (fileCleanup) fileCleanup();
+    fileCleanup = null;
+  };
 
   // The notify button lives inside re-renderable HTML; delegate the click.
   bodyEl.addEventListener('click', (e) => {
