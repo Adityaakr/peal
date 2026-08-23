@@ -1,0 +1,69 @@
+{
+  "manifest_version": 3,
+  "name": "Peal \u2014 live reveal countdowns",
+  "version": "0.1.0",
+  "description": "Turns Peal seal links into a live ticking countdown, in place, on X and anywhere else.",
+  "homepage_url": "https://peal.network",
+  "host_permissions": [
+    "https://peal.network/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "src/parse.js",
+        "src/content.js"
+      ],
+      "css": [
+        "src/card.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://warpcast.com/*",
+        "https://farcaster.xyz/*"
+      ],
+      "js": [
+        "src/parse.js",
+        "src/content.js"
+      ],
+      "css": [
+        "src/card.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "exclude_matches": [
+        "https://x.com/*",
+        "https://twitter.com/*",
+        "https://warpcast.com/*",
+        "https://farcaster.xyz/*",
+        "https://peal.network/*"
+      ],
+      "js": [
+        "src/parse.js",
+        "src/content.js"
+      ],
+      "css": [
+        "src/card.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
