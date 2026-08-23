@@ -17,7 +17,9 @@ import {
 import { markSealRevealed, rememberSeal } from './attention';
 import { createCeremony, type Ceremony } from './ceremony';
 import { takeSealDraft } from './draft';
-import { encryptPrivate, isPrivatePayload } from './privacy';
+import { decryptPrivateBytes, encryptPrivateBytes, isPrivatePayload } from './privacy';
+import type { SealedFile } from './attach';
+import { ACCEPTED, fmtBytes, isFilePayload, packFile, renderFile, unpackFile } from './attach';
 import { decodePayload, esc, fmtCountdown, payloadBytes, truncMiddle } from './util';
 
 const POLL_MS = 1500;
