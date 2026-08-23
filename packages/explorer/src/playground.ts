@@ -5,7 +5,7 @@
 //   time capsule -> your own note, revealed to everyone later
 // Sealing runs in bte-sdk's wasm; only the ciphertext leaves the tab. A live
 // trace narrates every stage with the real artifacts.
-import { BteClient } from 'bte-sdk';
+import { BteClient, MAX_PAYLOAD_BYTES } from 'bte-sdk';
 import {
   API_BASE,
   getCondition,
