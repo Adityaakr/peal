@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Peal extension — dev harness</title>
+    <link rel="stylesheet" href="../src/card.css" />
+    <style>
+      body {
+        margin: 0;
+        padding: 32px 20px 80px;
+        background: #ffffff;
+        color: #0f172a;
+        font: 15px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      main { max-width: 620px; margin: 0 auto; }
+      h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+      .sub { color: #64748b; margin: 0 0 28px; font-size: 14px; }
+      /* deliberately X-ish: virtualised list of articles, links as spans */
+      article {
+        border: 1px solid rgba(15,23,42,.1);
+        border-radius: 16px;
+        padding: 14px 16px;
+        margin: 0 0 14px;
+      }
+      .who { font-weight: 600; }
+      .who span { color: #64748b; font-weight: 400; }
+      .txt { margin: 6px 0 0; }
+      a { color: #2563eb; text-decoration: none; }
+      .case { font-size: 12px; color: #94a3b8; margin: 0 0 6px; text-transform: lowercase; }
+      button {
+        font: inherit; padding: 8px 14px; border-radius: 999px;
+        border: 1px solid rgba(15,23,42,.15); background: #fff; cursor: pointer;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { background: #000; color: #e7e9ea; }
+        article { border-color: rgba(148,163,184,.2); }
+        button { background: #16181c; color: #e7e9ea; border-color: rgba(148,163,184,.25); }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Peal extension — dev harness</h1>
+      <p class="sub">
+        Runs the real <code>parse.js</code> and <code>content.js</code> against X-shaped markup,
+        with <code>chrome.runtime</code> stubbed to call the live coordinator. Open this file in a
+        browser to see the card render and tick without installing the extension.
+      </p>
+
+      <p><button id="add">append a post (tests the MutationObserver)</button></p>
+
+      <article>
+        <p class="case">short public link — the launch case</p>
+        <p class="who">Peal <span>@peal_network · 2m</span></p>
+        <p class="txt">
+          v2 ships when this opens 👀
+          <a href="https://t.co/fake1">peal.network/#/s/bPGLBTUVOZ0</a>
+        </p>
+      </article>
+
+      <article>
+        <p class="case">synthetic pending seal — exercises the live countdown</p>
+        <p class="who">Peal <span>@peal_network · now</span></p>
+        <p class="txt">
+          announcement drops when this opens
+          <a href="https://t.co/fake0">peal.network/#/s/DEMOpending</a>
+        </p>
+      </article>
+
+      <article>
+        <p class="case">short private link — the key must never leave the page</p>
+        <p class="who">Aditya <span>@Adityaakr · 5m</span></p>
+        <p class="txt">
+          sealed a note for you
+          <a href="https://t.co/fake2">peal.network/#/s/bPGLBTUVOZ0/_LSMEs_XJswgbir5_kqQUw</a>
+        </p>
+      </article>
+
+      <article>
+        <p class="case">long legacy link — shared before short codes</p>
+        <p class="who">someone <span>@someone · 1h</span></p>
+        <p class="txt">
+          <a href="https://t.co/fake3"
+            >peal.network/#/s/cond_d8ae9b3a8879c6ca0793e51a/37575e76729a1ed995e23001cd93d901609de899e4644f89f0be91e0f9cf8858</a
+          >
+        </p>
+      </article>
+
+      <article>
+        <p class="case">truncated by X — must be refused, not guessed (expect no card)</p>
+        <p class="who">someone <span>@someone · 3h</span></p>
+        <p class="txt"><a href="https://t.co/fake4">peal.network/#/s/bPGLBT…</a></p>
+      </article>
+
+      <article>
+        <p class="case">unrelated link (expect no card)</p>
+        <p class="who">someone <span>@someone · 4h</span></p>
+        <p class="txt"><a href="https://t.co/fake5">example.com/hello</a></p>
+      </article>
+    </main>
+
+    <script>
+      // Stub just enough of the extension API for the content script to run in
+      // a plain page. Mirrors background.js, including the rule that only a
+      // handle — never a key — is ever sent to the network.
+      const cache = new Map();
+      window.chrome = {
+        runtime: {
+          lastError: null,
+          async sendMessage(msg, cb) {
+            if (!msg || msg.type !== 'peal:resolve') return cb({ ok: false });
+            const key = msg.handle.kind + ':' + msg.handle.value;
+            if (cache.has(key)) return cb({ ok: true, value: cache.get(key) });
+            // Synthetic pending seal, so the countdown can be exercised without
+            // waiting on a real one or writing to the live devnet.
+            if (msg.handle.value === 'DEMOpending') {
+              const value = {
+                conditionId: 'cond_demo',
+                status: 'pending',
+                firesAt: Math.floor(Date.now() / 1000) + 600,
+                kind: 'at_time',
+              };
+              cache.set(key, value);
+              return cb({ ok: true, value });
+            }
+            try {
+              let conditionId = msg.handle.value;
+              if (msg.handle.kind === 'code') {
+                const r = await fetch(
+                  'https://peal.network/v0/seals/' + encodeURIComponent(msg.handle.value),
+                );
+                if (!r.ok) { cache.set(key, null); return cb({ ok: true, value: null }); }
+                conditionId = (await r.json()).condition_id;
+              }
+              const c = await fetch(
+                'https://peal.network/v0/conditions/' + encodeURIComponent(conditionId),
+              );
+              if (!c.ok) { cache.set(key, null); return cb({ ok: true, value: null }); }
+              const j = await c.json();
+              const value = {
+                conditionId,
+                status: j.status,
+                firesAt: j.fires_at,
+                kind: j.kind,
+              };
+              cache.set(key, value);
+              cb({ ok: true, value });
+            } catch (e) {
+              console.error('[harness] lookup failed', e);
+              cb({ ok: false });
+            }
+          },
+        },
+      };
+
+      document.getElementById('add').addEventListener('click', () => {
+        const a = document.createElement('article');
+        a.innerHTML =
+          '<p class="case">appended after load</p><p class="who">live <span>@now</span></p>' +
+          '<p class="txt"><a href="https://t.co/fake6">peal.network/#/s/bPGLBTUVOZ0</a></p>';
+        document.querySelector('main').appendChild(a);
+      });
+    </script>
+    <script src="../src/parse.js"></script>
+    <script src="../src/content.js"></script>
+  </body>
+</html>
