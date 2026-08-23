@@ -925,9 +925,12 @@ export function renderPlayground(host: HTMLElement): () => void {
       </div>
     `;
     lastRest = '';
+    void mountFiles(liveEl.querySelector<HTMLElement>('#pg-files'), reveal);
     wireCopy(liveEl);
     liveEl.querySelector<HTMLButtonElement>('#pg-again')?.addEventListener('click', () => {
       run = null;
+      picked = null;
+      releaseFiles();
       ceremony?.destroy();
       ceremony = null;
       liveEl.hidden = true;
