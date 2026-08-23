@@ -503,6 +503,14 @@ export function renderPlayground(host: HTMLElement): () => void {
       };
     }
     const text = val('#pg-secret');
+    if (picked) {
+      // The caption is sealed WITH the file, inside the same payload, so the
+      // recipient sees the note the sender typed and not just the attachment.
+      return {
+        payload: packFile({ ...picked, caption: text }),
+        summary: text || picked.name,
+      };
+    }
     if (!text) return null;
     return { payload: text, summary: text };
   }
