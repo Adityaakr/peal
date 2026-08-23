@@ -29,7 +29,7 @@ destroys tau. No DKG.
 | `contracts/` | phase 7: `BteAnchor.sol` commit/revealRoot on Sepolia |
 
 Defaults: committee n=5, t=3, batch B=64 (fixed at ceremony). Coordinator on
-:8080, explorer on :5173. Nodes are outbound-only. Payload cap 4096 bytes,
+:8080, explorer on :5173. Nodes are outbound-only. Payload cap 2 MiB,
 enforced at SDK and coordinator. Chainless core: sqlite + content-addressed
 ciphertexts; the store is swappable for calldata/blobs later.
 
