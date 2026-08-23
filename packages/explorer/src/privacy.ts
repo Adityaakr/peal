@@ -42,9 +42,12 @@ export async function encryptPrivateBytes(
   return { payload, key: b64urlEncode(raw) };
 }
 
-/** Returns the plaintext, or null when the key is wrong or the bytes are not
- * a private payload. */
-export async function decryptPrivate(bytes: Uint8Array, keyB64u: string): Promise<string | null> {
+/** Returns the plaintext bytes, or null when the key is wrong or the bytes are
+ * not a private payload. */
+export async function decryptPrivateBytes(
+  bytes: Uint8Array,
+  keyB64u: string,
+): Promise<Uint8Array | null> {
   if (!isPrivatePayload(bytes)) return null;
   try {
     const raw = b64urlDecode(keyB64u);
