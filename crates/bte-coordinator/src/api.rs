@@ -17,7 +17,7 @@ use crate::state::{new_id, new_share_code, App};
 
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 /// Sealed wire blob cap: framing + 48 + 16 + payload cap, with headroom.
-const MAX_SEALED_BLOB: usize = 8192;
+const MAX_SEALED_BLOB: usize = bte_crypto::MAX_PAYLOAD_BYTES + 4096;
 
 type ApiError = (StatusCode, Json<Value>);
 
