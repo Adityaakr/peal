@@ -115,3 +115,82 @@ export function fmtBytes(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/** Draw a revealed file into `host`: a preview when we can show it safely, and
+ * always a way to save it. Returns a cleanup that revokes the blob URL — the
+ * caller must run it, or the bytes stay pinned in memory for the tab's life. */
+export function renderFile(host: HTMLElement, file: SealedFile): () => void {
+  // A fresh ArrayBuffer-backed copy: the slice we were handed may be a view
+  // into a larger buffer, and Blob would then capture all of it.
+  const buf = new Uint8Array(new ArrayBuffer(file.bytes.length));
+  buf.set(file.bytes);
+  const url = URL.createObjectURL(new Blob([buf], { type: file.type }));
+
+  host.innerHTML = '';
+
+  // The note the sender typed sits above the file, as they wrote it.
+  if (file.caption) {
+    const cap = document.createElement('p');
+    cap.className = 'sealed-file__caption';
+    cap.textContent = file.caption;
+    host.appendChild(cap);
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'sealed-file';
+
+  if (isInlineImage(file.type)) {
+    const img = document.createElement('img');
+    img.className = 'sealed-file__img';
+    img.src = url;
+    // The name is sender-supplied, so it goes in via textContent semantics
+    // (alt is an attribute set through the DOM, never interpolated markup).
+    img.alt = file.name;
+    wrap.appendChild(img);
+  }
+
+  const row = document.createElement('div');
+  row.className = 'sealed-file__row';
+
+  const meta = document.createElement('div');
+  meta.className = 'sealed-file__meta';
+  const nameEl = document.createElement('span');
+  nameEl.className = 'sealed-file__name';
+  nameEl.textContent = file.name;
+  const sizeEl = document.createElement('span');
+  sizeEl.className = 'sealed-file__size';
+  sizeEl.textContent = `${label(file.type)} · ${fmtBytes(file.bytes.length)}`;
+  meta.append(nameEl, sizeEl);
+
+  const save = document.createElement('a');
+  save.className = 'btn btn-primary';
+  save.href = url;
+  save.download = file.name;
+  save.textContent = 'save file';
+
+  row.append(meta, save);
+
+  // A PDF gets an open-in-tab too; the browser's viewer is better than
+  // anything we would build, and the blob URL is same-origin-opaque.
+  if (file.type === 'application/pdf') {
+    const open = document.createElement('a');
+    open.className = 'btn';
+    open.href = url;
+    open.target = '_blank';
+    open.rel = 'noopener';
+    open.textContent = 'open';
+    row.appendChild(open);
+  }
+
+  wrap.appendChild(row);
+  host.appendChild(wrap);
+
+  return () => URL.revokeObjectURL(url);
+}
+
+function label(type: string): string {
+  if (type === 'application/pdf') return 'PDF';
+  if (type === 'application/octet-stream') return 'file';
+  if (type.startsWith('image/')) return type.slice(6).toUpperCase();
+  return type;
+}
