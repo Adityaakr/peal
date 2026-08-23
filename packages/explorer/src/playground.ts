@@ -130,6 +130,9 @@ export function renderPlayground(host: HTMLElement): () => void {
   const client = new BteClient({ url: API_BASE });
   let scenario: Scenario = 'note';
   let run: PlaygroundRun | null = null;
+  /** A file chosen for the next seal, already read into memory. */
+  let picked: SealedFile | null = null;
+  let fileCleanups: Array<() => void> = [];
   let pollTimer: number | undefined;
   let tickTimer: number | undefined;
   let condition: ConditionDetail | null = null;
