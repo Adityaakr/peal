@@ -16,7 +16,8 @@ import {
   setTabState,
 } from '../attention';
 import { wireCopy } from '../playground';
-import { decryptPrivate, isPrivatePayload } from '../privacy';
+import { isFilePayload, renderFile, unpackFile } from '../attach';
+import { decryptPrivateBytes, isPrivatePayload } from '../privacy';
 import { createGathering, descramble, prefersReducedMotion } from '../reassemble';
 import { decodePayload, esc, fmtCountdown, fmtUnix, payloadBytes, truncMiddle } from '../util';
 
