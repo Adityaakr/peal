@@ -29,7 +29,7 @@ checked at decryption time by re-deriving `k` and comparing `[k]_1 == ct0`.
 | bte-crypto (ours) | simple-bte source | notes |
 |---|---|---|
 | `ceremony(n, t, b, rng)` | `bte::crs::setup(batch_size, num_parties, threshold, rng)` (`crs.rs:12`) | Thresholdization is BUILT IN: Shamir-shares each `tau^i` (i=1..B) with a fresh degree-(t-1) polynomial, publishes `v_j^i = [sigma_j^i]_2`. Returns `(EncryptionKey, DecryptionKey, Vec<SecretKey>)`. tau is a local variable dropped inside `setup`; the dealer is the process that calls it. We serialize the affine material into `PublicParams` + per-operator `OperatorSecret` and drop the rest. |
-| `seal(params, payload, rng)` | `bte::fo::encrypt(ek, msg, rng)` (`fo.rs:217`) | Payload cap 4096 enforced by the wrapper before calling. |
+| `seal(params, payload, rng)` | `bte::fo::encrypt(ek, msg, rng)` (`fo.rs:217`) | Payload cap 2 MiB enforced by the wrapper before calling. |
 | `partial(secret, headers)` | mirrors `bte::fo::partial_decrypt` (`fo.rs:242`): `value = G1::msm(ct0s, sk.shares)` | Source takes `&[FoCiphertext]` but reads only `.ct0`; our wrapper takes 48-byte headers and performs the identical MSM call. One share = one G1 element = 48 bytes compressed, independent of B. |
 | `verify_share(params, headers, share)` | mirrors `bte::fo::verify_partial_decryption` (`fo.rs:262`): `e(pd_j, g_2) == multi_pairing(ct0s, v_j)` | Same header-only adaptation; identical pairing calls. |
 | Lagrange combine (inside `recover`) | `bte::decryption::combine` (`decryption.rs:83`), re-exported by `fo` | Interpolation at x=0 with batch inversion. |
