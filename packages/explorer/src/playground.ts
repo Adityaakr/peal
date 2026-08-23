@@ -912,6 +912,7 @@ export function renderPlayground(host: HTMLElement): () => void {
           <span class="mono muted">${esc(truncMiddle(run.ctHash, 14, 10))}</span>
         </div>
         ${resultsHtml(reveal)}
+        <div id="pg-files"></div>
         <p class="muted">${run.shareKey
           ? 'revealed on cue, but the content stays private: only people with your share link can read it.'
           : 'everyone can read this now. before the cue, nobody could, operators included.'}</p>
