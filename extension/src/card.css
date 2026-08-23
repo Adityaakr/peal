@@ -1,0 +1,203 @@
+/* The injected countdown card.
+ *
+ * Shaped like an X media embed: 16:9, full width of the post column, same 16px
+ * corner radius. It should read as the post's media, not as a widget stapled
+ * underneath it. The countdown is the hero, centred, because that is the thing
+ * that stops a scroll.
+ *
+ * Light only, on purpose. brand.md:45 — "no dark mode (white is part of the
+ * identity)" — and against X's dark timeline a light card is what gets looked
+ * at. Palette is the brand sky gradient (#dcebfa -> #eaf3fc -> #f6f9fd) with
+ * the single accent #2563eb (brand.md:36,40).
+ *
+ * This renders inside someone else's page, so: everything is scoped under
+ * .peal-card, the root resets with `all: initial`, every value is literal, and
+ * no bare element selector is used anywhere. */
+
+.peal-card {
+  all: initial;
+  display: flex !important;
+  flex-direction: column;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 560px;
+  aspect-ratio: 16 / 9;
+  /* Engines without aspect-ratio still get a sensible card. */
+  min-height: 240px;
+  /* Lets the hero type scale to the card rather than the viewport. */
+  container-type: inline-size;
+  margin: 12px 0;
+  padding: 16px 18px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 16px;
+  background:
+    radial-gradient(90% 70% at 50% 40%, #ffffff 0%, rgba(255, 255, 255, 0) 70%),
+    linear-gradient(135deg, #dcebfa 0%, #eaf3fc 45%, #f6f9fd 100%);
+  color: #0f172a;
+  font-family: 'Satoshi', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: left;
+  cursor: default;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 10px 30px -14px rgba(37, 99, 235, 0.4);
+}
+
+/* -- head: badge + wordmark ------------------------------------------------ */
+
+.peal-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.peal-card__badge {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  gap: 6px;
+  padding: 5px 11px 5px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.peal-card__badgetext {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #2563eb;
+}
+
+.peal-card__brand {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: rgba(37, 99, 235, 0.4);
+}
+
+/* A padlock drawn in CSS: no icon file, nothing for the host CSP to block. */
+.peal-card__lock {
+  position: relative;
+  width: 13px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.peal-card__lock::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  width: 7px;
+  height: 6px;
+  transform: translateX(-50%);
+  border: 1.8px solid #2563eb;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  transition: transform 260ms ease, left 260ms ease;
+}
+
+.peal-card__lock::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  width: 12px;
+  height: 8px;
+  transform: translateX(-50%);
+  border-radius: 2.5px;
+  background: #2563eb;
+}
+
+/* Live dot, only while something is actually counting. */
+.peal-card__badge::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2563eb;
+  animation: peal-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes peal-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* -- centre: the hero ------------------------------------------------------ */
+
+.peal-card__center {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 2px;
+  min-height: 0;
+  padding: 4px 0;
+}
+
+.peal-card__kicker {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(37, 99, 235, 0.72);
+  margin-bottom: 3px;
+}
+
+.peal-card__time {
+  /* Scales to the card, so a narrow column and a wide one both look right. */
+  font-size: clamp(38px, 12cqw, 68px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: #2563eb;
+  line-height: 1.05;
+  /* Tabular figures stop width jitter; this stops the block from jumping when
+     the string changes length (9m 58s -> 10m 2s). */
+  min-height: 1.1em;
+}
+
+.peal-card__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #475569;
+  margin-top: 2px;
+}
+
+/* -- foot: a caption strip, like the one under X's media -------------------- */
+
+.peal-card__foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(37, 99, 235, 0.12);
+}
+
+.peal-card__when {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2563eb;
+  white-space: nowrap;
+}
+
+.peal-card__note {
+  font-size: 12px;
+  color: #64748b;
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
