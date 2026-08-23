@@ -57,8 +57,19 @@ export async function decryptPrivateBytes(
     const iv = copy.slice(MAGIC.length, MAGIC.length + 12);
     const ct = copy.slice(MAGIC.length + 12);
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
-    return new TextDecoder().decode(pt);
+    return new Uint8Array(pt);
   } catch {
     return null;
   }
+}
+
+export async function encryptPrivate(text: string): Promise<{ payload: Uint8Array; key: string }> {
+  return encryptPrivateBytes(new TextEncoder().encode(text));
+}
+
+/** Returns the plaintext, or null when the key is wrong or the bytes are not
+ * a private payload. */
+export async function decryptPrivate(bytes: Uint8Array, keyB64u: string): Promise<string | null> {
+  const out = await decryptPrivateBytes(bytes, keyB64u);
+  return out === null ? null : new TextDecoder().decode(out);
 }
