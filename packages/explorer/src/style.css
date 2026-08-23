@@ -3686,3 +3686,115 @@ body.landing-page main {
   .ml-scard-body { grid-template-columns: 1fr; gap: 16px 0; }
   .ml-scard-visual { min-height: 0; justify-self: start; }
 }
+
+/* -- sealed files: attach control + revealed file card --------------------- */
+
+.pg-attach {
+  margin: 10px 0 0;
+}
+
+.pg-attach-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px 7px 10px;
+  border: 1px dashed rgba(37, 99, 235, 0.35);
+  border-radius: 999px;
+  color: #2563eb;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.pg-attach-pick:hover {
+  background: rgba(37, 99, 235, 0.05);
+  border-color: rgba(37, 99, 235, 0.55);
+}
+
+.pg-attach-plus {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.pg-attach-chosen {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+
+.pg-attach-name {
+  font-weight: 500;
+}
+
+.pg-attach-x {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: #64748b;
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pg-attach-x:hover {
+  color: #0f172a;
+}
+
+.sealed-file {
+  margin: 14px 0 0;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.sealed-file__img {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  background: #f8fafc;
+}
+
+.sealed-file__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.sealed-file__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.sealed-file__name {
+  font-weight: 500;
+  /* The name is sender-supplied: keep a long one from blowing out the row. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sealed-file__size {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.sealed-file-mine .sealed-file {
+  border-color: rgba(37, 99, 235, 0.32);
+}
+
+.sealed-file__caption {
+  margin: 0 0 10px;
+  font-size: 16px;
+  line-height: 1.45;
+  color: #0f172a;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
