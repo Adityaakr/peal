@@ -38,7 +38,14 @@ pub type E = Bls12_381;
 pub const BTE_WIRE_V0: &[u8; 4] = b"BTE0";
 
 /// Hard payload cap, enforced at seal time and again when parsing wire bytes.
-pub const MAX_PAYLOAD_BYTES: usize = 4096;
+///
+/// This is a policy number, not a cryptographic limit: the FO body is a
+/// keystream XOR (`ct2 = H_M(K) xor payload`), so any length works. It is also
+/// NOT a threshold-cost limit — `partial` runs an MSM over 48-byte KEM headers
+/// and never touches the payload, and dummy padding is 29 bytes a slot. What a
+/// bigger payload actually costs is coordinator storage and reveal bandwidth.
+/// 2 MiB covers documents and images; video wants envelope encryption instead.
+pub const MAX_PAYLOAD_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BteError {
