@@ -8,6 +8,8 @@ vendor/
 .env.*
 !.env.example
 .dev-ceremony/
+.dev-data/
+peal-extension-*.zip
 .prism/runs/
 contracts/out/
 contracts/cache/
