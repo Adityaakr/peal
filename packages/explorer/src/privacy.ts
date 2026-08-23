@@ -22,12 +22,18 @@ function b64urlDecode(s: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-export async function encryptPrivate(text: string): Promise<{ payload: Uint8Array; key: string }> {
+/** Bytes variant, for sealing a file rather than a line of text. The text
+ * helpers below are thin wrappers over these two. */
+export async function encryptPrivateBytes(
+  data: Uint8Array,
+): Promise<{ payload: Uint8Array; key: string }> {
   const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 128 }, true, ['encrypt']);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(
-    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(text)),
-  );
+  // Copy into an ArrayBuffer-backed view: a Uint8Array over a SharedArrayBuffer
+  // is not a BufferSource, and the caller's array may be either.
+  const input = new Uint8Array(new ArrayBuffer(data.length));
+  input.set(data);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, input));
   const payload = new Uint8Array(MAGIC.length + iv.length + ct.length);
   payload.set(MAGIC, 0);
   payload.set(iv, MAGIC.length);
