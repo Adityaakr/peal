@@ -1,0 +1,36 @@
+<!doctype html>
+<html><head><meta charset="utf-8"/>
+<link rel="stylesheet" href="../src/card.css"/>
+<style>
+  html,body{margin:0;height:100%}
+  body{width:1280px;height:800px;display:flex;align-items:center;justify-content:center;
+       background:linear-gradient(150deg,#0a0a0a,#15171a);
+       font:15px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;color:#e7e9ea}
+  .wrap{width:640px;zoom:1.32}
+  .cap{font-size:27px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px;color:#fff}
+  .sub{font-size:14.5px;color:#8b98a5;margin:0 0 26px}
+  .tweet{background:#000;border:1px solid #2f3336;border-radius:18px;padding:16px 18px}
+  .row{display:flex;gap:11px;align-items:center;margin-bottom:9px}
+  .av{width:40px;height:40px;border-radius:50%;background:linear-gradient(140deg,#2563eb,#60a5fa);flex:0 0 auto}
+  .nm{font-weight:700;color:#e7e9ea}.hd{color:#71767b;font-weight:400}
+  .txt{margin:0 0 4px;font-size:15px;color:#e7e9ea}
+  .lk{color:#1d9bf0;text-decoration:none}
+</style></head><body>
+<div class="wrap">
+  <p class="cap" id="cap">A live countdown, right in the timeline.</p>
+  <p class="sub" id="sub">Peal turns a sealed link into a ticking reveal. Nobody can read it early — not even the operators.</p>
+  <div class="tweet">
+    <div class="row"><div class="av"></div>
+      <div><span class="nm">Peal</span> <span class="hd">@peal_network · 2m</span></div></div>
+    <p class="txt" id="tw">v2 ships when this opens 👀</p>
+    <p class="txt"><a class="lk" href="https://t.co/x">peal.network/#/s/DEMOpending</a></p>
+  </div>
+</div>
+<script>
+  const cache=new Map();
+  window.chrome={runtime:{lastError:null,async sendMessage(m,cb){
+    const st=window.__STATE__||{status:'pending',firesAt:Math.floor(Date.now()/1000)+7325,kind:'at_time'};
+    cb({ok:true,value:{conditionId:'cond_demo',...st}});}}};
+</script>
+<script src="../src/parse.js"></script><script src="../src/content.js"></script>
+</body></html>
