@@ -191,19 +191,25 @@ export function renderSealView(
             ask the sender to resend the link.</p>`;
           return;
         }
-        const plain = await decryptPrivate(bytes, shareKey);
+        const plain = await decryptPrivateBytes(bytes, shareKey);
         if (plain == null) {
           bodyEl.innerHTML = `<p class="error" style="margin-top:16px">the key in this link does not
             fit this seal. the link was probably truncated in transit. ask the sender to resend it.</p>`;
           return;
         }
-        text = plain;
+        bytes = plain;
+        text = new TextDecoder().decode(plain);
         isHex = false;
       } else {
         const decoded = decodePayload(slot.payload_b64);
         text = decoded.text;
         isHex = decoded.isHex;
       }
+
+      // A sealed file: hand it back as a file rather than rendering its bytes
+      // as text. Works the same whether it arrived public or inside the
+      // private layer, since both end up as plain payload bytes here.
+      const file = isFilePayload(bytes) ? unpackFile(bytes) : null;
       // The reveal moment: the committee's shares gather back into the core,
       // then the plaintext materialises out of ciphertext-like noise. This
       // plays even if the brief frozen window was never observed, so a link
