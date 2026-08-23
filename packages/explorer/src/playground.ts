@@ -561,7 +561,13 @@ export function renderPlayground(host: HTMLElement): () => void {
       const wantPrivate =
         scenario === 'note' && (host.querySelector<HTMLInputElement>('#pg-private')?.checked ?? false);
       if (wantPrivate) {
-        const enc = await encryptPrivate(fields.payload);
+        // Wraps text and files alike, so a private capsule hides even the
+        // filename until the cue: the wire is BTEP1( PEALF1( file ) ).
+        const raw =
+          typeof fields.payload === 'string'
+            ? new TextEncoder().encode(fields.payload)
+            : fields.payload;
+        const enc = await encryptPrivateBytes(raw);
         payload = enc.payload;
         shareKey = enc.key;
       }
