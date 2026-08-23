@@ -192,3 +192,68 @@ function hydrate(card) {
     }
   });
 }
+
+// -- placement ---------------------------------------------------------------
+
+/** The text X actually shows for a link, which is where the real URL hides. */
+function candidateStrings(a) {
+  const out = [];
+  if (a.href) out.push(a.href);
+  const text = (a.textContent || '').trim();
+  if (text) out.push(text);
+  const title = a.getAttribute('title');
+  if (title) out.push(title.trim());
+  return out;
+}
+
+function attach(a, handle) {
+  a.setAttribute(MARK, '1');
+  const card = buildCard(handle);
+  // Sit the card after the closest block-ish ancestor inside the post, so it
+  // does not land mid-sentence in the tweet text.
+  let anchorPoint = a;
+  const parent = a.parentElement;
+  if (parent && parent.childElementCount <= 3 && parent !== document.body) {
+    const display = getComputedStyle(parent).display;
+    if (display === 'block' || display === 'flex') anchorPoint = parent;
+  }
+  anchorPoint.insertAdjacentElement('afterend', card);
+  hydrate(card);
+}
+
+function scan(root) {
+  const scope = root && root.querySelectorAll ? root : document;
+  const anchors = scope.querySelectorAll(`a[href]:not([${MARK}])`);
+  for (const a of anchors) {
+    if (a.closest('.peal-card')) continue;
+    let handle = null;
+    for (const s of candidateStrings(a)) {
+      handle = parseSealLink(s);
+      if (handle) break;
+    }
+    if (handle) attach(a, handle);
+  }
+}
+
+// -- lifecycle ---------------------------------------------------------------
+
+let pending = null;
+function scheduleScan() {
+  if (pending) return;
+  pending = setTimeout(() => {
+    pending = null;
+    scan(document);
+  }, RESCAN_DEBOUNCE_MS);
+}
+
+scan(document);
+
+// Timelines are virtualised: posts mount and unmount constantly, so a one-shot
+// scan sees almost nothing. Debounced so a fast scroll does not thrash.
+new MutationObserver(scheduleScan).observe(document.documentElement, {
+  childList: true,
+  subtree: true,
+});
+
+// X is a SPA; a route change swaps the timeline without a page load.
+window.addEventListener('popstate', scheduleScan);
