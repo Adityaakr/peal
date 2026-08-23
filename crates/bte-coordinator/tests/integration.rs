@@ -668,3 +668,111 @@ async fn seals_predating_share_codes_still_reveal_after_upgrade() {
         "pre-existing rows are left exactly as they were"
     );
 }
+
+/// A document-sized payload survives the whole path byte for byte.
+///
+/// This is the file case: the 4 KiB cap was a policy number, not a
+/// cryptographic one, so a PDF goes through the same seal, freeze, share and
+/// reveal that text does. Also pins the two things that made raising the cap
+/// affordable: operator work is over 48-byte headers regardless of payload
+/// size, and dummy padding stays tiny.
+#[tokio::test]
+async fn document_sized_payload_round_trips() {
+    let h = harness().await;
+
+    // 400 KiB of non-repeating bytes, so a truncation or an off-by-one in the
+    // keystream cannot pass by accident.
+    let mut doc = b"%PDF-1.7\n".to_vec();
+    let mut x: u32 = 0x12345678;
+    while doc.len() < 400 * 1024 {
+        x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+        doc.extend_from_slice(&x.to_le_bytes());
+    }
+    assert!(
+        doc.len() > bte_crypto::MAX_PAYLOAD_BYTES / 8,
+        "payload should be substantial"
+    );
+
+    let (status, cond) = h
+        .post(
+            "/v0/conditions",
+            json!({"committee_id": h.committee_id, "in_secs": 0}),
+        )
+        .await;
+    assert_eq!(status, 200, "{cond}");
+    let condition_id = cond["id"].as_str().unwrap().to_string();
+
+    let mut rng = bte_crypto::os_rng();
+    let ct = seal(&h.params, &doc, &mut rng).unwrap();
+    let sealed_len = ct.to_bytes().len();
+    let (status, resp) = h
+        .post(
+            "/v0/ciphertexts",
+            json!({"condition_id": condition_id, "sealed_blob_b64": B64.encode(ct.to_bytes())}),
+        )
+        .await;
+    assert_eq!(status, 200, "a 400 KiB seal must be accepted: {resp}");
+    let ct_hash = resp["ct_hash"].as_str().unwrap().to_string();
+
+    engine::tick(&h.app).await.unwrap();
+    for s in &h.secrets {
+        h.work_and_share(s).await;
+    }
+    engine::tick(&h.app).await.unwrap();
+
+    let (status, reveal) = h.get(&format!("/v0/reveals/{condition_id}")).await;
+    assert_eq!(status, 200, "{reveal}");
+    let slot = reveal["slots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["ct_hash"].as_str() == Some(ct_hash.as_str()))
+        .expect("our slot must be in the reveal");
+    assert_eq!(slot["valid"], json!(true), "{slot}");
+    let got = B64.decode(slot["payload_b64"].as_str().unwrap()).unwrap();
+    assert_eq!(got.len(), doc.len(), "payload length changed");
+    assert_eq!(got, doc, "payload came back altered");
+
+    // The wire body is a keystream XOR, so the ciphertext tracks the payload
+    // and nothing quadratic crept in with the bigger cap.
+    assert!(
+        sealed_len < doc.len() + 256,
+        "sealed blob {sealed_len} is not payload-sized for a {} byte doc",
+        doc.len()
+    );
+
+    // Padding stays cheap: dummies are a fixed ~29 bytes each, so one big real
+    // seal does not multiply across the batch.
+    let dummy_total: usize = reveal["slots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|s| s["is_dummy"] == json!(true))
+        .map(|s| {
+            B64.decode(s["payload_b64"].as_str().unwrap())
+                .unwrap()
+                .len()
+        })
+        .sum();
+    assert!(
+        dummy_total < 4096,
+        "63 dummies should cost under 4 KiB total, got {dummy_total}"
+    );
+}
+
+/// The cap is still enforced; raising it did not remove the check.
+#[tokio::test]
+async fn oversize_payload_is_still_rejected() {
+    let mut rng = bte_crypto::os_rng();
+    let params = harness().await.params;
+    let too_big = vec![0u8; bte_crypto::MAX_PAYLOAD_BYTES + 1];
+    assert!(
+        seal(&params, &too_big, &mut rng).is_err(),
+        "a payload one byte over the cap must be refused"
+    );
+    let ok = vec![0u8; bte_crypto::MAX_PAYLOAD_BYTES];
+    assert!(
+        seal(&params, &ok, &mut rng).is_ok(),
+        "exactly the cap must be accepted"
+    );
+}
