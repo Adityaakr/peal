@@ -221,6 +221,13 @@ export function renderSealView(
       // descramble sets textContent, so no escaping is needed and no markup
       // can slip in from the payload.
       const materialize = () => {
+        if (file) {
+          bodyEl.innerHTML = `<div id="sv-file"></div>${meta}`;
+          releaseFile();
+          fileCleanup = renderFile(bodyEl.querySelector<HTMLElement>('#sv-file')!, file);
+          wireCopy(bodyEl);
+          return;
+        }
         bodyEl.innerHTML = `<p class="sv-content" id="sv-out"></p>${meta}`;
         descramble(bodyEl.querySelector<HTMLElement>('#sv-out')!, text, { mono: isHex });
         wireCopy(bodyEl);
