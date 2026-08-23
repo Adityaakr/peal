@@ -293,12 +293,61 @@ export function renderPlayground(host: HTMLElement): () => void {
           <label class="field-label" for="pg-until" style="margin:8px 0 0">sealed until</label>
           <input id="pg-until" type="datetime-local" aria-label="sealed until" />
         </div>
+        <div class="pg-attach">
+          <label class="pg-attach-pick" for="pg-file">
+            <input id="pg-file" type="file" accept="${ACCEPTED}" hidden />
+            <span class="pg-attach-plus" aria-hidden="true">+</span>
+            <span>attach a pdf or image</span>
+          </label>
+          <p class="pg-attach-chosen" id="pg-file-chosen" hidden></p>
+        </div>
         <label class="pg-private-row">
           <input type="checkbox" id="pg-private" checked />
           private: only people with the share link can read it after the reveal
         </label>`;
       hintEl.textContent =
         'encrypted in this tab with wasm. nobody can read it early, us included.';
+      // The picked file is held as bytes, so seal() never re-reads the input
+      // (the element is replaced whenever the scenario tabs re-render).
+      const fileInput = fieldsEl.querySelector<HTMLInputElement>('#pg-file')!;
+      const chosenEl = fieldsEl.querySelector<HTMLElement>('#pg-file-chosen')!;
+      const secretInput = fieldsEl.querySelector<HTMLInputElement>('#pg-secret')!;
+      fileInput.addEventListener('change', () => {
+        const f = fileInput.files?.[0];
+        picked = null;
+        if (!f) {
+          chosenEl.hidden = true;
+          secretInput.required = true;
+          return;
+        }
+        if (f.size > MAX_PAYLOAD_BYTES) {
+          chosenEl.hidden = false;
+          chosenEl.className = 'pg-attach-chosen error';
+          chosenEl.textContent = `${f.name} is ${fmtBytes(f.size)}. the cap is ${fmtBytes(
+            MAX_PAYLOAD_BYTES,
+          )} per seal.`;
+          fileInput.value = '';
+          return;
+        }
+        void f.arrayBuffer().then((buf) => {
+          picked = { name: f.name, type: f.type || 'application/octet-stream', bytes: new Uint8Array(buf) };
+          chosenEl.hidden = false;
+          chosenEl.className = 'pg-attach-chosen';
+          chosenEl.innerHTML = `<span class="pg-attach-name">${esc(f.name)}</span>
+            <span class="muted">${esc(fmtBytes(f.size))}</span>
+            <button type="button" class="pg-attach-x" id="pg-file-clear"
+                    aria-label="remove attachment">remove</button>`;
+          // With a file attached the caption is optional.
+          secretInput.required = false;
+          chosenEl.querySelector('#pg-file-clear')!.addEventListener('click', () => {
+            picked = null;
+            fileInput.value = '';
+            chosenEl.hidden = true;
+            secretInput.required = true;
+          });
+        });
+      });
+
       const delaySel = fieldsEl.querySelector<HTMLSelectElement>('#pg-delay')!;
       const untilRow = fieldsEl.querySelector<HTMLElement>('#pg-until-row')!;
       const untilInput = fieldsEl.querySelector<HTMLInputElement>('#pg-until')!;
