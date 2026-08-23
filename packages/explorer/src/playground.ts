@@ -943,6 +943,7 @@ export function renderPlayground(host: HTMLElement): () => void {
   return () => {
     stopPolling();
     clearInterval(roundTimer);
+    releaseFiles();
     ceremony?.destroy();
   };
 }
