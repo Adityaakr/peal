@@ -486,7 +486,7 @@ export function renderPlayground(host: HTMLElement): () => void {
   }
 
   /** Build (payload, summary) from the active scenario's fields. */
-  function readFields(): { payload: string; summary: string } | null {
+  function readFields(): { payload: string | Uint8Array; summary: string } | null {
     const val = (sel: string) => host.querySelector<HTMLInputElement>(sel)?.value.trim() ?? '';
     if (scenario === 'bid') {
       const name = val('#pg-name') || 'anon';
