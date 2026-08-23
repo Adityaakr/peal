@@ -258,6 +258,7 @@ export function renderSealView(
     if (tickTimer !== undefined) clearInterval(tickTimer);
     if (revealTimer !== undefined) clearTimeout(revealTimer);
     document.removeEventListener('visibilitychange', onVisible);
+    releaseFile();
     setTabState(null);
   };
 }
