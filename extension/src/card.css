@@ -201,3 +201,120 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* -- states ---------------------------------------------------------------- */
+
+.peal-card--loading .peal-card__time {
+  color: rgba(37, 99, 235, 0.3);
+}
+
+.peal-card--opening .peal-card__time,
+.peal-card--unknown .peal-card__time {
+  font-size: clamp(30px, 8cqw, 46px);
+}
+
+.peal-card--open .peal-card__foot {
+  border-top-color: rgba(22, 163, 74, 0.16);
+}
+
+.peal-card--open .peal-card__when {
+  color: #16a34a;
+}
+
+.peal-card--unknown .peal-card__foot {
+  border-top-color: rgba(100, 116, 139, 0.14);
+}
+
+.peal-card--unknown .peal-card__when {
+  color: #94a3b8;
+}
+
+.peal-card--open {
+  border-color: rgba(22, 163, 74, 0.2);
+  background:
+    radial-gradient(90% 70% at 50% 40%, #ffffff 0%, rgba(255, 255, 255, 0) 70%),
+    linear-gradient(135deg, #dcfce7 0%, #eefbf3 45%, #f7fdfa 100%);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 10px 30px -14px rgba(22, 163, 74, 0.35);
+}
+
+.peal-card--open .peal-card__time {
+  color: #16a34a;
+  font-size: clamp(34px, 10cqw, 58px);
+}
+
+.peal-card--open .peal-card__kicker {
+  color: rgba(22, 163, 74, 0.75);
+}
+
+.peal-card--open .peal-card__badgetext {
+  color: #16a34a;
+}
+
+.peal-card--open .peal-card__brand {
+  color: rgba(22, 163, 74, 0.45);
+}
+
+.peal-card--open .peal-card__lock::after {
+  background: #16a34a;
+}
+
+.peal-card--open .peal-card__lock::before {
+  /* the shackle swings open */
+  left: calc(50% + 4px);
+  transform: translateX(-50%) rotate(20deg);
+  border-color: #16a34a;
+}
+
+.peal-card--open .peal-card__badge::after,
+.peal-card--unknown .peal-card__badge::after,
+.peal-card--loading .peal-card__badge::after {
+  display: none;
+}
+
+.peal-card--unknown {
+  border-color: rgba(100, 116, 139, 0.18);
+  background: linear-gradient(135deg, #f1f5f9 0%, #f8fafc 100%);
+  box-shadow: none;
+}
+
+.peal-card--unknown .peal-card__time,
+.peal-card--unknown .peal-card__kicker {
+  color: #94a3b8;
+}
+
+.peal-card--unknown .peal-card__badgetext,
+.peal-card--unknown .peal-card__brand {
+  color: #94a3b8;
+}
+
+.peal-card--unknown .peal-card__lock::after {
+  background: #94a3b8;
+}
+
+.peal-card--unknown .peal-card__lock::before {
+  border-color: #94a3b8;
+}
+
+/* Narrow columns: a phone-width timeline, or a sidebar. */
+@media (max-width: 420px) {
+  .peal-card {
+    padding: 13px 14px;
+    /* Low enough that aspect-ratio still wins at narrow widths; this is only
+       a fallback for engines that do not support it. */
+    min-height: 150px;
+  }
+  .peal-card__label { font-size: 13px; }
+  .peal-card__kicker { font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peal-card__lock::before {
+    transition: none;
+  }
+  .peal-card__badge::after {
+    animation: none;
+    opacity: 1;
+  }
+}
