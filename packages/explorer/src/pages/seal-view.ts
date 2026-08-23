@@ -181,7 +181,7 @@ export function renderSealView(
       }
       notifyReveal('the countdown hit zero. click to read it.');
       // Private payloads carry their key only in this link's fragment.
-      const bytes = payloadBytes(slot.payload_b64);
+      let bytes = payloadBytes(slot.payload_b64);
       let text: string;
       let isHex: boolean;
       if (isPrivatePayload(bytes)) {
