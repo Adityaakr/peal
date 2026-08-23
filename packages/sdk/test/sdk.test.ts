@@ -155,6 +155,13 @@ describe('BteClient', () => {
   it('rejects oversized payloads before any network call', async () => {
     const { fetchImpl } = mockCoordinator();
     const client = new BteClient({ url: 'http://mock', fetch: fetchImpl });
-    await expect(client.seal(new Uint8Array(5000), 'cond_test')).rejects.toThrow(/4096/);
+    // Pinned to the constant, not a literal, so raising the cap cannot leave
+    // this asserting a number the code no longer uses.
+    await expect(
+      client.seal(new Uint8Array(MAX_PAYLOAD_BYTES + 1), 'cond_test'),
+    ).rejects.toThrow(/exceeds/);
+    await expect(
+      client.seal(new Uint8Array(MAX_PAYLOAD_BYTES), 'cond_test'),
+    ).resolves.toBeTruthy();
   });
 });
