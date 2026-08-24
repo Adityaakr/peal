@@ -39,6 +39,25 @@ importers:
         specifier: ^6.0.0
         version: 6.4.3(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)
 
+  packages/actions:
+    dependencies:
+      bte-sdk:
+        specifier: workspace:*
+        version: link:../sdk
+      viem:
+        specifier: ^2.21.0
+        version: 2.54.3(typescript@5.9.3)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)
+
   packages/explorer:
     dependencies:
       bte-sdk:
@@ -47,6 +66,9 @@ importers:
       motion:
         specifier: ^12.23.0
         version: 12.42.2(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      peal-actions:
+        specifier: workspace:*
+        version: link:../actions
       react:
         specifier: ^19.1.0
         version: 19.2.7

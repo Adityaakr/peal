@@ -2,6 +2,7 @@ import './style.css';
 import { resolveSeal } from './api';
 import { renderHome } from './pages/home';
 import { renderCondition } from './pages/condition';
+import { renderExecution } from './pages/execution';
 import { renderLanding } from './pages/landing';
 import { renderMempool } from './pages/mempool';
 import { renderMempoolLanding } from './pages/mempool-landing';
@@ -82,6 +83,8 @@ function route(): void {
     cleanup = renderShortSeal(root, shortSeal[1], shortSeal[2]);
   } else if (match) {
     cleanup = renderCondition(root, decodeURIComponent(match[1]));
+  } else if (hash === '#/execution') {
+    cleanup = renderExecution(root);
   } else if (hash === '#/mempool') {
     cleanup = renderMempoolLanding(root);
   } else if (hash === '#/encrypted-mempool') {

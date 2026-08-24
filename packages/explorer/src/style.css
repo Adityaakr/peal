@@ -3798,3 +3798,114 @@ body.landing-page main {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* ---- Private Actions (/execution) ------------------------------------- */
+
+.exec {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 3rem 1.25rem 6rem;
+}
+.exec-head { margin-bottom: 2.5rem; }
+.exec-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  opacity: 0.65;
+  margin: 0 0 0.6rem;
+}
+.exec-title {
+  font-size: clamp(1.9rem, 4vw, 2.9rem);
+  line-height: 1.1;
+  margin: 0 0 0.9rem;
+}
+.exec-lede { max-width: 46rem; font-size: 1.05rem; line-height: 1.6; opacity: 0.85; }
+
+.exec-claim { padding: 1.5rem; margin-bottom: 2.5rem; }
+.exec-claim h2 { margin-top: 0; font-size: 1rem; text-transform: lowercase; opacity: 0.7; }
+.exec-guarantee {
+  font-size: 1.2rem;
+  line-height: 1.45;
+  font-weight: 600;
+  margin: 0.5rem 0 1rem;
+}
+
+.exec-block { margin-bottom: 3rem; }
+.exec-block h2 { font-size: 1.25rem; margin-bottom: 0.75rem; }
+
+/* Tables scroll inside themselves; the page never scrolls sideways. */
+.exec-table-wrap { overflow-x: auto; }
+.exec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.exec-table th {
+  text-align: left;
+  font-weight: 500;
+  opacity: 0.55;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.4rem 0.6rem;
+}
+.exec-table td {
+  padding: 0.55rem 0.6rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  vertical-align: top;
+}
+.lifecycle .lc-n { opacity: 0.4; width: 2rem; font-variant-numeric: tabular-nums; }
+.lifecycle .lc-stage { font-weight: 600; }
+.lifecycle .lc-flag { text-align: right; font-size: 0.78rem; white-space: nowrap; }
+/* The visual break between sealed and readable is the point of the table. */
+.lifecycle .lc-sealed .lc-flag { color: #1a7f4b; }
+.lifecycle .lc-open .lc-flag { color: #a8541b; }
+.lifecycle .lc-open .lc-stage { opacity: 0.75; }
+
+.st-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  margin-right: 0.45rem;
+  vertical-align: middle;
+}
+.st-live { background: #1a7f4b; }
+.st-partial { background: #c99a2e; }
+.st-planned { background: rgba(0, 0, 0, 0.25); }
+
+.exec-input {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  resize: vertical;
+}
+.exec-actions { display: flex; gap: 0.6rem; margin-top: 0.75rem; }
+.exec-result { margin-top: 1.25rem; }
+
+.vr-verdict { font-weight: 600; margin: 0 0 0.75rem; }
+.vr-verdict.vr-ok { color: #1a7f4b; }
+.vr-verdict.vr-bad { color: #b3261e; }
+.vr-list { list-style: none; padding: 0; margin: 0; }
+.vr-check {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 14rem) 1fr;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 0.87rem;
+  align-items: baseline;
+}
+.vr-check.vr-ok .vr-mark { color: #1a7f4b; }
+.vr-check.vr-bad .vr-mark { color: #b3261e; }
+.vr-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.vr-detail { opacity: 0.6; font-size: 0.82rem; overflow-wrap: anywhere; }
+
+@media (max-width: 640px) {
+  .vr-check { grid-template-columns: 1.25rem 1fr; }
+  .vr-detail { grid-column: 2; }
+}

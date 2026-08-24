@@ -22,6 +22,7 @@
   "dependencies": {
     "bte-sdk": "workspace:*",
     "motion": "^12.23.0",
+    "peal-actions": "workspace:*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   }
