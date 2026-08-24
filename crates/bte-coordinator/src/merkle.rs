@@ -13,6 +13,29 @@ pub fn leaf(position: u32, payload: &[u8]) -> [u8; 32] {
     h.finalize().into()
 }
 
+/// Ordering-commitment leaf: sha256(intent_id || 0x00 || ct_hash_bytes).
+///
+/// A second leaf shape beside the reveal one above, because the two roots
+/// answer different questions at different times. This one is committed while
+/// the batch is still sealed, so it can only bind things that exist then: who
+/// submitted, and which ciphertext. Mirrors `orderingLeaf` in
+/// packages/actions/src/commitment.ts.
+///
+/// The 0x00 separator matters. Without it, a variable-length id concatenated
+/// onto a fixed-length hash lets two different (id, hash) pairs produce the
+/// same bytes and therefore the same leaf.
+///
+/// Slots with no bound intent — dummy padding, and ordinary v0 seals that are
+/// not Private Actions — use an empty id. That is unambiguous: no real intent
+/// id is empty, so their leaves cannot collide with a real one.
+pub fn ordering_leaf(intent_id: &str, ct_hash: &[u8]) -> [u8; 32] {
+    let mut h = Sha256::new();
+    h.update(intent_id.as_bytes());
+    h.update([0x00]);
+    h.update(ct_hash);
+    h.finalize().into()
+}
+
 /// Root over leaves in position order. Empty input hashes to sha256("").
 pub fn root(leaves: &[[u8; 32]]) -> [u8; 32] {
     if leaves.is_empty() {
