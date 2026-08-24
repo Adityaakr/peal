@@ -688,10 +688,11 @@ async fn document_sized_payload_round_trips() {
         x = x.wrapping_mul(1664525).wrapping_add(1013904223);
         doc.extend_from_slice(&x.to_le_bytes());
     }
-    assert!(
-        doc.len() > bte_crypto::MAX_PAYLOAD_BYTES / 8,
-        "payload should be substantial"
-    );
+    // An absolute floor, not a fraction of the cap: this test is about a real
+    // document making the round trip, so raising the cap should not silently
+    // drag the payload — and the test time — up with it. The cap boundary
+    // itself is covered by `oversize_payload_is_still_rejected`.
+    assert!(doc.len() >= 256 * 1024, "payload should be substantial");
 
     let (status, cond) = h
         .post(
