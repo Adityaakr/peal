@@ -15,7 +15,7 @@ export const DEVNET_URL = 'https://devnet.bte.invalid';
 
 /** Mirrors bte_crypto::MAX_PAYLOAD_BYTES. Policy, not a crypto limit: the FO
  * body is a keystream XOR, and threshold work is over 48-byte headers only. */
-export const MAX_PAYLOAD_BYTES = 2 * 1024 * 1024;
+export const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
 
 export interface CommitteeInfo {
   id: string;
