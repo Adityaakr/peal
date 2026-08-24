@@ -761,6 +761,39 @@ async fn document_sized_payload_round_trips() {
     );
 }
 
+/// A cap-sized seal must survive the HTTP layer, not just `seal()`.
+///
+/// The router's body limit is derived from the payload cap, and getting that
+/// derivation wrong fails in the worst way: every unit test stays green while
+/// real uploads near the cap come back 413. This posts a seal at the cap
+/// through the real router so the two numbers cannot drift apart.
+#[tokio::test]
+async fn a_cap_sized_seal_fits_through_the_body_limit() {
+    let h = harness().await;
+    let (status, cond) = h
+        .post(
+            "/v0/conditions",
+            json!({"committee_id": h.committee_id, "in_secs": 0}),
+        )
+        .await;
+    assert_eq!(status, 200, "{cond}");
+    let condition_id = cond["id"].as_str().unwrap().to_string();
+
+    let mut rng = bte_crypto::os_rng();
+    let big = vec![0xa5u8; bte_crypto::MAX_PAYLOAD_BYTES];
+    let ct = seal(&h.params, &big, &mut rng).unwrap();
+    let (status, resp) = h
+        .post(
+            "/v0/ciphertexts",
+            json!({"condition_id": condition_id, "sealed_blob_b64": B64.encode(ct.to_bytes())}),
+        )
+        .await;
+    assert_eq!(
+        status, 200,
+        "a seal at exactly the cap must pass the body limit: {resp}"
+    );
+}
+
 /// The cap is still enforced; raising it did not remove the check.
 #[tokio::test]
 async fn oversize_payload_is_still_rejected() {
