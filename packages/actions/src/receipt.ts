@@ -33,7 +33,11 @@ import type { Hex, IntentEnvelope } from './intent.js';
 
 export const RECEIPT_VERSION = 1;
 
-export type SubmissionMode = 'private' | 'solver' | 'public-rpc' | 'simulated';
+// SubmissionMode lives in submission.ts, which owns the broadcast layer. One
+// definition, so a receipt can never record a mode the submitter cannot produce.
+import type { SubmissionMode } from './submission.js';
+export type { SubmissionMode };
+
 export type ExecutionStatus = 'SETTLED' | 'FAILED' | 'EXPIRED' | 'CANCELLED';
 
 export interface ExecutionReceipt {
