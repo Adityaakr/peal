@@ -83,6 +83,9 @@ pub fn open(path: &str) -> Result<Connection> {
     conn.execute_batch(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_cts_code ON ciphertexts(code) WHERE code IS NOT NULL;",
     )?;
+    // Private Actions (/v1). Additive: new tables only, so a devnet database
+    // created before intents existed opens unchanged.
+    conn.execute_batch(crate::intents::SCHEMA)?;
     Ok(conn)
 }
 

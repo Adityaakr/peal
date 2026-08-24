@@ -51,6 +51,7 @@ pub fn router(app: App) -> Router {
         .route("/healthz", get(|| async { Json(json!({"ok": true})) }));
     Router::new()
         .nest("/v0", api)
+        .nest("/v1", crate::intents::routes())
         // Bounded by the one route that carries bulk: a sealed blob arrives
         // base64'd inside JSON, so 4/3 of the blob cap plus slack for the
         // surrounding fields. This is what a request may BUFFER, so it is kept

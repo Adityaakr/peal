@@ -4,5 +4,6 @@
 pub mod api;
 pub mod db;
 pub mod engine;
+pub mod intents;
 pub mod merkle;
 pub mod state;
