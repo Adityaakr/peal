@@ -242,7 +242,7 @@
     <div class="content">
       <p class="section-kicker">the core</p>
       <h2>bte-crypto, the one crate that touches the curve</h2>
-      <p>All pairing math, group FFTs, and the batched-threshold scheme itself live in simple-bte. <code>bte-crypto</code> is a thin, opinionated surface over it: wire types prefixed with the magic <code>BTE0</code>, a 2 MiB payload cap, and an API shaped for the coordinator, node, and SDK. Two feature flags split the surface. <code>seal-only</code> is just wire types plus <code>seal</code>, which is exactly what the wasm build compiles. <code>full</code> adds the operator and recovery side.</p>
+      <p>All pairing math, group FFTs, and the batched-threshold scheme itself live in simple-bte. <code>bte-crypto</code> is a thin, opinionated surface over it: wire types prefixed with the magic <code>BTE0</code>, a 5 MiB payload cap, and an API shaped for the coordinator, node, and SDK. Two feature flags split the surface. <code>seal-only</code> is just wire types plus <code>seal</code>, which is exactly what the wasm build compiles. <code>full</code> adds the operator and recovery side.</p>
       <p>The whole cryptographic protocol reduces to seven functions. Read them in order and you have the entire lifecycle.</p>
 
       <span class="path">crates/bte-crypto/src/lib.rs</span>

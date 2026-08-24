@@ -71,11 +71,11 @@ Or in your app:
 import { BteClient } from 'bte-sdk';
 const client = new BteClient({ url: 'http://localhost:8080' });
 const conditionId = await client.condition({ in: 60 });
-await client.seal('anything up to 2 MiB — text, a PDF, an image', conditionId);
+await client.seal('anything up to 5 MiB — text, a PDF, an image', conditionId);
 const reveal = await client.waitForReveal(conditionId);
 ```
 
-Payloads cap at 2 MiB, which covers documents and images; video wants
+Payloads cap at 5 MiB, which covers documents and images; video wants
 envelope encryption (seal the key, host the ciphertext elsewhere). Sealing happens client-side in wasm; only the
 ciphertext leaves your process. `bte-sdk/verify` verifies operator shares
 client-side if you do not want to trust the coordinator's verdicts.
