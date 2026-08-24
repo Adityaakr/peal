@@ -44,8 +44,9 @@ pub const BTE_WIRE_V0: &[u8; 4] = b"BTE0";
 /// NOT a threshold-cost limit — `partial` runs an MSM over 48-byte KEM headers
 /// and never touches the payload, and dummy padding is 29 bytes a slot. What a
 /// bigger payload actually costs is coordinator storage and reveal bandwidth.
-/// 2 MiB covers documents and images; video wants envelope encryption instead.
-pub const MAX_PAYLOAD_BYTES: usize = 2 * 1024 * 1024;
+/// 5 MiB covers documents, decks, and high-resolution images; video still wants
+/// envelope encryption instead of going through the seal directly.
+pub const MAX_PAYLOAD_BYTES: usize = 5 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BteError {
