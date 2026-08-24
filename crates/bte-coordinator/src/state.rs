@@ -18,6 +18,12 @@ pub struct Config {
     /// JSON-RPC endpoints for at_block conditions, keyed by chain id.
     /// SEPOLIA_RPC_URL maps to 11155111; BTE_RPC_URL_<chain_id> adds others.
     pub rpc_urls: std::collections::HashMap<i64, String>,
+    /// Who this coordinator commits batch orderings as. Goes into every
+    /// `batch_commitments` row and therefore into every receipt, so an agent
+    /// can decide whether it is willing to be ordered by this operator.
+    /// Configured, never derived: an executor identity nobody set is one
+    /// nobody is accountable for.
+    pub executor_identity: String,
 }
 
 impl Config {
@@ -37,6 +43,8 @@ impl Config {
         }
         Config {
             rpc_urls,
+            executor_identity: std::env::var("PEAL_EXECUTOR_IDENTITY")
+                .unwrap_or_else(|_| "unconfigured-executor".to_string()),
             reveal_timeout_secs: std::env::var("REVEAL_TIMEOUT_SECS")
                 .ok()
                 .and_then(|v| v.parse().ok())

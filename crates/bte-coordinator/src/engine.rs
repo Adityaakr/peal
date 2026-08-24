@@ -6,6 +6,7 @@ use bte_crypto::{
     combine, dummy_payload, finalize, pre_decrypt, seal, PrecomputedCrossTerms, SealedCiphertext,
     Share,
 };
+use rusqlite::OptionalExtension;
 use serde::Serialize;
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -174,6 +175,51 @@ async fn freeze_condition(app: &App, condition_id: &str, committee_id: &str) -> 
             "UPDATE conditions SET status = 'frozen' WHERE id = ?1",
             [condition_id],
         )?;
+
+        // Ordering commitment, written INSIDE the freeze transaction.
+        //
+        // This is the load-bearing ordering in the whole design: the commitment
+        // must exist before any operator can be handed work, or an executor
+        // could read a batch and only then decide what order to claim. Writing
+        // it in the same transaction means there is no window at all — a batch
+        // is never frozen-but-uncommitted, even if the process dies here.
+        for (batch_index, batch_id) in ids.iter().enumerate() {
+            let slice = &ordered[batch_index * b..(batch_index + 1) * b];
+            let mut leaves = Vec::with_capacity(slice.len());
+            for (pos_in_batch, (hash, _)) in slice.iter().enumerate() {
+                let global_pos = batch_index * b + pos_in_batch;
+                // An intent id when one is bound to this ciphertext, else empty.
+                let intent_id: String = tx
+                    .query_row(
+                        "SELECT id FROM intents WHERE ciphertext_hash = ?1",
+                        rusqlite::params![hash],
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .unwrap_or_default();
+                let raw = hex::decode(hash).unwrap_or_default();
+                leaves.push(crate::merkle::ordering_leaf(&intent_id, &raw));
+                let _ = global_pos;
+            }
+            let root = hex::encode(crate::merkle::root(&leaves));
+            crate::intents::record_commitment(
+                &tx,
+                *batch_id,
+                condition_id,
+                &root,
+                slice.len(),
+                committee_id,
+                &app.0.cfg.executor_identity,
+            )?;
+        }
+
+        // Only now do the intents move: BATCHED, then ORDER_COMMITTED. The two
+        // steps are separate events so a receipt's timeline shows ordering
+        // locking as its own moment rather than being folded into the freeze.
+        crate::intents::advance_condition_intents(&tx, condition_id, "VALIDATED")?;
+        crate::intents::advance_condition_intents(&tx, condition_id, "BATCHED")?;
+        crate::intents::advance_condition_intents(&tx, condition_id, "ORDER_COMMITTED")?;
+
         tx.commit()?;
         ids
     };
