@@ -9,9 +9,10 @@
 // fail. That is the whole point of a verifiable receipt, so it should not
 // require trusting this page either.
 //
-// What it does NOT do is show a live intent feed. There is no /v1 API behind it
-// yet, and a dashboard of invented swaps would be the one thing this product
-// cannot afford to ship. The build status below says plainly what is live.
+// What it does NOT do is show a live intent feed. The /v1 API exists now, but a
+// public deployment has no real intents in it, and a dashboard of invented
+// swaps is the one thing this product cannot afford to ship. The build status
+// below says plainly what is live and what is not.
 import { verifyReceipt, type ExecutionReceipt, type VerificationReport } from 'peal-actions';
 import { esc } from '../util';
 
@@ -39,12 +40,13 @@ const STATUS = [
   { part: 'Intent schema and privacy boundary', state: 'live', note: 'packages/actions: envelope vs encrypted payload' },
   { part: 'EIP-712 intent and authorization signing', state: 'live', note: 'agent keys never leave the agent' },
   { part: 'Lifecycle state machine', state: 'live', note: 'quoting is unreachable before order-commit + reveal' },
-  { part: 'Ordering commitment and inclusion proofs', state: 'live', note: 'merkle over (intentId, ciphertextHash)' },
+  { part: 'Ordering commitment and inclusion proofs', state: 'live', note: 'merkle over (intentId, ciphertextHash), written inside the freeze transaction' },
   { part: 'Receipt build and verification', state: 'live', note: 'the verifier below runs it' },
-  { part: 'Coordinator /v1 intent API', state: 'planned', note: 'no endpoint yet; intents cannot be submitted' },
-  { part: '0x Swap API v2 adapter', state: 'planned', note: 'quote requested only after reveal, by construction' },
-  { part: 'Across cross-chain adapter', state: 'planned', note: 'behind a feature flag when it lands' },
-  { part: 'Private transaction submission', state: 'planned', note: 'until then, public RPC and labelled as such' },
+  { part: 'Coordinator /v1 intent API', state: 'live', note: 'submit, read, events, batch commitment, authorization' },
+  { part: '0x Swap API v2 adapter', state: 'live', note: 'quote requested only after reveal, validated against the signed floor' },
+  { part: 'Across cross-chain adapter', state: 'partial', note: 'implemented and tested; ships disabled until credentials are configured' },
+  { part: 'Submission provider abstraction', state: 'partial', note: 'policy and simulator done; no live private relay wired yet' },
+  { part: 'Example agent, end-to-end live swap', state: 'planned', note: 'the remaining gap to a real settled trade' },
 ];
 
 function lifecycleRows(): string {
@@ -156,9 +158,9 @@ export function renderExecution(host: HTMLElement): () => void {
       <div class="exec-block">
         <h2>What is built</h2>
         <p class="field-hint">
-          There is no live intent feed on this page because there is no intent API
-          behind it yet. A dashboard of invented activity would undermine the one
-          thing this product sells.
+          No live intent feed here: this deployment has no real intents to show,
+          and a dashboard of invented activity would undermine the one thing this
+          product sells. Every row below is checked against the tree.
         </p>
         <table class="exec-table status">
           <thead><tr><th>state</th><th>component</th><th>note</th></tr></thead>

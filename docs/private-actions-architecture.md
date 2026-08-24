@@ -47,6 +47,17 @@ that. Chain-shaped concerns live here instead.
 | `commitment.ts` | ordering root, inclusion proofs, executor commitment preimage |
 | `sign.ts` | EIP-712 for intents and for execution authorizations |
 | `receipt.ts` | receipt shape and independent verification |
+| `adapter.ts` | the `ExecutionAdapter` boundary and the quote gate |
+| `adapters/zerox.ts` | 0x Swap API v2, same-chain |
+| `adapters/across.ts` | Across, cross-chain, feature-flagged off |
+| `submission.ts` | how a validated transaction actually reaches the chain |
+
+Server side, `crates/bte-coordinator/src/intents.rs` adds the `/v1` endpoints,
+three tables (`intents`, `intent_events`, `batch_commitments`), and a mirror of
+the lifecycle graph. The migration is additive — new tables only — so a devnet
+database created before intents existed opens unchanged.
+
+See `execution-adapters.md` for the adapter contract in detail.
 
 ## The privacy boundary, made structural
 
@@ -154,29 +165,54 @@ the worst kind of green tick.
 
 ## Current status
 
-Live and tested (93 tests in `packages/actions`):
+Live and tested (155 tests in `packages/actions`, 14 `/v1` integration tests):
 
 - intent schema and privacy boundary
 - canonical serialization
-- lifecycle state machine with the enforced privacy property
+- lifecycle state machine, with the privacy property enforced on both sides
 - ordering commitment, inclusion proofs, position binding
 - EIP-712 intent and authorization signing
 - receipt construction and verification
-- `/execution` in the explorer, including a working in-browser receipt verifier
+- coordinator `/v1` intent API: submit, read, events, batch commitment,
+  authorization — with idempotency and nonce replay protection
+- 0x Swap API v2 adapter with full quote validation
+- submission provider policy, including the refusal to degrade silently
+- `/execution` in the explorer with a working in-browser receipt verifier
 
-Not built yet:
+Shipped but disabled:
 
-- coordinator `/v1` intent endpoints — intents cannot currently be submitted
-- the `ExecutionAdapter` interface and the 0x Swap API v2 adapter
-- the Across cross-chain adapter
-- `TransactionSubmissionProvider` and private submission
+- Across cross-chain adapter (`ACROSS_ENABLED=false`). Implemented, validated
+  and tested; no live credentials assumed.
+
+Not built:
+
 - the example agent
-- the executor service that ties reveal to quote to authorization
+- an executor service that drives reveal → quote → authorization → submission
+  automatically
+- any live private-submission provider
+- `POST /v1/receipts/verify` (verification runs client-side today, which is the
+  point; a server endpoint is a convenience, not a guarantee)
+
+## Verified against a running stack
+
+The core guarantee was checked end to end on the live devnet, not only in unit
+tests:
+
+```
+committed_at = 1787572155
+revealed_at  = 1787572156
+shares submitted BEFORE commit: 0
+shares submitted after commit:  5
+```
+
+Ordering was committed one second before the reveal, and no operator share
+existed at the moment of commitment. The lifecycle recorded every step:
+`SUBMITTED → VALIDATED → BATCHED → ORDER_COMMITTED`, with none skipped.
 
 ## Next
 
-1. `ExecutionAdapter` interface plus the 0x v2 adapter, with quote validation
-   against the signed floor. Verify the endpoint shape against
-   `docs.0x.org` at implementation time rather than from memory — v1 is retired.
-2. Coordinator `/v1` intent endpoints and persistence of the lifecycle.
-3. The example agent and an end-to-end simulated swap.
+1. The example agent, closing the loop from `createSwapIntent` to a verified
+   receipt against the simulator.
+2. An executor service to drive the post-reveal states automatically.
+3. A live private-submission provider, so `privateSubmissionRequired` can be
+   satisfied rather than refused.
