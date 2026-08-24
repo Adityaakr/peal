@@ -26,6 +26,13 @@ const CAPTION_CAP = 400;
  * recipient page can render or hand back safely. */
 export const ACCEPTED = 'application/pdf,image/png,image/jpeg,image/gif,image/webp,image/svg+xml';
 
+/** Worst-case bytes this wrapping adds on top of the file itself: the PEALF1
+ * header with a full-size meta block, plus the BTEP1 private layer (magic, IV,
+ * and the GCM tag). A picker that checks the raw file size against the payload
+ * cap has to reserve this, or a file that just fits is accepted and then
+ * rejected by seal() after the whole thing has been read. */
+export const ENVELOPE_OVERHEAD = MAGIC.length + 2 + META_CAP + 5 + 12 + 16;
+
 export interface SealedFile {
   name: string;
   type: string;

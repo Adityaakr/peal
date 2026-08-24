@@ -19,8 +19,20 @@ import { createCeremony, type Ceremony } from './ceremony';
 import { takeSealDraft } from './draft';
 import { decryptPrivateBytes, encryptPrivateBytes, isPrivatePayload } from './privacy';
 import type { SealedFile } from './attach';
-import { ACCEPTED, fmtBytes, isFilePayload, packFile, renderFile, unpackFile } from './attach';
+import {
+  ACCEPTED,
+  ENVELOPE_OVERHEAD,
+  fmtBytes,
+  isFilePayload,
+  packFile,
+  renderFile,
+  unpackFile,
+} from './attach';
 import { decodePayload, esc, fmtCountdown, payloadBytes, truncMiddle } from './util';
+
+/** What a file itself may weigh. The seal carries the file plus its header and
+ * the private layer, and it is the total that has to fit under the cap. */
+const MAX_FILE_BYTES = MAX_PAYLOAD_BYTES - ENVELOPE_OVERHEAD;
 
 const POLL_MS = 1500;
 const ROUND_SECS = 60;
@@ -320,11 +332,11 @@ export function renderPlayground(host: HTMLElement): () => void {
           secretInput.required = true;
           return;
         }
-        if (f.size > MAX_PAYLOAD_BYTES) {
+        if (f.size > MAX_FILE_BYTES) {
           chosenEl.hidden = false;
           chosenEl.className = 'pg-attach-chosen error';
           chosenEl.textContent = `${f.name} is ${fmtBytes(f.size)}. the cap is ${fmtBytes(
-            MAX_PAYLOAD_BYTES,
+            MAX_FILE_BYTES,
           )} per seal.`;
           fileInput.value = '';
           return;
