@@ -6,3 +6,7 @@ test = "test"
 solc_version = "0.8.28"
 optimizer = true
 optimizer_runs = 200
+# The AuctionKit config struct has 22 snapshotted fields, which exhausts the
+# legacy codegen's stack in initialize(). via-IR is the supported fix and is
+# required for these contracts to compile at all.
+via_ir = true
