@@ -60,9 +60,11 @@ security. It is a functional test of the protocol, not a security posture.
 
 ### 3. Committee signatures over the reveal root
 
-Because BLS12-381 pairings are not verifiable on the EVM today (EIP-2537 is
-unshipped, and nothing in `contracts/` attempts it), the contract cannot check
-threshold decryption itself.
+Because this repository has not yet benchmarked onchain share verification, the
+contract does not check threshold decryption itself. (EIP-2537 *did* ship on
+Ethereum mainnet with Pectra in May 2025 — an earlier draft of these docs wrongly
+said otherwise. See `decisions/0001-reveal-root.md` for why the adapter is still
+in use and what would replace it.)
 
 Instead the snapshotted committee signs an EIP-712 message over a merkle root of
 the canonical revealed-bid list, and the contract requires *t* unique signatures

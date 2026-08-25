@@ -9,13 +9,26 @@ Peal's threshold decryption is publicly verifiable. `verify_share`
 `e(pd_j, g_2) == sum_i e(ct_{i,0}, v_j^i)` — a real pairing check, run inline on
 every submitted share.
 
-That check is on BLS12-381. **It is not reachable from the EVM today.** EIP-2537
-precompiles are roadmap item 5 in `spec/ROADMAP.md` and nothing in `contracts/`
-attempts a pairing. `BteAnchor.sol` anchors a merkle root; it verifies no
-cryptography.
+That check is on BLS12-381.
 
-So the auction contract cannot verify that the plaintexts it is being handed
-came from a legitimate threshold decryption.
+**This decision originally rested on a false premise** — that BLS12-381 pairings
+are not reachable from the EVM. EIP-2537 shipped on Ethereum mainnet with Pectra
+on 2025-05-07. `spec/ROADMAP.md` item 5 predates that and is stale.
+
+The decision still stands, but for narrower and honest reasons:
+
+1. **The pairing is a multi-pairing that scales with batch size.**
+   `sum_i e(ct_{i,0}, v_j^i)` is one term per ciphertext, so a B=64 batch is a
+   ~65-term check per share, times `t` shares. EIP-2537 pairing gas is linear in
+   term count. Nobody has benchmarked this, and designing around an unmeasured
+   gas cost is how a product ships something that cannot be settled.
+2. **Verifying shares is not decrypting.** Even with free pairings, the 64
+   plaintexts come from the FFT cross-terms and FO decryption in `recover`.
+   That is not going onchain at any gas price. The plaintext list still arrives
+   off-chain and still needs binding to the commitments.
+3. **L2 availability is unconfirmed.** OP-Stack support was in progress; whether
+   the target chain has the precompile live must be checked against that chain,
+   not assumed from L1.
 
 ## Decision
 
@@ -53,6 +66,15 @@ becomes theft.
 
 ## When to revisit
 
-When EIP-2537 ships on the target chain, the pairing check becomes feasible
-onchain and this adapter can be replaced with direct verification of the
-decryption itself, removing the signing assumption entirely.
+**Soon, and with a benchmark rather than an argument.** The concrete next step is
+to write a Solidity `verify_share` against the EIP-2537 precompiles and measure
+the gas for a realistic batch size on the target chain.
+
+If it fits, the committee signature layer can be replaced by onchain share
+verification: a valid share *is* an attestation, so the separate signing key,
+its rotation, and its equivocation risk all disappear. The commitment check per
+bid stays either way — it is what binds plaintext to bidder.
+
+If it does not fit at B=64, a smaller batch size for auctions may make it fit,
+at the cost of more batches per auction. That is a tuning question, not an
+architectural one.

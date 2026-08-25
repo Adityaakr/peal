@@ -19,9 +19,10 @@ import {CommitteeRegistry} from "./CommitteeRegistry.sol";
 /// ## Why the reveal works the way it does
 ///
 /// Peal's threshold decryption is publicly verifiable — `verify_share` is a
-/// BLS12-381 pairing check — but that check is not reachable from the EVM today
-/// (EIP-2537 is unshipped and nothing in this repository attempts it). So the
-/// contract cannot verify the decryption itself.
+/// BLS12-381 pairing check. EIP-2537 makes that curve available on the EVM, but
+/// the check is a multi-pairing whose term count scales with the batch size, and
+/// this repository has not benchmarked it. Until it has, the contract does not
+/// verify the decryption itself. See docs/auctionkit/decisions/0001-reveal-root.md.
 ///
 /// Instead the snapshotted committee signs an EIP-712 message over a merkle root
 /// of the canonical revealed-bid list, and this contract requires `threshold`

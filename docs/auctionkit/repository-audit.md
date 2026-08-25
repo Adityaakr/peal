@@ -70,14 +70,32 @@ of 64 (with padding). No change needed to the batching layer.
 Real verification, run inline on every submitted share, rejected shares stored
 flagged and never used.
 
-That check is a BLS12-381 pairing. **There is no EVM path to it today** —
-EIP-2537 precompiles are roadmap item 5 and nothing in `contracts/` verifies a
-share. `BteAnchor.sol` anchors a merkle root; it does not verify cryptography.
+That check is a BLS12-381 pairing.
 
-**Consequence:** AuctionKit cannot verify threshold decryption onchain. It must
-use the committee-attested reveal-root adapter the specification describes —
-EIP-712 signatures from the snapshotted committee over a merkle root of the
-canonical revealed-bid list. This is a real weakening and is documented as such.
+**Correction to an earlier draft of this audit.** It claimed there is no EVM path
+to a BLS12-381 pairing. That was wrong: EIP-2537 shipped on Ethereum mainnet with
+the Pectra upgrade on 2025-05-07. `spec/ROADMAP.md` item 5 predates that and is
+stale. Nothing in `contracts/` verifies a share today — `BteAnchor.sol` anchors a
+merkle root and verifies no cryptography — but that is a gap in this repository,
+not a limitation of the EVM.
+
+Two things still stand between EIP-2537 and onchain reveal, and both need
+measuring before anyone plans around them:
+
+- **`verify_share` is a multi-pairing whose term count scales with batch size.**
+  `sum_i e(ct_{i,0}, v_j^i)` is one term per ciphertext in the batch, so a B=64
+  batch is a ~65-term check, per share, times `t` shares. EIP-2537 pairing gas is
+  linear in the term count. Whether that fits in a block is an empirical
+  question, not an assumption — it must be benchmarked before being designed
+  around, and it may only be viable on an L2.
+- **Verifying shares is not decrypting.** Even with cheap pairings, deriving the
+  64 plaintexts requires the FFT cross-terms and FO decryption in `recover`.
+  That is not going onchain. So the plaintext list still arrives from off-chain
+  and still needs binding.
+
+**Consequence for V1:** the committee-attested reveal-root adapter is retained,
+because it does not depend on unmeasured gas costs. But the reason is now "not
+yet benchmarked", not "impossible" — see `decisions/0001-reveal-root.md`.
 
 ### 4. No domain separation in the encryption scheme
 
