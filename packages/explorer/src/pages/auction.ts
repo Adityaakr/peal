@@ -55,6 +55,7 @@ import {
   type Address,
   type Hex,
 } from 'viem';
+import { recoverSeededBid } from '../demo-bids';
 import { esc, truncMiddle } from '../util';
 
 type Cleanup = () => void;
@@ -466,21 +467,37 @@ export function renderAuction(root: HTMLElement): Cleanup {
     const demand = demandFromBids(bids, c.numTicks);
     const clearing = demand ? findClearingTick(demand, c.totalSupply) : null;
 
-    const wallBids: WallBid[] = bids.map((b) => ({
-      bidId: b.bidId,
-      bidder: b.bidder,
-      commitment: b.commitment,
-      escrow: fmt(b.escrow, c.quoteDecimals, 2),
-      sealed: !b.revealed && !b.voided,
-      voided: b.voided,
-      isMine: mineIds.has(b.bidId) || (!!account && b.bidder.toLowerCase() === account.toLowerCase()),
-      quantity: b.revealed ? fmt(b.quantity, c.saleDecimals, 2) : undefined,
-      price: b.revealed ? fmt(priceAt(c.reservePrice, c.tickSize, b.tick), c.quoteDecimals) : undefined,
-      allocation:
-        clearing && b.revealed && !b.voided
-          ? fmt(allocationFor(clearing, b.quantity, b.tick), c.saleDecimals, 2)
-          : undefined,
-    }));
+    const wallBids: WallBid[] = bids.map((b) => {
+      const sealed = !b.revealed && !b.voided;
+      // Only claims a bid is readable when the published parameters actually
+      // reproduce its onchain commitment. Never true for a real user's bid.
+      const recovered = sealed
+        ? recoverSeededBid({
+            chainId: HOODI.chainId,
+            auction: HOODI_DEMO.auction,
+            bidder: b.bidder,
+            commitment: b.commitment,
+          })
+        : null;
+      const qty = b.revealed ? b.quantity : recovered?.quantity;
+      const tick = b.revealed ? b.tick : recovered?.tick;
+      return {
+        bidId: b.bidId,
+        bidder: b.bidder,
+        commitment: b.commitment,
+        escrow: fmt(b.escrow, c.quoteDecimals, 2),
+        sealed,
+        voided: b.voided,
+        recovered: recovered !== null,
+        isMine: mineIds.has(b.bidId) || (!!account && b.bidder.toLowerCase() === account.toLowerCase()),
+        quantity: qty !== undefined ? fmt(qty, c.saleDecimals, 2) : undefined,
+        price: tick !== undefined ? fmt(priceAt(c.reservePrice, c.tickSize, tick), c.quoteDecimals) : undefined,
+        allocation:
+          clearing && b.revealed && !b.voided
+            ? fmt(allocationFor(clearing, b.quantity, b.tick), c.saleDecimals, 2)
+            : undefined,
+      };
+    });
 
     const rows: LadderRow[] | null =
       demand && clearing
@@ -492,7 +509,8 @@ export function renderAuction(root: HTMLElement): Cleanup {
           }))
         : null;
 
-    const sealedCount = bids.filter((b) => !b.revealed && !b.voided).length;
+    const trulySealed = wallBids.filter((b) => b.sealed && !b.recovered).length;
+    const recoverable = wallBids.filter((b) => b.sealed && b.recovered).length;
     const totalEscrow = bids.reduce((s2, b) => s2 + b.escrow, 0n);
 
     root.innerHTML = `
@@ -500,13 +518,13 @@ export function renderAuction(root: HTMLElement): Cleanup {
   <div class="ak-hero">
     <div class="ak-hero-copy">
       <div class="ak-eyebrow">
-        <span class="ak-live-dot"></span> Live on ${esc(HOODI.name)}
+        <span class="ak-live-dot"></span> Live on ${esc(HOODI.name)}, a testnet
       </div>
       <h1>Bids stay sealed<br/>until the auction closes.</h1>
       <p class="ak-lede">
         Every bid below is real and onchain right now. You can see that each one <em>exists</em>,
-        and that what is inside it is not there to read. Not by us, not by the issuer, not by
-        anyone. At close they are revealed together and settle at one uniform price.
+        and that the seller cannot read what is inside it, and neither can another bidder.
+        At close they are revealed together and settle at one uniform price.
       </p>
       <div class="ak-hero-meta">
         <a href="${HOODI.explorer}/address/${HOODI_DEMO.auction}" target="_blank" rel="noopener">
@@ -534,7 +552,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
   <div class="ak-grid">
     <div class="ak-card"><span>For sale</span><strong>${fmt(c.totalSupply, c.saleDecimals, 0)}</strong><em>${esc(HOODI_DEMO.saleSymbol)}</em></div>
     <div class="ak-card"><span>Reserve price</span><strong>${fmt(c.reservePrice, c.quoteDecimals)}</strong><em>${esc(HOODI_DEMO.quoteSymbol)}</em></div>
-    <div class="ak-card"><span>Bids sealed</span><strong>${sealedCount}</strong><em>of ${bids.length}</em></div>
+    <div class="ak-card"><span>Bids sealed</span><strong>${trulySealed}</strong><em>of ${bids.length}${recoverable ? `, ${recoverable} salt published` : ''}</em></div>
     <div class="ak-card"><span>Escrow locked</span><strong>${fmt(totalEscrow, c.quoteDecimals, 0)}</strong><em>${esc(HOODI_DEMO.quoteSymbol)}</em></div>
     <div class="ak-card ak-card-time"><span>${snap.biddingOpen ? 'Closes in' : 'Bidding'}</span><strong>${esc(countdown(c.endTime, now))}</strong><em>${snap.biddingOpen ? '' : 'ended'}</em></div>
   </div>
@@ -575,7 +593,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
           </label>
           <div class="ak-escrow-box" id="ak-escrow"></div>
           <button class="ak-btn ak-primary ak-wide" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Working…' : 'Seal and commit'}</button>
-          <p class="ak-hint">You pay the <em>clearing</em> price, never your maximum. Bidding your true value cannot make you overpay.</p>
+          <p class="ak-hint">You pay the <em>clearing</em> price, never your own maximum.</p>
         </form>` : ''}
         ${account && !snap.biddingOpen ? `<p class="ak-hint">Bidding is closed for this auction.</p>` : ''}
       </div>
@@ -603,7 +621,8 @@ export function renderAuction(root: HTMLElement): Cleanup {
         <ul class="ak-facts">
           <li><b>Hidden</b> until close: your quantity and your price. The chain holds one hash.</li>
           <li><b>Public</b> immediately: your escrow, a token transfer of quantity times max price.
-            Nobody can separate those two factors, but the amount itself is visible.</li>
+            The split is not published, but prices are a ladder of at most 256 ticks, so anyone
+            who tries can usually narrow it to a few candidates.</li>
         </ul>
         <p>This is not bid-size privacy, and AuctionKit does not claim it is. That would need shielded funding.</p>
       </div>

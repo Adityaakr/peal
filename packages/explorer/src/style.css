@@ -4162,3 +4162,7 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 
 .ak-row-pending td { color: var(--muted); }
 .ak-pending { color: var(--muted-soft); font-size: 12px; }
+
+.ak-face-recovered { background: repeating-linear-gradient(115deg, var(--red-weak) 0 6px, #fff 6px 13px); }
+.ak-face-recovered .ak-seal-badge { color: var(--red-text); background: var(--red-weak); border-color: var(--red-border); }
+.ak-recovered-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); line-height: 1.45; }

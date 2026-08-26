@@ -20,6 +20,11 @@ export interface WallBid {
   escrow: string;
   sealed: boolean;
   voided: boolean;
+  /** True when the bid's contents were recomputed from a PUBLISHED salt. The
+   * commitment is still sealed in the cryptographic sense; the salt simply is
+   * not secret. Rendering such a bid as "hidden" would misrepresent what
+   * sealing protects. */
+  recovered?: boolean;
   quantity?: string;
   price?: string;
   allocation?: string;
@@ -64,14 +69,26 @@ export function bidWallHtml(bids: WallBid[], quoteSymbol: string, saleSymbol: st
 
   const cards = bids
     .map((b) => {
-      const face = b.sealed
+      const face = b.sealed && b.recovered
+        ? `<div class="ak-card3d-face ak-face-recovered">
+             <div class="ak-seal-badge">salt published</div>
+             <div class="ak-hash" title="${esc(b.commitment)}">${esc(truncMiddle(b.commitment, 10, 8))}</div>
+             <dl class="ak-kv">
+               <dt>Escrow</dt><dd>${esc(b.escrow)} ${esc(quoteSymbol)}</dd>
+               <dt>Quantity</dt><dd>${esc(b.quantity ?? 'n/a')} ${esc(saleSymbol)}</dd>
+               <dt>Max price</dt><dd>${esc(b.price ?? 'n/a')} ${esc(quoteSymbol)}</dd>
+             </dl>
+             <p class="ak-recovered-note">Seeded by the demo script, which publishes its salts.
+               Recomputed here from public data, not read from a reveal.</p>
+           </div>`
+        : b.sealed
         ? `<div class="ak-card3d-face ak-face-sealed">
              <div class="ak-seal-badge">sealed</div>
              <div class="ak-hash" title="${esc(b.commitment)}">${esc(truncMiddle(b.commitment, 10, 8))}</div>
              <dl class="ak-kv">
                <dt>Escrow</dt><dd>${esc(b.escrow)} ${esc(quoteSymbol)}</dd>
-               <dt>Quantity</dt><dd class="ak-unknown">hidden until close</dd>
-               <dt>Max price</dt><dd class="ak-unknown">hidden until close</dd>
+               <dt>Quantity</dt><dd class="ak-unknown">not published until close</dd>
+               <dt>Max price</dt><dd class="ak-unknown">not published until close</dd>
              </dl>
              <div class="ak-shimmer"></div>
            </div>`
@@ -135,8 +152,9 @@ export function ladderHtml(rows: LadderRow[] | null, prices: { tick: number; pri
       .reverse()
       .join('');
     return `<div class="ak-ladder ak-ladder-sealed">
-      <p class="ak-ladder-note">Demand at every price is <strong>unknown until the auction closes</strong>. Not hidden by
-      this page, but genuinely not derivable from anything onchain. That is the guarantee.</p>
+      <p class="ak-ladder-note">Demand at every price is <strong>not published until the auction closes</strong>.
+      This page is not withholding it. It is not in the contract's storage either, and no bid reveals
+      another. Escrow amounts do bound it, and any bid whose salt is public can be recovered.</p>
       <div class="ak-lrows">${bars}</div>
     </div>`;
   }
