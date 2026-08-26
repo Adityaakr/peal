@@ -4159,3 +4159,6 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 
 .ak-faucet { grid-template-columns: 1fr; gap: 10px; }
 .ak-faucet label { margin: 0; }
+
+.ak-row-pending td { color: var(--muted); }
+.ak-pending { color: var(--muted-soft); font-size: 12px; }

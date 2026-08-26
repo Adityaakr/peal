@@ -98,14 +98,18 @@ interface SavedBid {
   chainId: number;
   auction: Address;
   bidder: Address;
-  bidId: number;
+  /** Unknown until the commit lands, because the contract assigns it. `null`
+   * means the transaction is still in flight or was never confirmed. */
+  bidId: number | null;
   quantity: string;
   maxPriceTick: number;
   salt: Hex;
   bidVersion: number;
+  /** The stable key. Unlike `bidId` this is known before the transaction is
+   * sent, which is what lets the salt be persisted first. */
   commitment: Hex;
   escrow: string;
-  txHash: Hex;
+  txHash: Hex | null;
   at: number;
 }
 
@@ -118,13 +122,32 @@ function loadBids(): SavedBid[] {
   }
 }
 
-function saveBid(b: SavedBid): void {
+function writeBids(all: SavedBid[]): void {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify([...loadBids(), b]));
+    localStorage.setItem(STORE_KEY, JSON.stringify(all));
   } catch {
-    /* private browsing, quota — the page still works, the receipt download is
-       the durable copy. */
+    /* private browsing, quota. The page still works and the download is the
+       durable copy, but the salt is now only in memory. */
   }
+}
+
+/** Persist a bid BEFORE its transaction is sent.
+ *
+ * This ordering is the whole point. The salt is generated locally and exists
+ * nowhere else: not on the chain, not at the coordinator, not with the
+ * committee. If it is written only after the receipt, then closing the tab
+ * while the transaction is in flight leaves escrow locked against a bid that
+ * can never be revealed. The bidder would be refunded and get no allocation,
+ * with nothing anywhere to reconstruct what they meant to bid.
+ *
+ * Keyed by commitment rather than bidId, because bidId does not exist yet. */
+function saveBid(b: SavedBid): void {
+  writeBids([...loadBids().filter((x) => x.commitment !== b.commitment), b]);
+}
+
+/** Fill in what only the chain could tell us, once it has. */
+function completeBid(commitment: Hex, bidId: number, txHash: Hex): void {
+  writeBids(loadBids().map((b) => (b.commitment === commitment ? { ...b, bidId, txHash } : b)));
 }
 
 function ethereum(): { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } | null {
@@ -307,6 +330,22 @@ export function renderAuction(root: HTMLElement): Cleanup {
       status = 'Approve the escrow, then confirm the bid…';
       draw();
 
+      // Written before the transaction exists. See saveBid.
+      saveBid({
+        chainId: HOODI.chainId,
+        auction: HOODI_DEMO.auction,
+        bidder: account,
+        bidId: null,
+        quantity: quantity.toString(),
+        maxPriceTick: tick,
+        salt: bid.salt,
+        bidVersion: bid.bidVersion,
+        commitment: bid.commitment,
+        escrow: bid.escrow.toString(),
+        txHash: null,
+        at: Math.floor(Date.now() / 1000),
+      });
+
       const res = await submitBid({
         publicClient: pub,
         walletClient: wallet,
@@ -319,20 +358,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
         ciphertextHash: keccak256(stringToHex(`${account}:${bid.salt}`)),
       });
 
-      saveBid({
-        chainId: HOODI.chainId,
-        auction: HOODI_DEMO.auction,
-        bidder: account,
-        bidId: res.bidId,
-        quantity: quantity.toString(),
-        maxPriceTick: tick,
-        salt: bid.salt,
-        bidVersion: bid.bidVersion,
-        commitment: bid.commitment,
-        escrow: bid.escrow.toString(),
-        txHash: res.commitTx,
-        at: Math.floor(Date.now() / 1000),
-      });
+      completeBid(bid.commitment, res.bidId, res.commitTx);
 
       status = `Bid #${res.bidId} committed. Save your salt. Without it the bid cannot be revealed.`;
       statusKind = 'ok';
@@ -585,14 +611,16 @@ export function renderAuction(root: HTMLElement): Cleanup {
       ${saved.length ? `
       <div class="ak-panel">
         <h3>Your bids <span class="ak-h2-note">this browser</span></h3>
-        <p class="ak-hint">The <strong>salt</strong> exists nowhere else. Lose it and your bid cannot be revealed, so you get a refund instead of an allocation.</p>
+        <p class="ak-hint">The <strong>salt</strong> exists nowhere else. Lose it and your bid cannot be revealed, so you get a refund instead of an allocation. Saved before the transaction is sent, so closing this tab mid-commit cannot strand a bid.</p>
         <table class="ak-table">
           <thead><tr><th>#</th><th>Qty</th><th>Max</th><th>Tx</th></tr></thead>
-          <tbody>${saved.map((b) => `<tr>
-            <td>${b.bidId}</td>
+          <tbody>${saved.map((b) => `<tr${b.bidId === null ? ' class="ak-row-pending"' : ''}>
+            <td>${b.bidId === null ? '&middot;' : b.bidId}</td>
             <td>${fmt(BigInt(b.quantity), c.saleDecimals, 2)}</td>
             <td>${fmt(priceAt(c.reservePrice, c.tickSize, b.maxPriceTick), c.quoteDecimals)}</td>
-            <td><a href="${HOODI.explorer}/tx/${b.txHash}" target="_blank" rel="noopener">${esc(truncMiddle(b.txHash, 5, 4))}</a></td>
+            <td>${b.txHash
+              ? `<a href="${HOODI.explorer}/tx/${b.txHash}" target="_blank" rel="noopener">${esc(truncMiddle(b.txHash, 5, 4))}</a>`
+              : '<span class="ak-pending">not confirmed</span>'}</td>
           </tr>`).join('')}</tbody>
         </table>
         <button class="ak-btn ak-wide" id="ak-download">Download bids + salts</button>
