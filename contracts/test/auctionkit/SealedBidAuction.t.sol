@@ -56,6 +56,7 @@ contract SealedBidAuctionTest is Test {
     address alice = makeAddr("alice");
     address bob = makeAddr("bob");
     address carol = makeAddr("carol");
+    address dave = makeAddr("dave");
     address feeRecipient = makeAddr("feeRecipient");
 
     // 3-of-5 committee with known keys so the test can actually sign.
@@ -100,7 +101,9 @@ contract SealedBidAuctionTest is Test {
 
         startTime = uint64(block.timestamp + 100);
         endTime = startTime + 1000;
-        revealDeadline = endTime + 1000;
+        // Must exceed VOID_DISPUTE_WINDOW; a 1000-second reveal window was never
+        // realistic for a threshold committee anyway.
+        revealDeadline = endTime + 4 hours;
     }
 
     function _config() internal view returns (SealedBidAuction.Config memory) {
@@ -155,8 +158,10 @@ contract SealedBidAuctionTest is Test {
     function _commit(SealedBidAuction a, BidSpec memory s) internal returns (uint32 bidId) {
         uint256 escrow = AuctionMath.escrowFor(s.qty, RESERVE, TICK, s.tick, SALE_DEC);
         quote.mint(s.bidder, escrow);
+        // No longer reads committedBidCount() first: the commitment does not
+        // bind bidId, so there is nothing to predict and nothing to race.
+        bytes32 commitment = a.bidCommitment(s.bidder, s.qty, s.tick, s.salt, 1);
         bidId = a.committedBidCount();
-        bytes32 commitment = a.bidCommitment(bidId, s.bidder, s.qty, s.tick, s.salt, 1);
         vm.startPrank(s.bidder);
         quote.approve(address(a), escrow);
         a.commitBid(commitment, keccak256(abi.encode("ct", bidId)), escrow, new bytes32[](0));
@@ -510,6 +515,12 @@ contract SealedBidAuctionTest is Test {
         // The property the whole commitment scheme exists for. A committee that
         // signs a root over a bid with different parameters cannot get it past
         // the onchain commitment the bidder posted before the close.
+        //
+        // The substituted bid is no longer *rejected inline* - that behaviour
+        // let anyone kill an auction with one junk commitment, see
+        // BidIdRace.t.sol. It is voided instead, and alice then produces the
+        // preimage the committee could not, which halts the auction. The
+        // committee still cannot make a forged bid count.
         SealedBidAuction a = _deploy();
         _fund(a);
         BidSpec memory real = BidSpec(alice, 10 * ONE, 1, keccak256("a"));
@@ -533,9 +544,58 @@ contract SealedBidAuctionTest is Test {
             proof: _proof(leaves, 0)
         });
 
-        // The merkle proof is valid — but the salted commitment is not.
-        vm.expectRevert(SealedBidAuction.CommitmentMismatch.selector);
+        // The merkle proof is valid — but the salted commitment is not, so the
+        // forged bid is voided rather than counted.
         a.processReveals(entries);
+        assertTrue(a.getBid(0).voided, "forged reveal must not count as revealed");
+        assertEq(a.allocationOf(0), 0);
+
+        // Settlement cannot race the dispute.
+        vm.expectRevert(SealedBidAuction.TooEarly.selector);
+        a.finalize();
+
+        // Alice holds a preimage matching what she posted. The committee does
+        // not, because it made its leaf up.
+        a.disputeVoid(0, real.qty, real.tick, real.salt, 1);
+        assertEq(uint256(a.state()), uint256(SealedBidAuction.State.Failed));
+
+        // She gets her escrow back in full.
+        uint256 before = quote.balanceOf(alice);
+        vm.prank(alice);
+        (uint256 tokens, uint256 refund) = a.claim(0);
+        assertEq(tokens, 0);
+        assertEq(quote.balanceOf(alice), before + refund);
+        assertGt(refund, 0);
+    }
+
+    /// A griefer cannot use the dispute path: they never had a preimage.
+    function test_grieferCannotDisputeTheirOwnJunkCommitment() public {
+        SealedBidAuction a = _deploy();
+        _fund(a);
+
+        quote.mint(dave, 1);
+        vm.startPrank(dave);
+        quote.approve(address(a), 1);
+        a.commitBid(keccak256("junk"), keccak256("ctj"), 1, new bytes32[](0));
+        vm.stopPrank();
+
+        vm.warp(endTime);
+        a.closeCommit();
+        bytes32[] memory leaves = new bytes32[](1);
+        leaves[0] = a.revealLeaf(0, 0, 0, bytes32(0));
+        bytes32 root = _root(leaves);
+        a.registerRevealRoot(root, 1, _signRoot(a, root, 1, 3));
+
+        SealedBidAuction.RevealEntry[] memory entries = new SealedBidAuction.RevealEntry[](1);
+        entries[0] = SealedBidAuction.RevealEntry({
+            bidId: 0, quantity: 0, tick: 0, salt: bytes32(0), bidVersion: 1, proof: _proof(leaves, 0)
+        });
+        a.processReveals(entries);
+        assertTrue(a.getBid(0).voided);
+
+        // Nothing they can supply matches keccak256("junk").
+        vm.expectRevert(SealedBidAuction.CommitmentMismatch.selector);
+        a.disputeVoid(0, 1 * ONE, 0, bytes32(0), 1);
     }
 
     function test_omittedBidBlocksSettlement() public {

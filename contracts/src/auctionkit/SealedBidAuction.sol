@@ -92,6 +92,10 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
         uint64 blockNumber;
         bool revealed;
         bool claimed;
+        /// @dev Attested by the committee but the plaintext does not match what
+        ///      the bidder committed to. Excluded from demand, escrow fully
+        ///      refundable through the normal `claim` path.
+        bool voided;
         uint256 quantity;
         uint16 tick;
     }
@@ -106,6 +110,10 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
 
     uint32 public committedBidCount;
     uint32 public processedBidCount;
+    /// @dev How many bids were attested but did not match their commitment.
+    ///      Nonzero means settlement waits out `VOID_DISPUTE_WINDOW`.
+    uint32 public voidedBidCount;
+    uint64 public lastVoidAt;
     bytes32 public revealRoot;
     uint64 public revealRootRegisteredAt;
 
@@ -137,6 +145,16 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
     event CommitClosed(uint32 bidCount);
     event RevealRootRegistered(bytes32 indexed root, uint32 bidCount, uint256 signatures);
     event BidRevealed(uint32 indexed bidId, uint256 quantity, uint16 tick);
+    /// @notice A bid whose revealed plaintext does not match its commitment.
+    /// @dev Emitted rather than reverted. Anyone can check the claim: recompute
+    ///      `bidCommitment` from the revealed values and compare it to the
+    ///      commitment in `getBid`. A bidder who believes the committee
+    ///      attested the wrong plaintext for them can publish their own
+    ///      preimage, and the mismatch is then attributable to the signed root.
+    event BidVoided(uint32 indexed bidId, address indexed bidder);
+    /// @notice A voided bidder proved their commitment was well-formed. The
+    ///         auction halts and everyone is refunded.
+    event VoidDisputed(uint32 indexed bidId, address indexed bidder);
     event Finalized(uint16 clearingTick, uint256 clearingPrice, uint256 supplySold, uint256 proceeds, uint256 fee);
     event BidderClaimed(uint32 indexed bidId, address indexed bidder, uint256 tokens, uint256 refund);
     event IssuerProceedsClaimed(uint256 net, uint256 fee);
@@ -179,9 +197,30 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
         "RevealRoot(address auction,uint256 chainId,bytes32 committeeSetId,bytes32 encryptionEpoch,bytes32 root,uint32 bidCount)"
     );
 
+    /// @dev `bidId` is deliberately NOT in this struct. It used to be, and it
+    ///      was a race: the contract assigns `bidId = committedBidCount` inside
+    ///      `commitBid`, so a bidder could only bind it by reading the counter
+    ///      first and hoping nobody landed in between. Two wallets in the same
+    ///      block both read the same value and one of them committed to an id
+    ///      that was never theirs.
+    ///
+    ///      Nothing is lost by removing it. `bidder` is bound here and
+    ///      `bids[bidId].bidder` is what the reveal checks against, so a
+    ///      commitment still cannot be moved to another account.
     bytes32 public constant BID_COMMITMENT_TYPEHASH = keccak256(
-        "BidCommitment(uint256 chainId,address auction,uint32 bidId,address bidder,uint256 quantity,uint16 maxPriceTick,bytes32 salt,uint16 bidVersion)"
+        "BidCommitment(uint256 chainId,address auction,address bidder,uint256 quantity,uint16 maxPriceTick,bytes32 salt,uint16 bidVersion)"
     );
+
+    /// @notice How long a voided bidder has to prove the void was wrong.
+    ///
+    /// @dev Only applies when something was actually voided. An auction where
+    ///      every bid matched its commitment - the ordinary case - settles with
+    ///      no delay at all.
+    ///
+    ///      The window is bounded above by `revealDeadline` regardless: if it
+    ///      would run past that, `failOnRevealTimeout` becomes callable and
+    ///      everyone is refunded, which is the safe direction.
+    uint64 public constant VOID_DISPUTE_WINDOW = 1 hours;
 
     // ---------------------------------------------------------------------
     // Lifecycle
@@ -198,7 +237,11 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
         require(cfg.totalSupply > 0, "supply");
         require(cfg.numTicks > 0 && cfg.numTicks <= ClearingPrice.MAX_TICKS, "ticks");
         require(cfg.startTime < cfg.endTime, "schedule");
-        require(cfg.endTime < cfg.revealDeadline, "reveal deadline");
+        // Enough room after the close for reveals AND for a voided bidder to
+        // dispute. Without this a griefer could post a junk bid, have it voided
+        // late, and leave no time to finalize - which would put back the very
+        // denial of service that voiding exists to remove.
+        require(cfg.revealDeadline >= cfg.endTime + VOID_DISPUTE_WINDOW, "reveal window too short");
         require(cfg.protocolFeeBps <= 1_000, "fee too high"); // hard cap 10%
         require(cfg.feeRecipient != address(0) || cfg.protocolFeeBps == 0, "fee recipient");
         require(CommitteeRegistry(registry_).exists(cfg.committeeSetId), "committee");
@@ -305,6 +348,7 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
             blockNumber: uint64(block.number),
             revealed: false,
             claimed: false,
+            voided: false,
             quantity: 0,
             tick: 0
         });
@@ -403,14 +447,16 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
     }
 
     /// @notice Compute the commitment a bidder should have posted.
-    function bidCommitment(uint32 bidId, address bidder, uint256 quantity, uint16 maxPriceTick, bytes32 salt, uint16 bidVersion)
+    /// @dev Computable by the bidder before submitting, which is the whole
+    ///      point: it depends only on values they already hold.
+    function bidCommitment(address bidder, uint256 quantity, uint16 maxPriceTick, bytes32 salt, uint16 bidVersion)
         public
         view
         returns (bytes32)
     {
         return keccak256(
             abi.encode(
-                BID_COMMITMENT_TYPEHASH, block.chainid, address(this), bidId, bidder, quantity, maxPriceTick, salt, bidVersion
+                BID_COMMITMENT_TYPEHASH, block.chainid, address(this), bidder, quantity, maxPriceTick, salt, bidVersion
             )
         );
     }
@@ -463,17 +509,37 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
         if (b.revealed) revert AlreadyRevealed();
         if (e.tick >= config.numTicks) revert BadTick();
 
+        // The proof is non-negotiable: it is what proves the committee actually
+        // attested something for this bid. Without it a caller could invent
+        // reveals, so a bad proof is a malformed call and still reverts.
         if (!MerkleProof.verifyCalldata(e.proof, revealRoot, revealLeaf(e.bidId, e.quantity, e.tick, e.salt))) {
-            revert CommitmentMismatch();
-        }
-        if (bidCommitment(e.bidId, b.bidder, e.quantity, e.tick, e.salt, e.bidVersion) != b.commitment) {
             revert CommitmentMismatch();
         }
 
         b.revealed = true;
+        processedBidCount += 1;
+
+        // A commitment mismatch is the BIDDER's problem, not the auction's.
+        //
+        // This used to revert, and that turned one bad bid into a dead auction:
+        // `finalize` requires every committed bid to be processed, so a bid
+        // that could never be processed meant the auction could never settle.
+        // Since `commitBid` cannot inspect a commitment - that is what makes a
+        // bid sealed - anyone could post `keccak256("junk")` with one wei of
+        // escrow and permanently halt any auction for the price of gas.
+        //
+        // Voiding instead of reverting removes that. The bid contributes no
+        // demand and its escrow is fully refundable through `claim`.
+        if (bidCommitment(b.bidder, e.quantity, e.tick, e.salt, e.bidVersion) != b.commitment) {
+            b.voided = true;
+            voidedBidCount += 1;
+            lastVoidAt = uint64(block.timestamp);
+            emit BidVoided(e.bidId, b.bidder);
+            return;
+        }
+
         b.quantity = e.quantity;
         b.tick = e.tick;
-        processedBidCount += 1;
 
         // Only bids that are actually eligible contribute demand. An undersized
         // bid, or one whose escrow does not cover its own maximum, is revealed
@@ -501,8 +567,51 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
     // Settlement
     // ---------------------------------------------------------------------
 
+    /// @notice Prove that a voided bid was in fact well-formed, and halt.
+    ///
+    /// Voiding a mismatched bid is what stops one junk commitment from killing
+    /// an auction. On its own, though, it would hand the committee a censorship
+    /// button: attest the wrong plaintext for a bidder you dislike and they are
+    /// quietly dropped while the auction settles without them.
+    ///
+    /// This closes that. The contract cannot tell a junk commitment from a
+    /// substituted plaintext - both are just a mismatch - but the *bidder* can,
+    /// because only they hold a preimage that matches what they posted.
+    /// Producing one proves the commitment was well-formed, which proves the
+    /// attested leaf was not theirs.
+    ///
+    /// The response is a halt, not a correction: a committee that attested one
+    /// wrong leaf has no claim to be trusted on the others. Everyone is
+    /// refunded through the normal `claim` path, and the signed root makes the
+    /// misbehaviour attributable afterwards.
+    ///
+    /// A griefer cannot use this. They have no preimage for a commitment they
+    /// made up, which is exactly why their bid was voided.
+    ///
+    /// Permissionless: the evidence stands on its own, whoever carries it.
+    function disputeVoid(uint32 bidId, uint256 quantity, uint16 tick, bytes32 salt, uint16 bidVersion)
+        external
+        inState(State.Revealing)
+    {
+        Bid storage b = bids[bidId];
+        if (!b.voided) revert NothingToClaim();
+        if (bidCommitment(b.bidder, quantity, tick, salt, bidVersion) != b.commitment) {
+            revert CommitmentMismatch();
+        }
+
+        state = State.Failed;
+        emit VoidDisputed(bidId, b.bidder);
+        emit AuctionFailed("committee attested a plaintext the bidder never committed to");
+    }
+
     /// @notice Compute the clearing price. Permissionless.
     function finalize() external inState(State.Revealing) {
+        // If anything was voided, settlement waits so a wronged bidder can
+        // produce their preimage first. Without this the committee could void a
+        // bid and finalize in the same block, leaving no window to dispute.
+        if (voidedBidCount > 0 && block.timestamp < lastVoidAt + VOID_DISPUTE_WINDOW) {
+            revert TooEarly();
+        }
         // Every committed bid must be accounted for. This is what turns
         // committee omission into a halt rather than a silent price change.
         if (processedBidCount != committedBidCount) revert RevealIncomplete(processedBidCount, committedBidCount);
@@ -548,7 +657,7 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
 
     function allocationOf(uint32 bidId) public view returns (uint256) {
         Bid storage b = bids[bidId];
-        if (state != State.Settled || !b.revealed) return 0;
+        if (state != State.Settled || !b.revealed || b.voided) return 0;
         if (!_isEligible(b, b.quantity, b.tick)) return 0;
         return ClearingPrice.allocationFor(clearing, b.quantity, b.tick);
     }

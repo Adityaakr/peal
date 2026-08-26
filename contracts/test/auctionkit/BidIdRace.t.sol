@@ -17,15 +17,20 @@ contract TestToken is ERC20 {
     }
 }
 
-/// @notice `bidCommitment` binds `bidId`, but a bidder only learns their `bidId`
-///         after `commitBid` returns. Both consequences of that are proved here.
+/// @notice Regression tests for two linked defects that are now fixed.
 ///
-/// These tests PASS, and that is the bad news: they assert the behaviour the
-/// contract has today, which is broken. They exist to pin the vulnerability so
-/// a fix has something to flip, and so it cannot regress silently afterwards.
+/// `bidCommitment` used to bind `bidId`, which a bidder could only learn after
+/// `commitBid` returned. Predicting it meant reading `committedBidCount()`
+/// first, so two wallets in the same block both committed to the same id and
+/// one of them was wrong.
 ///
-/// When the fix lands, both tests must be rewritten to assert the corrected
-/// behaviour - do not simply delete them.
+/// Worse, `processReveals` reverted on a commitment mismatch while `finalize`
+/// required every committed bid to be processed - so one unrevealable bid meant
+/// the auction could never settle. Since `commitBid` cannot inspect a sealed
+/// commitment, anyone could halt any auction with one wei of escrow.
+///
+/// These tests now assert the corrected behaviour and exist so it cannot
+/// regress.
 contract BidIdRaceTest is Test {
     SealedBidAuction impl;
     CommitteeRegistry registry;
@@ -75,7 +80,7 @@ contract BidIdRaceTest is Test {
 
         startTime = uint64(block.timestamp + 100);
         endTime = startTime + 1000;
-        revealDeadline = endTime + 1000;
+        revealDeadline = endTime + 4 hours;
     }
 
     function _open() internal returns (SealedBidAuction a) {
@@ -116,13 +121,15 @@ contract BidIdRaceTest is Test {
         a.openCommit();
     }
 
-    function _commitWithPredictedId(SealedBidAuction a, address who, uint256 qty, uint16 tick, uint32 predictedId)
+    function _commit(SealedBidAuction a, address who, uint256 qty, uint16 tick)
         internal
         returns (uint32 actualId)
     {
         uint256 escrow = AuctionMath.escrowFor(qty, RESERVE, TICK, tick, SALE_DEC);
         quote.mint(who, escrow);
-        bytes32 c = a.bidCommitment(predictedId, who, qty, tick, keccak256("salt"), 1);
+        // Computed from values the bidder already holds. No counter is read,
+        // so there is nothing to race.
+        bytes32 c = a.bidCommitment(who, qty, tick, keccak256("salt"), 1);
         vm.startPrank(who);
         quote.approve(address(a), escrow);
         actualId = a.commitBid(c, keccak256(abi.encode("ct", who)), escrow, new bytes32[](0));
@@ -142,36 +149,39 @@ contract BidIdRaceTest is Test {
         return x < y ? keccak256(abi.encode(x, y)) : keccak256(abi.encode(y, x));
     }
 
-    /// TWO bidders who both read `committedBidCount()` as 0 before either lands.
-    /// This is not exotic - it is what two wallets in the same block do.
-    function test_concurrentBiddersLoseTheRace() public {
+    /// Two bidders in the same block. Both commitments must remain valid
+    /// whichever order they land in.
+    function test_concurrentBiddersBothKeepValidCommitments() public {
         SealedBidAuction a = _open();
 
-        // Both read committedBidCount() == 0 and build a commitment for id 0.
-        uint32 aliceId = _commitWithPredictedId(a, alice, 10e18, 3, 0);
-        uint32 bobId = _commitWithPredictedId(a, bob, 10e18, 3, 0);
+        uint32 aliceId = _commit(a, alice, 10e18, 3);
+        uint32 bobId = _commit(a, bob, 10e18, 3);
 
         assertEq(aliceId, 0);
-        assertEq(bobId, 1, "bob landed at 1, but committed to 0");
+        assertEq(bobId, 1);
 
-        // Bob's posted commitment is for bidId 0; his actual bid is id 1.
-        SealedBidAuction.Bid memory stored = a.getBid(1);
-        bytes32 whatBobNeedsAtReveal = a.bidCommitment(1, bob, 10e18, 3, keccak256("salt"), 1);
-        assertTrue(stored.commitment != whatBobNeedsAtReveal, "bob's commitment should be unusable");
+        // Each stored commitment is exactly what the reveal will recompute,
+        // regardless of which id they landed on.
+        assertEq(
+            a.getBid(aliceId).commitment,
+            a.bidCommitment(alice, 10e18, 3, keccak256("salt"), 1),
+            "alice's commitment must survive the ordering"
+        );
+        assertEq(
+            a.getBid(bobId).commitment,
+            a.bidCommitment(bob, 10e18, 3, keccak256("salt"), 1),
+            "bob's commitment must survive the ordering"
+        );
     }
 
-    /// The consequence: one unrevealable bid halts the whole auction. Every
-    /// honest bidder is refunded, and the issuer sells nothing.
-    ///
-    /// A griefer needs one bid with a junk commitment and 1 wei of escrow.
-    /// `commitBid` cannot check a commitment - that is the point of a sealed
-    /// bid - so there is nothing to reject at commit time.
-    function test_oneJunkCommitmentBricksTheEntireAuction() public {
+    /// A junk commitment must cost only the griefer, and must not stop the
+    /// auction from settling.
+    function test_junkCommitmentIsVoidedAndTheAuctionStillSettles() public {
         SealedBidAuction a = _open();
 
-        _commitWithPredictedId(a, alice, 10e18, 3, 0);
+        _commit(a, alice, 10e18, 3);
 
-        // The griefer posts a commitment to nothing at all.
+        // The griefer posts a commitment to nothing at all, for one wei.
         quote.mint(griefer, 1);
         vm.startPrank(griefer);
         quote.approve(address(a), 1);
@@ -181,33 +191,51 @@ contract BidIdRaceTest is Test {
         vm.warp(endTime);
         a.closeCommit();
 
-        // The committee honestly reveals what it can: alice's bid. It cannot
-        // produce a preimage for the griefer's commitment, because none exists.
+        // The committee attests a leaf for BOTH bids - it must, since the root
+        // has to cover committedBidCount. For the junk bid there is no real
+        // plaintext, so whatever it attests simply will not match.
         bytes32 leafA = a.revealLeaf(0, 10e18, 3, keccak256("salt"));
-        bytes32 root = _hashPair(leafA, leafA);
+        bytes32 leafJunk = a.revealLeaf(1, 0, 0, bytes32(0));
+        bytes32 root = _hashPair(leafA, leafJunk);
         a.registerRevealRoot(root, 2, _signRoot(a, root, 2));
 
-        SealedBidAuction.RevealEntry[] memory entries = new SealedBidAuction.RevealEntry[](1);
-        bytes32[] memory proof = new bytes32[](1);
-        proof[0] = leafA;
+        SealedBidAuction.RevealEntry[] memory entries = new SealedBidAuction.RevealEntry[](2);
+        bytes32[] memory proofA = new bytes32[](1);
+        proofA[0] = leafJunk;
         entries[0] = SealedBidAuction.RevealEntry({
-            bidId: 0,
-            quantity: 10e18,
-            tick: 3,
-            salt: keccak256("salt"),
-            bidVersion: 1,
-            proof: proof
+            bidId: 0, quantity: 10e18, tick: 3, salt: keccak256("salt"), bidVersion: 1, proof: proofA
         });
+        bytes32[] memory proofJ = new bytes32[](1);
+        proofJ[0] = leafA;
+        entries[1] = SealedBidAuction.RevealEntry({
+            bidId: 1, quantity: 0, tick: 0, salt: bytes32(0), bidVersion: 1, proof: proofJ
+        });
+
+        vm.expectEmit(true, true, false, false);
+        emit SealedBidAuction.BidVoided(1, griefer);
         a.processReveals(entries);
 
-        // One bid short, forever. finalize() can never succeed.
-        vm.expectRevert();
+        assertTrue(a.getBid(1).voided, "junk bid should be voided");
+        assertFalse(a.getBid(0).voided, "alice's bid must be untouched");
+
+        // Settlement waits out the dispute window, which the griefer cannot
+        // use - they have no preimage for a commitment they invented.
+        vm.expectRevert(SealedBidAuction.TooEarly.selector);
         a.finalize();
 
-        // The auction dies on the timeout path. Funds are safe - this is
-        // denial of service, not theft - but nothing is ever sold.
-        vm.warp(revealDeadline);
-        a.failOnRevealTimeout();
-        assertEq(uint256(a.state()), uint256(SealedBidAuction.State.Failed));
+        vm.warp(block.timestamp + a.VOID_DISPUTE_WINDOW());
+
+        // The auction settles. This is the whole point.
+        a.finalize();
+        assertEq(uint256(a.state()), uint256(SealedBidAuction.State.Settled));
+        assertGt(a.allocationOf(0), 0, "alice should be allocated");
+        assertEq(a.allocationOf(1), 0, "a voided bid gets no allocation");
+
+        // The griefer gets their wei back - denial of service is gone, and so
+        // is any suggestion that voiding is confiscation.
+        vm.prank(griefer);
+        (uint256 tokens, uint256 refund) = a.claim(1);
+        assertEq(tokens, 0);
+        assertEq(refund, 1, "voided escrow is fully refundable");
     }
 }
