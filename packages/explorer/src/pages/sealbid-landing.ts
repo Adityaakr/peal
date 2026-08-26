@@ -50,21 +50,25 @@ function stepCard(s: Step): string {
   </div>`;
 }
 
-/** A bid as an open book shows it: fully legible, and therefore copyable. */
+/** A bid as an open book shows it: fully legible, and therefore copyable.
+ * Reuses .ml-pub-card so an open bid reads in the same visual language as an
+ * unencrypted transaction does on the mempool landing. */
 function openBid(qty: string, price: string, top = false): string {
-  return `<div class="sl-bid sl-bid-open${top ? ' sl-bid-top' : ''}">
-    <span class="sl-bid-qty">${qty}</span>
-    <span class="sl-bid-at">at</span>
-    <span class="sl-bid-price">${price}</span>
-    ${top ? '<span class="sl-bid-mark">read by everyone</span>' : ''}
+  return `<div class="ml-pub-card${top ? ' ml-pub-victim' : ''}">
+    <div class="ml-pub-top"><span class="ml-strong">${qty}</span><span class="ml-arrow">at</span><span class="ml-strong">${price} ${HOODI_DEMO.quoteSymbol}</span></div>
+    <div class="ml-pub-meta">${top ? 'top of book, and everyone can see it' : 'readable the moment it lands'}</div>
   </div>`;
 }
 
 /** The same bid as a commitment: an object you can count but not read. */
-function sealedBid(hash: string): string {
-  return `<div class="sl-bid sl-bid-sealed">
-    <span class="sl-bid-hash">${hash}</span>
-    <span class="sl-bid-hidden">quantity and price not published</span>
+function sealedBid(hash: string, escrow: string): string {
+  return `<div class="ml-sealed">
+    <div class="ml-sealed-top">
+      <span class="mono ml-hdr">&#x2B21; <b>${hash}</b></span>
+    </div>
+    <div class="ml-sealed-env mono">
+      <span>escrow ${escrow}</span><span>quantity ?</span><span>price ?</span>
+    </div>
   </div>`;
 }
 
@@ -127,49 +131,48 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
 
   root.innerHTML = `
 <div class="ml sl">
-  <section class="sl-hero">
-    <div class="ml-wrap">
-      <p class="ml-sec-kicker scroll-reveal">sealbid</p>
-      <h1 class="ml-h1 scroll-reveal">the auctioneer bids blind.</h1>
-      <p class="ml-sub scroll-reveal">
-        every bid is a commitment onchain. the seller cannot read the quantity or the price inside it,
-        and neither can another bidder. at close the whole book opens at once and settles at one price.
-      </p>
-      <div class="ml-hero-ctas scroll-reveal">
-        <a class="ml-cta" href="#/sealed-bid-auction">open the live auction</a>
-        <span class="ml-chip ml-chip-live">running on ${HOODI.name}, a testnet</span>
-      </div>
-
-      <div class="sl-stage scroll-reveal">
-        <div class="sl-col">
-          <div class="sl-col-head"><span class="sl-col-title">open book, today</span><span class="sl-col-note">every bid readable</span></div>
-          ${openBid('450,000', '1.70', true)}
-          ${openBid('300,000', '2.20')}
-          ${openBid('260,000', '1.20')}
-          <p class="sl-col-foot sl-col-foot-bad">the last bidder sees all of it, and only has to beat it by one tick.</p>
-        </div>
-        <div class="sl-col">
-          <div class="sl-col-head"><span class="sl-col-title">sealed book</span><span class="sl-col-note">commitments only</span></div>
-          ${sealedBid('0xca75e985…e0a436')}
-          ${sealedBid('0x03934b44…921716')}
-          ${sealedBid('0x6e6c7151…b88828')}
-          <p class="sl-col-foot">there is nothing to beat by one tick, because there is nothing to read.</p>
-        </div>
-      </div>
-      <p class="ml-thesis scroll-reveal">the sniper is not slower. <b>it is blind.</b></p>
+  <section class="ml-hero">
+    <p class="ml-kicker scroll-reveal">sealbid</p>
+    <h1 class="ml-h1 scroll-reveal">the auctioneer bids blind.</h1>
+    <p class="ml-sub scroll-reveal">
+      every bid is a commitment onchain. the seller cannot read the quantity or the price inside it,
+      and neither can another bidder. at close the whole book opens at once and settles at one price.
+    </p>
+    <div class="ml-hero-ctas scroll-reveal">
+      <a class="ml-btn ml-btn-dark" href="#/sealed-bid-auction">open the live auction</a>
+      <a class="ml-btn" href="${HOODI.explorer}/address/${HOODI_DEMO.auction}" target="_blank" rel="noopener">see it onchain</a>
     </div>
+
+    <div class="ml-stage scroll-reveal">
+      <div class="ml-col ml-col-public">
+        <div class="ml-col-head"><span class="ml-col-title">open book &middot; today</span><span class="ml-col-note">every bid readable</span></div>
+        ${openBid('450,000', '1.70', true)}
+        ${openBid('300,000', '2.20')}
+        ${openBid('260,000', '1.20')}
+        <div class="ml-micro">the last bidder reads all of it, and beats it by one tick</div>
+      </div>
+      <div class="ml-col ml-col-peal">
+        <div class="ml-col-head"><span class="ml-col-title">sealed book</span><span class="ml-col-note">commitments only</span></div>
+        ${sealedBid('0xca75e985…e0a436', '336,000')}
+        ${sealedBid('0x03934b44…921716', '660,000')}
+        ${sealedBid('0x6e6c7151…b88828', '765,000')}
+        <div class="ml-micro">nothing to beat by one tick, because there is nothing to read</div>
+      </div>
+    </div>
+
+    <p class="ml-thesis scroll-reveal">the sniper is not slower. <b>it is blind.</b></p>
   </section>
 
   <section class="ml-section">
     <div class="ml-wrap ml-stats scroll-reveal">
-      <div class="ml-stat"><b>1</b><span>transaction to bid<sup>1</sup></span></div>
-      <div class="ml-stat"><b>1</b><span>price everyone pays<sup>2</sup></span></div>
-      <div class="ml-stat"><b>3 of 5</b><span>committee threshold to open the book<sup>3</sup></span></div>
+      <div class="ml-stat"><div class="ml-stat-big">1<sup>1</sup></div><div class="ml-stat-small">transaction to bid. classic commit-reveal needs a second one from the bidder</div></div>
+      <div class="ml-stat"><div class="ml-stat-big">1<sup>2</sup></div><div class="ml-stat-small">price every winner pays, computed onchain from the revealed book</div></div>
+      <div class="ml-stat"><div class="ml-stat-big">3 of 5<sup>3</sup></div><div class="ml-stat-small">committee signatures needed before any bid opens</div></div>
     </div>
     <p class="ml-wrap ml-foot scroll-reveal">
-      ¹ commit only. classic commit-reveal needs a second transaction from the bidder.
-      ² uniform clearing price, computed onchain in <code>ClearingPrice.sol</code>.
-      ³ the demo committee's keys are published on purpose, see honest limits below.
+      ¹ commit only, <code>SealedBidAuction.commitBid</code> &middot;
+      ² uniform clearing price, <code>ClearingPrice.findClearingTick</code> &middot;
+      ³ the demo committee's keys are published on purpose, see honest limits below
     </p>
   </section>
 
@@ -234,7 +237,7 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
             { label: 'onchain', value: 'one 32 byte commitment' },
             { label: 'quantity and price', value: 'not published', tone: 'good' as const },
           ],
-          visual: sealedBid('0xca75e985…e0a436'),
+          visual: sealedBid('0xca75e985…e0a436', '336,000'),
         },
         {
           n: '2',
