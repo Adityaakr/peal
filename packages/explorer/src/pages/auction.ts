@@ -66,7 +66,24 @@ const CHAIN = {
   rpcUrls: { default: { http: [RPC] } },
 } as const;
 
-const pub = createPublicClient({ chain: CHAIN, transport: http(RPC) });
+// A public RPC will occasionally be slow or refuse. Bound the wait and retry
+// rather than letting a single hung request hold the page in "loading".
+// `batch` collapses the per-bid reads into one JSON-RPC call where the chain
+// has multicall3, which is most of what this page does per refresh.
+const pub = createPublicClient({
+  chain: CHAIN,
+  transport: http(RPC, { timeout: 12_000, retryCount: 2, retryDelay: 400 }),
+  batch: { multicall: { wait: 16 } },
+});
+
+/** viem errors carry the whole request body, which is unreadable in a banner.
+ * Keep the one line that tells a person what to do. */
+function briefly(e: unknown): string {
+  const err = e as { shortMessage?: string; details?: string; message?: string };
+  const m = err?.shortMessage ?? err?.details ?? err?.message ?? String(e);
+  const firstLine = m.split('\n')[0]!.trim();
+  return firstLine.length > 160 ? `${firstLine.slice(0, 160)}…` : firstLine;
+}
 
 /** Bids live in localStorage because the salt exists nowhere else.
  *
@@ -142,24 +159,52 @@ export function renderAuction(root: HTMLElement): Cleanup {
 
   root.innerHTML = `<section class="ak"><h1>Sealed-bid auction</h1><p class="ak-sub">Loading from ${esc(HOODI.name)}…</p></section>`;
 
+  /** Each read is independent on purpose.
+   *
+   * These used to share one try block, so a slow bid fetch also discarded the
+   * auction state and the balance, and the page fell back to its "cannot reach
+   * the chain" state while the chain was perfectly reachable. Now a partial
+   * failure keeps whatever did load, and only the missing part is reported. */
   async function refresh(): Promise<void> {
+    const failures: string[] = [];
+
     try {
       snap = await readAuction(pub, HOODI_DEMO.auction);
-      // Sealed bids are still public *objects* — the commitment, the escrow and
-      // the bidder are onchain. Showing them is what makes the guarantee legible:
-      // you can see a bid exists and see that its contents are not there.
+    } catch (e) {
+      failures.push(`auction state (${briefly(e)})`);
+    }
+
+    // Sealed bids are still public *objects*: the commitment, the escrow and
+    // the bidder are onchain. Showing them is what makes the guarantee legible.
+    // You can see a bid exists and see that its contents are not there.
+    try {
       bids = await readBids(pub, HOODI_DEMO.auction);
-      if (account) {
+    } catch (e) {
+      failures.push(`bids (${briefly(e)})`);
+    }
+
+    if (account) {
+      try {
         quoteBalance = (await pub.readContract({
           address: HOODI_DEMO.quoteToken,
           abi: DemoTokenAbi,
           functionName: 'balanceOf',
           args: [account],
         })) as bigint;
+      } catch (e) {
+        failures.push(`balance (${briefly(e)})`);
       }
-    } catch (e) {
-      status = `Could not reach ${HOODI.name}: ${(e as Error).message}`;
-      statusKind = 'error';
+    }
+
+    // Never overwrite a message the user is acting on, such as a wallet error
+    // or a bid confirmation, with a transient network note.
+    if (statusKind !== 'error' || status.startsWith('Could not load')) {
+      if (failures.length) {
+        status = `Could not load ${failures.join(', ')}. Retrying.`;
+        statusKind = 'error';
+      } else if (status.startsWith('Could not load')) {
+        status = '';
+      }
     }
     if (!stopped) draw();
   }
@@ -195,7 +240,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
       status = '';
       await refresh();
     } catch (e) {
-      status = (e as Error).message;
+      status = briefly(e);
       statusKind = 'error';
       draw();
     }
@@ -262,8 +307,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
       status = `Bid #${res.bidId} committed. Save your salt. Without it the bid cannot be revealed.`;
       statusKind = 'ok';
     } catch (e) {
-      const m = (e as Error).message ?? String(e);
-      status = m.length > 300 ? `${m.slice(0, 300)}…` : m;
+      status = briefly(e);
       statusKind = 'error';
     } finally {
       busy = false;
@@ -484,7 +528,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
           (short ? `<em class="ak-error">more than you hold</em>` : `<em>locked until settlement</em>`);
         escrowEl.className = short ? 'ak-escrow-box ak-escrow-short' : 'ak-escrow-box';
       } catch (e) {
-        escrowEl.innerHTML = `<span>Escrow</span><em class="ak-error">${esc((e as Error).message)}</em>`;
+        escrowEl.innerHTML = `<span>Escrow</span><em class="ak-error">${esc(briefly(e))}</em>`;
         escrowEl.className = 'ak-escrow-box ak-escrow-short';
       }
     };

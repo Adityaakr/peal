@@ -278,71 +278,91 @@ export interface CommittedBid {
   commitment: Hex;
   ciphertextHash: Hex;
   escrow: bigint;
+  /** Block the bid was committed in, recorded by the contract itself. */
   blockNumber: bigint;
-  txHash: Hex;
   /** Populated only once the auction has revealed. Before that these are not
-   * "unknown to this client" — they are unknown to everyone, which is the
+   * "unknown to this client" - they are unknown to everyone, which is the
    * product. */
   revealed: boolean;
   voided: boolean;
+  claimed: boolean;
   quantity: bigint;
   tick: number;
 }
 
 /**
- * Every bid committed to an auction, from chain events plus current storage.
+ * Every bid committed to an auction.
  *
- * Deliberately returns the sealed fields as `revealed: false` rather than
- * omitting them or filling in zeros that could be mistaken for real values. A
- * UI that renders 0 for a sealed quantity is lying about what it knows.
+ * Reads contract storage, deliberately, rather than `BidCommitted` logs.
+ *
+ * The log version scanned from block 0, which on a chain a few million blocks
+ * deep is a request no public RPC will finish - it timed out against Hoodi
+ * every time. Passing a start block would have hidden the problem rather than
+ * fixed it, because the caller would still have to know the deployment block
+ * and would still be one redeploy away from silently missing bids.
+ *
+ * Storage has no such failure mode. `committedBidCount` is authoritative, ids
+ * are dense from zero, and `getBid` already carries the commit block. The only
+ * thing logs offered on top was the transaction hash, which nothing here needs:
+ * a bidder's own transaction hash comes back from `submitBid` at the time they
+ * send it.
+ *
+ * Calls are issued in bounded waves so a large auction cannot fire hundreds of
+ * simultaneous requests at an RPC that will start refusing them.
  */
 export async function readBids(
   client: PublicClient,
   auction: Address,
-  fromBlock: bigint = 0n,
+  opts: { concurrency?: number } = {},
 ): Promise<CommittedBid[]> {
-  const logs = await client.getContractEvents({
-    address: auction,
-    abi: SealedBidAuctionAbi,
-    eventName: 'BidCommitted',
-    fromBlock,
-    toBlock: 'latest',
-  });
-
-  const out: CommittedBid[] = [];
-  for (const log of logs) {
-    const a = log.args as {
-      bidId?: number; bidder?: Address; commitment?: Hex;
-      ciphertextHash?: Hex; escrow?: bigint;
-    };
-    if (a.bidId === undefined) continue;
-
-    const stored = (await client.readContract({
+  const count = Number(
+    (await client.readContract({
       address: auction,
       abi: SealedBidAuctionAbi,
-      functionName: 'getBid',
-      args: [a.bidId],
-    })) as {
-      bidder: Address; commitment: Hex; ciphertextHash: Hex; escrow: bigint;
-      blockNumber: bigint; revealed: boolean; claimed: boolean; voided: boolean;
-      quantity: bigint; tick: number;
-    };
+      functionName: 'committedBidCount',
+    })) as number,
+  );
+  if (!count) return [];
 
-    out.push({
-      bidId: Number(a.bidId),
-      bidder: stored.bidder,
-      commitment: stored.commitment,
-      ciphertextHash: stored.ciphertextHash,
-      escrow: stored.escrow,
-      blockNumber: log.blockNumber ?? 0n,
-      txHash: log.transactionHash ?? ('0x' as Hex),
-      revealed: stored.revealed,
-      voided: stored.voided,
-      quantity: stored.quantity,
-      tick: stored.tick,
-    });
+  const concurrency = Math.max(1, opts.concurrency ?? 20);
+  const out: CommittedBid[] = [];
+
+  for (let start = 0; start < count; start += concurrency) {
+    const ids = Array.from(
+      { length: Math.min(concurrency, count - start) },
+      (_, k) => start + k,
+    );
+    const wave = await Promise.all(
+      ids.map(async (bidId) => {
+        const b = (await client.readContract({
+          address: auction,
+          abi: SealedBidAuctionAbi,
+          functionName: 'getBid',
+          args: [bidId],
+        })) as {
+          bidder: Address; commitment: Hex; ciphertextHash: Hex; escrow: bigint;
+          blockNumber: bigint; revealed: boolean; claimed: boolean; voided: boolean;
+          quantity: bigint; tick: number;
+        };
+        return {
+          bidId,
+          bidder: b.bidder,
+          commitment: b.commitment,
+          ciphertextHash: b.ciphertextHash,
+          escrow: b.escrow,
+          blockNumber: b.blockNumber,
+          revealed: b.revealed,
+          voided: b.voided,
+          claimed: b.claimed,
+          quantity: b.quantity,
+          tick: b.tick,
+        } satisfies CommittedBid;
+      }),
+    );
+    out.push(...wave);
   }
-  return out.sort((x, y) => x.bidId - y.bidId);
+
+  return out;
 }
 
 /** Demand per tick, from revealed bids only.
