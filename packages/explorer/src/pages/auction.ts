@@ -16,21 +16,32 @@
 // The page says so, in those words. Claiming bid-size privacy would need
 // shielded funding, which is not implemented.
 import {
-  AuctionState,
   HOODI,
   HOODI_DEMO,
   STATE_LABELS,
   allocationFor,
+  demandFromBids,
   findClearingTick,
   prepareBid,
   priceAt,
   priceLadder,
   readAuction,
+  readBids,
   submitBid,
   DemoTokenAbi,
   type AuctionSnapshot,
+  type CommittedBid,
   type PreparedBid,
 } from 'peal-auctionkit';
+import {
+  animateLadder,
+  animateWall,
+  attachTilt,
+  bidWallHtml,
+  ladderHtml,
+  type LadderRow,
+  type WallBid,
+} from '../auction-visuals';
 import {
   createPublicClient,
   createWalletClient,
@@ -123,6 +134,8 @@ export function renderAuction(root: HTMLElement): Cleanup {
   let account: Address | null = null;
   let snap: AuctionSnapshot | null = null;
   let quoteBalance = 0n;
+  let bids: CommittedBid[] = [];
+  let detachTilt: (() => void) | null = null;
   let status = '';
   let statusKind: 'info' | 'error' | 'ok' = 'info';
   let busy = false;
@@ -132,6 +145,10 @@ export function renderAuction(root: HTMLElement): Cleanup {
   async function refresh(): Promise<void> {
     try {
       snap = await readAuction(pub, HOODI_DEMO.auction);
+      // Sealed bids are still public *objects* — the commitment, the escrow and
+      // the bidder are onchain. Showing them is what makes the guarantee legible:
+      // you can see a bid exists and see that its contents are not there.
+      bids = await readBids(pub, HOODI_DEMO.auction);
       if (account) {
         quoteBalance = (await pub.readContract({
           address: HOODI_DEMO.quoteToken,
@@ -242,7 +259,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
         at: Math.floor(Date.now() / 1000),
       });
 
-      status = `Bid #${res.bidId} committed. Save your salt — without it the bid cannot be revealed.`;
+      status = `Bid #${res.bidId} committed. Save your salt. Without it the bid cannot be revealed.`;
       statusKind = 'ok';
     } catch (e) {
       const m = (e as Error).message ?? String(e);
@@ -265,115 +282,186 @@ export function renderAuction(root: HTMLElement): Cleanup {
 
   function draw(): void {
     if (!snap) {
-      root.innerHTML = `<section class="ak"><h1>Sealed-bid auction</h1>
-        <p class="ak-status ak-error">${esc(status || 'Loading…')}</p></section>`;
+      root.innerHTML = `<section class="ak"><div class="ak-hero"><h1>Sealed-bid auction</h1>
+        <p class="ak-status ak-error">${esc(status || 'Reading the chain…')}</p></div></section>`;
       return;
     }
     const c = snap.config;
     const now = BigInt(Math.floor(Date.now() / 1000));
     const ladder = priceLadder(c);
-    const mine = loadBids().filter(
-      (b) => b.auction.toLowerCase() === HOODI_DEMO.auction.toLowerCase() &&
-        (!account || b.bidder.toLowerCase() === account.toLowerCase()),
+    const saved = loadBids().filter(
+      (b) => b.auction.toLowerCase() === HOODI_DEMO.auction.toLowerCase(),
+    );
+    const mineIds = new Set(
+      saved.filter((b) => !account || b.bidder.toLowerCase() === account.toLowerCase()).map((b) => b.bidId),
     );
 
-    // Predicted outcome, from the bidder's OWN saved bids only. The page cannot
-    // know anyone else's until the auction closes — that is the product — so
-    // this is explicitly labelled as a partial view, not a leaderboard.
-    let prediction = '';
-    if (snap.state === AuctionState.Settled && mine.length) {
-      const rows = mine.map((b) => {
-        const alloc = pub && snap!.clearingPrice > 0n
-          ? allocationFor(
-              findClearingTick(
-                Array.from({ length: c.numTicks }, (_, t) =>
-                  mine.filter((x) => x.maxPriceTick === t).reduce((s, x) => s + BigInt(x.quantity), 0n)),
-                c.totalSupply,
-              ),
-              BigInt(b.quantity),
-              b.maxPriceTick,
-            )
-          : 0n;
-        return `<li>Bid #${b.bidId}: settled — check <code>allocationOf(${b.bidId})</code> onchain (local estimate ${fmt(alloc, c.saleDecimals)})</li>`;
-      });
-      prediction = `<ul class="ak-list">${rows.join('')}</ul>`;
-    }
+    // Demand is only computable once every bid is revealed or voided. Before
+    // that `demandFromBids` returns null and the ladder renders as sealed —
+    // never as zeros, which a reader could mistake for "nobody bid".
+    const demand = demandFromBids(bids, c.numTicks);
+    const clearing = demand ? findClearingTick(demand, c.totalSupply) : null;
+
+    const wallBids: WallBid[] = bids.map((b) => ({
+      bidId: b.bidId,
+      bidder: b.bidder,
+      commitment: b.commitment,
+      escrow: fmt(b.escrow, c.quoteDecimals, 2),
+      sealed: !b.revealed && !b.voided,
+      voided: b.voided,
+      isMine: mineIds.has(b.bidId) || (!!account && b.bidder.toLowerCase() === account.toLowerCase()),
+      quantity: b.revealed ? fmt(b.quantity, c.saleDecimals, 2) : undefined,
+      price: b.revealed ? fmt(priceAt(c.reservePrice, c.tickSize, b.tick), c.quoteDecimals) : undefined,
+      allocation:
+        clearing && b.revealed && !b.voided
+          ? fmt(allocationFor(clearing, b.quantity, b.tick), c.saleDecimals, 2)
+          : undefined,
+    }));
+
+    const rows: LadderRow[] | null =
+      demand && clearing
+        ? ladder.map((l) => ({
+            tick: l.tick,
+            price: fmt(l.price, c.quoteDecimals),
+            demand: Number(formatUnits(demand[l.tick] ?? 0n, c.saleDecimals)),
+            isClearing: clearing.cleared && clearing.clearingTick === l.tick,
+          }))
+        : null;
+
+    const sealedCount = bids.filter((b) => !b.revealed && !b.voided).length;
+    const totalEscrow = bids.reduce((s2, b) => s2 + b.escrow, 0n);
 
     root.innerHTML = `
 <section class="ak">
-  <header class="ak-head">
-    <div>
-      <h1>Sealed-bid auction</h1>
-      <p class="ak-sub">
-        Live on <a href="${HOODI.explorer}/address/${HOODI_DEMO.auction}" target="_blank" rel="noopener">${esc(HOODI.name)}</a>
-        · <code>${esc(truncMiddle(HOODI_DEMO.auction, 8, 6))}</code>
+  <div class="ak-hero">
+    <div class="ak-hero-copy">
+      <div class="ak-eyebrow">
+        <span class="ak-live-dot"></span> Live on ${esc(HOODI.name)}
+      </div>
+      <h1>Bids stay sealed<br/>until the auction closes.</h1>
+      <p class="ak-lede">
+        Every bid below is real and onchain right now. You can see that each one <em>exists</em>,
+        and that what is inside it is not there to read. Not by us, not by the issuer, not by
+        anyone. At close they are revealed together and settle at one uniform price.
       </p>
+      <div class="ak-hero-meta">
+        <a href="${HOODI.explorer}/address/${HOODI_DEMO.auction}" target="_blank" rel="noopener">
+          <code>${esc(truncMiddle(HOODI_DEMO.auction, 8, 6))}</code></a>
+        <span class="ak-state ak-state-${snap.state}">${esc(STATE_LABELS[snap.state] ?? String(snap.state))}</span>
+      </div>
     </div>
-    <div class="ak-state ak-state-${snap.state}">${esc(STATE_LABELS[snap.state] ?? String(snap.state))}</div>
-  </header>
+    <div class="ak-hero-vis" id="ak-hero-vis">
+      <div class="ak-vault-3d">
+        <div class="ak-vault-face ak-vf-front">
+          <div class="ak-vault-lock"></div>
+          <div class="ak-vault-count">${bids.length}</div>
+          <div class="ak-vault-label">${bids.length === 1 ? 'sealed bid' : 'sealed bids'}</div>
+        </div>
+        <div class="ak-vault-face ak-vf-back"></div>
+        <div class="ak-vault-face ak-vf-left"></div>
+        <div class="ak-vault-face ak-vf-right"></div>
+        <div class="ak-vault-face ak-vf-top"></div>
+        <div class="ak-vault-face ak-vf-bottom"></div>
+      </div>
+      <div class="ak-vault-glow"></div>
+    </div>
+  </div>
 
   <div class="ak-grid">
-    <div class="ak-card"><span>For sale</span><strong>${fmt(c.totalSupply, c.saleDecimals, 0)} ${esc(HOODI_DEMO.saleSymbol)}</strong></div>
-    <div class="ak-card"><span>Reserve</span><strong>${fmt(c.reservePrice, c.quoteDecimals)} ${esc(HOODI_DEMO.quoteSymbol)}</strong></div>
-    <div class="ak-card"><span>Bids committed</span><strong>${snap.committedBidCount}</strong></div>
-    <div class="ak-card"><span>${snap.biddingOpen ? 'Bidding closes in' : 'Bidding'}</span><strong>${esc(countdown(c.endTime, now))}</strong></div>
+    <div class="ak-card"><span>For sale</span><strong>${fmt(c.totalSupply, c.saleDecimals, 0)}</strong><em>${esc(HOODI_DEMO.saleSymbol)}</em></div>
+    <div class="ak-card"><span>Reserve price</span><strong>${fmt(c.reservePrice, c.quoteDecimals)}</strong><em>${esc(HOODI_DEMO.quoteSymbol)}</em></div>
+    <div class="ak-card"><span>Bids sealed</span><strong>${sealedCount}</strong><em>of ${bids.length}</em></div>
+    <div class="ak-card"><span>Escrow locked</span><strong>${fmt(totalEscrow, c.quoteDecimals, 0)}</strong><em>${esc(HOODI_DEMO.quoteSymbol)}</em></div>
+    <div class="ak-card ak-card-time"><span>${snap.biddingOpen ? 'Closes in' : 'Bidding'}</span><strong>${esc(countdown(c.endTime, now))}</strong><em>${snap.biddingOpen ? '' : 'ended'}</em></div>
   </div>
-
-  <div class="ak-privacy">
-    <strong>What is hidden, and what is not.</strong>
-    Your quantity and price are hidden until the auction closes — the chain sees only a commitment hash.
-    Your <em>escrow</em> is not: it is a visible token transfer of quantity × your maximum price.
-    Nobody can separate those two factors, but the amount itself is public.
-    This is not bid-size privacy, and AuctionKit does not claim it is.
-  </div>
-
-  ${account
-    ? `<div class="ak-acct">Connected <code>${esc(truncMiddle(account, 6, 4))}</code>
-         · ${fmt(quoteBalance, c.quoteDecimals, 2)} ${esc(HOODI_DEMO.quoteSymbol)}</div>`
-    : `<button class="ak-btn ak-primary" id="ak-connect">Connect wallet</button>`}
 
   ${status ? `<p class="ak-status ak-${statusKind}">${esc(status)}</p>` : ''}
 
-  ${account && snap.biddingOpen ? `
-  <form class="ak-form" id="ak-form">
-    <label>Quantity (${esc(HOODI_DEMO.saleSymbol)})
-      <input id="ak-qty" type="text" inputmode="decimal" value="100" autocomplete="off" />
-    </label>
-    <label>Maximum price you will pay
-      <select id="ak-tick">
-        ${ladder.map((l) => `<option value="${l.tick}"${l.tick === 5 ? ' selected' : ''}>${fmt(l.price, c.quoteDecimals)} ${esc(HOODI_DEMO.quoteSymbol)}</option>`).join('')}
-      </select>
-    </label>
-    <p class="ak-hint" id="ak-escrow"></p>
-    <button class="ak-btn ak-primary" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Working…' : 'Place sealed bid'}</button>
-    <p class="ak-hint">You pay the <em>clearing</em> price, never your maximum. Bidding your true value cannot make you overpay.</p>
-  </form>` : ''}
+  <div class="ak-cols">
+    <div class="ak-col-main">
+      <h2 class="ak-h2">The wall <span class="ak-h2-note">every bid, live from chain</span></h2>
+      <div id="ak-wall-scene" class="ak-scene">${bidWallHtml(wallBids, HOODI_DEMO.quoteSymbol, HOODI_DEMO.saleSymbol)}</div>
 
-  ${account && !snap.biddingOpen && snap.state === AuctionState.CommitOpen
-    ? `<p class="ak-status ak-info">Bidding has ended for this auction.</p>` : ''}
+      <h2 class="ak-h2">Demand ladder <span class="ak-h2-note">${rows ? 'revealed' : 'sealed'}</span></h2>
+      <div id="ak-ladder-scene">${ladderHtml(rows, ladder.map((l) => ({ tick: l.tick, price: fmt(l.price, c.quoteDecimals) })))}</div>
+      ${clearing?.cleared
+        ? `<p class="ak-clearing">Cleared at <strong>${fmt(priceAt(c.reservePrice, c.tickSize, clearing.clearingTick), c.quoteDecimals)} ${esc(HOODI_DEMO.quoteSymbol)}</strong>
+             · ${fmt(clearing.supplySold, c.saleDecimals, 0)} ${esc(HOODI_DEMO.saleSymbol)} sold.
+             Everyone who won pays this price, not their own maximum.</p>`
+        : ''}
+    </div>
 
-  ${mine.length ? `
-  <h2>Your bids</h2>
-  <p class="ak-hint">Stored in this browser only. The <strong>salt</strong> exists nowhere else — lose it and the bid cannot be revealed, and you get a refund instead of an allocation.</p>
-  <table class="ak-table">
-    <thead><tr><th>#</th><th>Quantity</th><th>Max price</th><th>Escrow</th><th>Tx</th></tr></thead>
-    <tbody>${mine.map((b) => `<tr>
-      <td>${b.bidId}</td>
-      <td>${fmt(BigInt(b.quantity), c.saleDecimals, 2)}</td>
-      <td>${fmt(priceAt(c.reservePrice, c.tickSize, b.maxPriceTick), c.quoteDecimals)}</td>
-      <td>${fmt(BigInt(b.escrow), c.quoteDecimals, 2)}</td>
-      <td><a href="${HOODI.explorer}/tx/${b.txHash}" target="_blank" rel="noopener">${esc(truncMiddle(b.txHash, 6, 4))}</a></td>
-    </tr>`).join('')}</tbody>
-  </table>
-  <button class="ak-btn" id="ak-download">Download bids + salts</button>
-  ${prediction}` : ''}
+    <aside class="ak-col-side">
+      <div class="ak-panel">
+        <h3>Place a sealed bid</h3>
+        ${account
+          ? `<div class="ak-acct"><span class="ak-live-dot"></span><code>${esc(truncMiddle(account, 6, 4))}</code>
+               <b>${fmt(quoteBalance, c.quoteDecimals, 2)} ${esc(HOODI_DEMO.quoteSymbol)}</b></div>`
+          : `<button class="ak-btn ak-primary ak-wide" id="ak-connect">Connect wallet</button>`}
+
+        ${account && snap.biddingOpen ? `
+        <form class="ak-form" id="ak-form">
+          <label>Quantity <span>${esc(HOODI_DEMO.saleSymbol)}</span>
+            <input id="ak-qty" type="text" inputmode="decimal" value="100" autocomplete="off" />
+          </label>
+          <label>Maximum price you will pay
+            <select id="ak-tick">
+              ${ladder.map((l) => `<option value="${l.tick}"${l.tick === 5 ? ' selected' : ''}>${fmt(l.price, c.quoteDecimals)} ${esc(HOODI_DEMO.quoteSymbol)}</option>`).join('')}
+            </select>
+          </label>
+          <div class="ak-escrow-box" id="ak-escrow"></div>
+          <button class="ak-btn ak-primary ak-wide" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Working…' : 'Seal and commit'}</button>
+          <p class="ak-hint">You pay the <em>clearing</em> price, never your maximum. Bidding your true value cannot make you overpay.</p>
+        </form>` : ''}
+        ${account && !snap.biddingOpen ? `<p class="ak-hint">Bidding is closed for this auction.</p>` : ''}
+      </div>
+
+      <div class="ak-panel ak-panel-warn">
+        <h3>What is hidden, and what is not</h3>
+        <ul class="ak-facts">
+          <li><b>Hidden</b> until close: your quantity and your price. The chain holds one hash.</li>
+          <li><b>Public</b> immediately: your escrow, a token transfer of quantity times max price.
+            Nobody can separate those two factors, but the amount itself is visible.</li>
+        </ul>
+        <p>This is not bid-size privacy, and AuctionKit does not claim it is. That would need shielded funding.</p>
+      </div>
+
+      ${saved.length ? `
+      <div class="ak-panel">
+        <h3>Your bids <span class="ak-h2-note">this browser</span></h3>
+        <p class="ak-hint">The <strong>salt</strong> exists nowhere else. Lose it and your bid cannot be revealed, so you get a refund instead of an allocation.</p>
+        <table class="ak-table">
+          <thead><tr><th>#</th><th>Qty</th><th>Max</th><th>Tx</th></tr></thead>
+          <tbody>${saved.map((b) => `<tr>
+            <td>${b.bidId}</td>
+            <td>${fmt(BigInt(b.quantity), c.saleDecimals, 2)}</td>
+            <td>${fmt(priceAt(c.reservePrice, c.tickSize, b.maxPriceTick), c.quoteDecimals)}</td>
+            <td><a href="${HOODI.explorer}/tx/${b.txHash}" target="_blank" rel="noopener">${esc(truncMiddle(b.txHash, 5, 4))}</a></td>
+          </tr>`).join('')}</tbody>
+        </table>
+        <button class="ak-btn ak-wide" id="ak-download">Download bids + salts</button>
+      </div>` : ''}
+    </aside>
+  </div>
 
   <p class="ak-foot">
-    Testnet demo. The reveal committee's signing keys are <strong>publicly derivable</strong>
-    (see <code>DeployDemoAuction.s.sol</code>) — it is a prop, not custody.
+    Testnet demo on ${esc(HOODI.name)}. The reveal committee's signing keys are
+    <strong>publicly derivable</strong> (see <code>DeployDemoAuction.s.sol</code>), so it is a prop, not custody.
     Implementation <code>${esc(truncMiddle(HOODI.auctionImplementation, 8, 6))}</code>.
   </p>
 </section>`;
+
+    detachTilt?.();
+    const heroVis = root.querySelector<HTMLElement>('#ak-hero-vis');
+    const wallScene = root.querySelector<HTMLElement>('#ak-wall-scene');
+    const ladderScene = root.querySelector<HTMLElement>('#ak-ladder-scene');
+    if (wallScene) {
+      const d1 = attachTilt(wallScene);
+      const d2 = heroVis ? attachTilt(heroVis) : () => {};
+      detachTilt = () => { d1(); d2(); };
+      animateWall(wallScene);
+    }
+    if (ladderScene) animateLadder(ladderScene);
 
     root.querySelector('#ak-connect')?.addEventListener('click', () => void connect());
     root.querySelector('#ak-download')?.addEventListener('click', downloadBids);
@@ -383,21 +471,21 @@ export function renderAuction(root: HTMLElement): Cleanup {
     const escrowEl = root.querySelector<HTMLElement>('#ak-escrow');
 
     const updateEscrow = (): void => {
-      if (!qty || !tickSel || !escrowEl || !snap) return;
+      if (!qty || !tickSel || !escrowEl || !snap || !account) return;
       try {
         const q = parseUnits(qty.value || '0', snap.config.saleDecimals);
-        const t = Number(tickSel.value);
         const bid = prepareBid({
           cfg: snap.config, chainId: HOODI.chainId, auction: HOODI_DEMO.auction,
-          bidder: account!, quantity: q, maxPriceTick: t,
+          bidder: account, quantity: q, maxPriceTick: Number(tickSel.value),
         });
-        escrowEl.textContent =
-          `Escrow: ${fmt(bid.escrow, snap.config.quoteDecimals, 2)} ${HOODI_DEMO.quoteSymbol}` +
-          (bid.escrow > quoteBalance ? ' — more than you hold' : '');
-        escrowEl.className = bid.escrow > quoteBalance ? 'ak-hint ak-error' : 'ak-hint';
+        const short = bid.escrow > quoteBalance;
+        escrowEl.innerHTML =
+          `<span>Escrow</span><b>${fmt(bid.escrow, snap.config.quoteDecimals, 2)} ${esc(HOODI_DEMO.quoteSymbol)}</b>` +
+          (short ? `<em class="ak-error">more than you hold</em>` : `<em>locked until settlement</em>`);
+        escrowEl.className = short ? 'ak-escrow-box ak-escrow-short' : 'ak-escrow-box';
       } catch (e) {
-        escrowEl.textContent = (e as Error).message;
-        escrowEl.className = 'ak-hint ak-error';
+        escrowEl.innerHTML = `<span>Escrow</span><em class="ak-error">${esc((e as Error).message)}</em>`;
+        escrowEl.className = 'ak-escrow-box ak-escrow-short';
       }
     };
     qty?.addEventListener('input', updateEscrow);
@@ -415,6 +503,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
 
   return () => {
     stopped = true;
+    detachTilt?.();
     window.clearInterval(timer);
   };
 }

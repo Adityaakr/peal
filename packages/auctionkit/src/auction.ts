@@ -271,3 +271,90 @@ export async function submitBid(args: {
 
   return { approvalTx, commitTx, bidId: Number((mine.args as { bidId: number }).bidId) };
 }
+
+export interface CommittedBid {
+  bidId: number;
+  bidder: Address;
+  commitment: Hex;
+  ciphertextHash: Hex;
+  escrow: bigint;
+  blockNumber: bigint;
+  txHash: Hex;
+  /** Populated only once the auction has revealed. Before that these are not
+   * "unknown to this client" — they are unknown to everyone, which is the
+   * product. */
+  revealed: boolean;
+  voided: boolean;
+  quantity: bigint;
+  tick: number;
+}
+
+/**
+ * Every bid committed to an auction, from chain events plus current storage.
+ *
+ * Deliberately returns the sealed fields as `revealed: false` rather than
+ * omitting them or filling in zeros that could be mistaken for real values. A
+ * UI that renders 0 for a sealed quantity is lying about what it knows.
+ */
+export async function readBids(
+  client: PublicClient,
+  auction: Address,
+  fromBlock: bigint = 0n,
+): Promise<CommittedBid[]> {
+  const logs = await client.getContractEvents({
+    address: auction,
+    abi: SealedBidAuctionAbi,
+    eventName: 'BidCommitted',
+    fromBlock,
+    toBlock: 'latest',
+  });
+
+  const out: CommittedBid[] = [];
+  for (const log of logs) {
+    const a = log.args as {
+      bidId?: number; bidder?: Address; commitment?: Hex;
+      ciphertextHash?: Hex; escrow?: bigint;
+    };
+    if (a.bidId === undefined) continue;
+
+    const stored = (await client.readContract({
+      address: auction,
+      abi: SealedBidAuctionAbi,
+      functionName: 'getBid',
+      args: [a.bidId],
+    })) as {
+      bidder: Address; commitment: Hex; ciphertextHash: Hex; escrow: bigint;
+      blockNumber: bigint; revealed: boolean; claimed: boolean; voided: boolean;
+      quantity: bigint; tick: number;
+    };
+
+    out.push({
+      bidId: Number(a.bidId),
+      bidder: stored.bidder,
+      commitment: stored.commitment,
+      ciphertextHash: stored.ciphertextHash,
+      escrow: stored.escrow,
+      blockNumber: log.blockNumber ?? 0n,
+      txHash: log.transactionHash ?? ('0x' as Hex),
+      revealed: stored.revealed,
+      voided: stored.voided,
+      quantity: stored.quantity,
+      tick: stored.tick,
+    });
+  }
+  return out.sort((x, y) => x.bidId - y.bidId);
+}
+
+/** Demand per tick, from revealed bids only.
+ *
+ * Returns null while any bid is still sealed: a partial demand curve invites
+ * the reader to treat it as the real one, and before the close it is not just
+ * incomplete but structurally unknowable. */
+export function demandFromBids(bids: CommittedBid[], numTicks: number): bigint[] | null {
+  if (!bids.length || bids.some((b) => !b.revealed && !b.voided)) return null;
+  const demand = new Array<bigint>(numTicks).fill(0n);
+  for (const b of bids) {
+    if (b.revealed && !b.voided && b.tick < numTicks) demand[b.tick]! += b.quantity;
+  }
+  return demand;
+}
