@@ -2,6 +2,7 @@ import './style.css';
 import { resolveSeal } from './api';
 import { renderHome } from './pages/home';
 import { renderAuction } from './pages/auction';
+import { renderSealbidLanding } from './pages/sealbid-landing';
 import { renderCondition } from './pages/condition';
 import { renderExecution } from './pages/execution';
 import { renderLanding } from './pages/landing';
@@ -85,6 +86,10 @@ function route(): void {
   } else if (match) {
     cleanup = renderCondition(root, decodeURIComponent(match[1]));
   } else if (hash === '#/auction') {
+    // Mirrors the mempool split: #/auction is the landing, the product page
+    // lives at its own route. See main.ts's #/mempool vs #/encrypted-mempool.
+    cleanup = renderSealbidLanding(root);
+  } else if (hash === '#/sealed-bid-auction') {
     cleanup = renderAuction(root);
   } else if (hash === '#/execution') {
     cleanup = renderExecution(root);

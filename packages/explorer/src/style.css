@@ -4166,3 +4166,72 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 .ak-face-recovered { background: repeating-linear-gradient(115deg, var(--red-weak) 0 6px, #fff 6px 13px); }
 .ak-face-recovered .ak-seal-badge { color: var(--red-text); background: var(--red-weak); border-color: var(--red-border); }
 .ak-recovered-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); line-height: 1.45; }
+
+/* ---------- sealbid landing (/auction) ----------
+   Reuses the mempool landing's structural classes (.ml-section, .ml-scard,
+   .ml-ledger, .ml-chip-*) rather than cloning them. Only the split-book stage
+   and the before/now cards are new, so only those carry the .sl- prefix. */
+
+.sl-hero { padding: 56px 0 40px; }
+
+.sl-stage {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 34px;
+}
+@media (max-width: 720px) { .sl-stage { grid-template-columns: 1fr; } }
+.sl-col { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 14px; }
+.sl-col-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; gap: 8px; }
+.sl-col-title { font-size: 13px; font-weight: 500; }
+.sl-col-note { font-size: 11px; color: var(--muted); }
+.sl-col-foot { font-size: 12px; color: var(--muted); margin: 12px 0 0; line-height: 1.5; }
+.sl-col-foot-bad { color: var(--red-text); }
+
+.sl-bid {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; margin-bottom: 8px;
+  font-size: 13px;
+}
+.sl-bid:last-of-type { margin-bottom: 0; }
+.sl-bid-open { background: var(--red-weak); border-color: var(--red-border); }
+.sl-bid-top { box-shadow: inset 2px 0 0 var(--red); }
+.sl-bid-qty { font-weight: 500; }
+.sl-bid-at { color: var(--muted); font-size: 12px; }
+.sl-bid-price { font-weight: 500; }
+.sl-bid-mark { margin-left: auto; font-size: 11px; color: var(--red-text); }
+.sl-bid-sealed {
+  background: repeating-linear-gradient(115deg, var(--accent-weak) 0 6px, #fff 6px 13px);
+  border-color: var(--accent-border); flex-direction: column; align-items: flex-start; gap: 3px;
+}
+.sl-bid-hash { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+.sl-bid-hidden { font-size: 11px; color: var(--muted); }
+
+.sl-escrow { font-size: 18px; font-weight: 500; }
+.sl-escrow span { font-size: 12px; color: var(--muted); }
+.sl-root, .sl-clearing {
+  font-size: 12px; padding: 8px 12px; border-radius: 8px; text-align: center;
+  border: 1px solid var(--accent-border); background: var(--accent-weak); color: var(--accent);
+}
+.sl-clearing { border-color: #bbf7d0; background: var(--green-weak); color: var(--green); }
+
+.sl-cases-sub { margin-bottom: 26px; }
+.sl-cases { display: grid; gap: 14px; }
+.sl-case { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 16px 18px; }
+.sl-case-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.sl-case-title { font-size: 15px; font-weight: 500; margin: 0; }
+.sl-case-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 720px) { .sl-case-split { grid-template-columns: 1fr; } }
+.sl-case-col { border-radius: 8px; padding: 12px 13px; }
+.sl-case-col p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--muted); }
+.sl-case-label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+.sl-case-before { background: var(--red-weak); border: 1px solid var(--red-border); }
+.sl-case-before .sl-case-label { color: var(--red-text); }
+.sl-case-now { background: var(--accent-weak); border: 1px solid var(--accent-border); }
+.sl-case-now .sl-case-label { color: var(--accent); }
+
+.sl-limits { display: grid; gap: 12px; }
+.sl-limit { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start;
+  border: 1px solid var(--border); border-radius: 10px; background: #fff; padding: 14px 16px; }
+.sl-limit p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.sl-limit b { color: var(--text); font-weight: 500; }
+
+.sl-cta-band { text-align: center; }
+.sl-cta-band .ml-hero-ctas { justify-content: center; }

@@ -1,0 +1,328 @@
+// SealBid: the landing page for sealed-bid auctions.
+//
+// Modelled on mempool-landing.ts, and it borrows that page's structural CSS
+// (.ml-section, .ml-scard, .ml-ledger, .ml-chip-*) rather than cloning 200
+// lines of near-identical rules. Only what is genuinely new to this page gets
+// an .sl- prefix: the split-book stage and the before/now cards.
+//
+// One editorial rule governs every claim below, and it is not decoration:
+// **the page may only say what the deployed contracts actually do today.**
+// Slice 6, real Peal encryption, is not wired into the auction yet
+// (packages/explorer/src/pages/auction.ts:358 still stands in a placeholder
+// ciphertext hash). So this page describes a salted commitment scheme, which is
+// what is live, and marks threshold encryption as build. Claiming the sealed
+// bids are encrypted today would be the one lie that costs the product its
+// credibility with the exact reader it wants.
+import { mountScrollReveal } from '../reveal';
+import { HOODI, HOODI_DEMO } from 'peal-auctionkit';
+
+type Cleanup = () => void;
+
+type Row = { label: string; value: string; tone?: 'bad' | 'good' | 'link' };
+type Step = {
+  n: string;
+  danger?: boolean;
+  title: string;
+  chip: string;
+  chipTone?: 'red' | 'blue' | 'green';
+  body: string;
+  rows: Row[];
+  visual: string;
+};
+
+function ledgerRow(r: Row): string {
+  const tone = r.tone ? ` ml-lrow-${r.tone}` : '';
+  return `<div class="ml-lrow"><span class="ml-lrow-label">${r.label}</span><span class="ml-lrow-value${tone}">${r.value}</span></div>`;
+}
+
+function stepCard(s: Step): string {
+  const tone = s.chipTone || (s.danger ? 'red' : 'blue');
+  return `<div class="ml-scard">
+    <span class="ml-scard-num${s.danger ? ' ml-scard-num-danger' : ''}">${s.n}</span>
+    <div class="ml-scard-body${s.danger ? ' ml-scard-body-danger' : ''}">
+      <div class="ml-scard-visual">${s.visual}</div>
+      <div class="ml-scard-main">
+        <div class="ml-scard-head"><h3 class="ml-scard-title">${s.title}</h3><span class="ml-scard-chip ml-chip-${tone}">${s.chip}</span></div>
+        <p class="ml-scard-copy">${s.body}</p>
+        <div class="ml-ledger">${s.rows.map(ledgerRow).join('')}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/** A bid as an open book shows it: fully legible, and therefore copyable. */
+function openBid(qty: string, price: string, top = false): string {
+  return `<div class="sl-bid sl-bid-open${top ? ' sl-bid-top' : ''}">
+    <span class="sl-bid-qty">${qty}</span>
+    <span class="sl-bid-at">at</span>
+    <span class="sl-bid-price">${price}</span>
+    ${top ? '<span class="sl-bid-mark">read by everyone</span>' : ''}
+  </div>`;
+}
+
+/** The same bid as a commitment: an object you can count but not read. */
+function sealedBid(hash: string): string {
+  return `<div class="sl-bid sl-bid-sealed">
+    <span class="sl-bid-hash">${hash}</span>
+    <span class="sl-bid-hidden">quantity and price not published</span>
+  </div>`;
+}
+
+const USE_CASES: { title: string; before: string; now: string; chip?: string }[] = [
+  {
+    title: 'onchain name auctions',
+    before:
+      'ENS ran a real sealed-bid auction in 2017. it took two transactions, commit and then reveal. bidders who lost their salt or missed the reveal window forfeited their deposit, and the mechanism was retired.',
+    now: 'the reveal is driven by a committee against a signed root, not by the bidder coming back. one commit is the bidder’s whole job.',
+    chip: 'build',
+  },
+  {
+    title: 'token launches',
+    before:
+      'a fixed-price sale is a gas race that resolves in one block, decided by whoever pays most for priority. a descending auction rewards waiting, so the price you discover is the price of patience.',
+    now: 'everyone names a maximum privately. everyone who wins pays the same clearing price. submitting early costs nothing and submitting late gains nothing.',
+  },
+  {
+    title: 'nft primary sales',
+    before:
+      'an english auction ends in a sniping war, and every visible bid tells the next bidder where the ceiling is. a seller who can read the book can also bid against their own lot.',
+    now: 'no bid informs another bid. the seller learns the clearing price, and learns it after it has already settled.',
+  },
+  {
+    title: 'tokenized treasuries and private credit',
+    before:
+      'allocations are decided by an arranger in a spreadsheet. you submit a size and a yield, you get a fill, and you cannot check that a larger account was not treated better.',
+    now: 'the allocation rule is a contract. pro rata at the clearing tick, computed onchain from the revealed book, applied identically to every bidder and checkable afterwards.',
+  },
+  {
+    title: 'dao treasury block sales',
+    before:
+      'a dao announces a sale in a public forum. the market prices the supply in over three weeks, and the treasury sells into the hole the announcement dug.',
+    now: 'buyers commit against a fixed size and a fixed window. the market learns the price once, at settlement.',
+  },
+];
+
+function useCaseCard(c: (typeof USE_CASES)[number]): string {
+  return `<article class="sl-case">
+    <div class="sl-case-head">
+      <h3 class="sl-case-title">${c.title}</h3>
+      ${c.chip ? `<span class="ml-chip ml-chip-build">${c.chip}</span>` : ''}
+    </div>
+    <div class="sl-case-split">
+      <div class="sl-case-col sl-case-before">
+        <span class="sl-case-label">before</span>
+        <p>${c.before}</p>
+      </div>
+      <div class="sl-case-col sl-case-now">
+        <span class="sl-case-label">now</span>
+        <p>${c.now}</p>
+      </div>
+    </div>
+  </article>`;
+}
+
+export function renderSealbidLanding(root: HTMLElement): Cleanup {
+  const prevTitle = document.title;
+  document.title = 'SealBid. sealed-bid auctions on Peal';
+
+  root.innerHTML = `
+<div class="ml sl">
+  <section class="sl-hero">
+    <div class="ml-wrap">
+      <p class="ml-sec-kicker scroll-reveal">sealbid</p>
+      <h1 class="ml-h1 scroll-reveal">the auctioneer bids blind.</h1>
+      <p class="ml-sub scroll-reveal">
+        every bid is a commitment onchain. the seller cannot read the quantity or the price inside it,
+        and neither can another bidder. at close the whole book opens at once and settles at one price.
+      </p>
+      <div class="ml-hero-ctas scroll-reveal">
+        <a class="ml-cta" href="#/sealed-bid-auction">open the live auction</a>
+        <span class="ml-chip ml-chip-live">running on ${HOODI.name}, a testnet</span>
+      </div>
+
+      <div class="sl-stage scroll-reveal">
+        <div class="sl-col">
+          <div class="sl-col-head"><span class="sl-col-title">open book, today</span><span class="sl-col-note">every bid readable</span></div>
+          ${openBid('450,000', '1.70', true)}
+          ${openBid('300,000', '2.20')}
+          ${openBid('260,000', '1.20')}
+          <p class="sl-col-foot sl-col-foot-bad">the last bidder sees all of it, and only has to beat it by one tick.</p>
+        </div>
+        <div class="sl-col">
+          <div class="sl-col-head"><span class="sl-col-title">sealed book</span><span class="sl-col-note">commitments only</span></div>
+          ${sealedBid('0xca75e985…e0a436')}
+          ${sealedBid('0x03934b44…921716')}
+          ${sealedBid('0x6e6c7151…b88828')}
+          <p class="sl-col-foot">there is nothing to beat by one tick, because there is nothing to read.</p>
+        </div>
+      </div>
+      <p class="ml-thesis scroll-reveal">the sniper is not slower. <b>it is blind.</b></p>
+    </div>
+  </section>
+
+  <section class="ml-section">
+    <div class="ml-wrap ml-stats scroll-reveal">
+      <div class="ml-stat"><b>1</b><span>transaction to bid<sup>1</sup></span></div>
+      <div class="ml-stat"><b>1</b><span>price everyone pays<sup>2</sup></span></div>
+      <div class="ml-stat"><b>3 of 5</b><span>committee threshold to open the book<sup>3</sup></span></div>
+    </div>
+    <p class="ml-wrap ml-foot scroll-reveal">
+      ¹ commit only. classic commit-reveal needs a second transaction from the bidder.
+      ² uniform clearing price, computed onchain in <code>ClearingPrice.sol</code>.
+      ³ the demo committee's keys are published on purpose, see honest limits below.
+    </p>
+  </section>
+
+  <section class="ml-section">
+    <div class="ml-storywrap scroll-reveal">
+      <p class="ml-sec-kicker">the problem</p>
+      <h2 class="ml-h2">how an open book takes your money</h2>
+      ${[
+        {
+          n: '1',
+          danger: true,
+          title: 'your bid is legible',
+          chip: 'exposed',
+          body: 'an open order book publishes your quantity and your price the moment you submit. anyone deciding what to bid can read what you already bid.',
+          rows: [
+            { label: 'what you submitted', value: '450,000 at 1.70' },
+            { label: 'who can read it', value: 'everyone, immediately', tone: 'bad' as const },
+          ],
+          visual: openBid('450,000', '1.70', true),
+        },
+        {
+          n: '2',
+          danger: true,
+          title: 'the last block decides',
+          chip: 'sniped',
+          body: 'when the book is readable, the winning move is to wait and submit one tick above the top bid in the final block. bidding early is strictly worse, so nobody does it.',
+          rows: [
+            { label: 'your bid', value: '1.70' },
+            { label: 'their bid, one block later', value: '1.75', tone: 'bad' as const },
+          ],
+          visual: openBid('450,001', '1.75', true),
+        },
+        {
+          n: '3',
+          danger: true,
+          title: 'the seller learns your ceiling',
+          chip: 'shaded',
+          body: 'a seller who can read the book learns what each bidder would have paid. knowing that, bidders shade their bids down, and the auction discovers a worse price for everyone.',
+          rows: [
+            { label: 'what you would pay', value: '2.20' },
+            { label: 'what you bid instead', value: '1.70', tone: 'bad' as const },
+          ],
+          visual: openBid('300,000', '2.20'),
+        },
+      ]
+        .map(stepCard)
+        .join('')}
+    </div>
+  </section>
+
+  <section class="ml-section">
+    <div class="ml-storywrap scroll-reveal">
+      <p class="ml-sec-kicker">the mechanism</p>
+      <h2 class="ml-h2">how sealbid closes the book</h2>
+      ${[
+        {
+          n: '1',
+          title: 'commit, do not disclose',
+          chip: 'sealed',
+          body: 'the bidder hashes their quantity, their price and a random salt into one commitment, and posts that. the salt never leaves their machine, so the commitment is not searchable.',
+          rows: [
+            { label: 'onchain', value: 'one 32 byte commitment' },
+            { label: 'quantity and price', value: 'not published', tone: 'good' as const },
+          ],
+          visual: sealedBid('0xca75e985…e0a436'),
+        },
+        {
+          n: '2',
+          title: 'escrow is a product, not a price',
+          chip: 'bounded',
+          body: 'the bidder locks quantity times their maximum price. that amount is a visible token transfer, so the size of a bid is public. the split between quantity and price is not.',
+          rows: [
+            { label: 'visible', value: 'the escrow amount', tone: 'bad' as const },
+            { label: 'not published', value: 'how it splits' },
+          ],
+          visual: `<div class="sl-escrow">765,000 <span>${HOODI_DEMO.quoteSymbol}</span></div>`,
+        },
+        {
+          n: '3',
+          title: 'one reveal, all at once',
+          chip: 't of n',
+          body: 'at close a threshold of the committee signs one root covering every bid. no bid opens before the root is registered, and the root has to cover the exact number of bids that were committed.',
+          rows: [
+            { label: 'partial reveals', value: 'refused' },
+            { label: 'a missing bid', value: 'halts settlement', tone: 'good' as const },
+          ],
+          visual: `<div class="sl-root">reveal root</div>`,
+        },
+        {
+          n: '4',
+          title: 'one price for everyone',
+          chip: 'verifiable',
+          chipTone: 'green' as const,
+          body: 'demand is bucketed by tick and scanned from the top until it meets supply. everyone above the clearing tick fills in full, everyone at it fills pro rata, and every winner pays the same price.',
+          rows: [
+            { label: 'winners pay', value: 'the clearing price' },
+            { label: 'allocation order', value: 'does not matter', tone: 'good' as const },
+          ],
+          visual: `<div class="sl-clearing">clearing tick</div>`,
+        },
+      ]
+        .map(stepCard)
+        .join('')}
+    </div>
+  </section>
+
+  <section class="ml-section">
+    <div class="ml-wrap scroll-reveal">
+      <p class="ml-sec-kicker">use cases</p>
+      <h2 class="ml-h2">before, and now</h2>
+      <p class="ml-sub sl-cases-sub">five markets that run sealed-bid auctions off-chain, or run the wrong auction onchain because the right one was not available.</p>
+      <div class="sl-cases">${USE_CASES.map(useCaseCard).join('')}</div>
+    </div>
+  </section>
+
+  <section class="ml-section">
+    <div class="ml-wrap scroll-reveal">
+      <p class="ml-sec-kicker">honest limits</p>
+      <h2 class="ml-h2">what this does not do</h2>
+      <div class="sl-limits">
+        <div class="sl-limit">
+          <span class="ml-chip ml-chip-live">live</span>
+          <p><b>the split is hidden, the size is not.</b> escrow is a token transfer of quantity times max price. prices are a ladder of at most 256 ticks, so anyone who tries can usually narrow the split to a few candidates. this is not bid size privacy and sealbid does not claim it.</p>
+        </div>
+        <div class="sl-limit">
+          <span class="ml-chip ml-chip-build">build</span>
+          <p><b>bids are salted commitments, not yet threshold encrypted.</b> peal's encryption is not wired into the auction yet, so today the bidder holds the salt. until that lands, a bidder who loses their salt gets a refund instead of an allocation.</p>
+        </div>
+        <div class="sl-limit">
+          <span class="ml-chip ml-chip-build">build</span>
+          <p><b>the demo committee is a prop.</b> its five signing keys are derived from a published string so anyone can reproduce the demo. the seeded bids on the live page are therefore readable, and the page says so on each one.</p>
+        </div>
+        <div class="sl-limit">
+          <span class="ml-chip ml-chip-live">live</span>
+          <p><b>no audit, and a testnet only.</b> the contracts pass 87 tests including adversarial ones. that is not an audit, and nothing here has held real money.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="ml-section sl-cta-band">
+    <div class="ml-wrap scroll-reveal">
+      <h2 class="ml-h2">seal now. clear together.</h2>
+      <p class="ml-sub">a live auction is open on ${HOODI.name} right now, with real escrow and real commitments.</p>
+      <div class="ml-hero-ctas"><a class="ml-cta" href="#/sealed-bid-auction">open the live auction</a></div>
+    </div>
+  </section>
+</div>`;
+
+  const stopReveal = mountScrollReveal(root);
+
+  return () => {
+    stopReveal?.();
+    document.title = prevTitle;
+  };
+}
