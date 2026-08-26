@@ -58,6 +58,19 @@ importers:
         specifier: ^3.0.0
         version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)
 
+  packages/auctionkit:
+    dependencies:
+      viem:
+        specifier: ^2.21.0
+        version: 2.54.3(typescript@5.9.3)
+    devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)
+
   packages/explorer:
     dependencies:
       bte-sdk:
