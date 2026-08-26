@@ -25,14 +25,42 @@ export interface Deployment {
 export const HOODI: Deployment = {
   chainId: 560048,
   name: 'Ethereum Hoodi',
-  committeeRegistry: '0x7C4338980D7a859368a9D1cb72764F480cc763C8',
-  auctionImplementation: '0x3C918e75eb7037e50D5A319fDAa907CCe6048785',
+  committeeRegistry: '0xDDDbE56276cCfA46144934D89A6c0cf06f208Ac7',
+  auctionImplementation: '0x05CB737305f2D4226011b3B50dD43D7a2e2de32b',
   explorer: 'https://hoodi.etherscan.io',
-  current: false,
-  staleReason:
-    'Deployed before the fix in decisions/0004: bidCommitment still binds bidId, ' +
-    'and a single mismatched reveal permanently prevents the auction from settling. ' +
-    'Redeploy the implementation before creating any auction.',
+  current: true,
+};
+
+/** Superseded. Kept so anyone holding one of these addresses learns why it
+ * stopped working, instead of debugging a contract we already replaced. */
+export const SUPERSEDED: Record<Address, string> = {
+  '0x3C918e75eb7037e50D5A319fDAa907CCe6048785':
+    'AuctionKit implementation deployed before decisions/0004. bidCommitment bound bidId, ' +
+    'and one mismatched reveal permanently prevented settlement. Replaced by ' +
+    HOODI.auctionImplementation,
+};
+
+/** A demo auction, open for bidding on Hoodi.
+ *
+ * The committee behind it is a prop with publicly derivable keys - see
+ * DeployDemoAuction.s.sol. Testnet only, and nobody should be misled about
+ * custody. */
+export interface DemoAuction {
+  chainId: number;
+  auction: Address;
+  saleToken: Address;
+  saleSymbol: string;
+  quoteToken: Address;
+  quoteSymbol: string;
+}
+
+export const HOODI_DEMO: DemoAuction = {
+  chainId: 560048,
+  auction: '0x94521876dbE846a1a3eccF6636c2ec8E0BE82091',
+  saleToken: '0xA9228c1ceA27C86f700782e46Bb237e965f23b47',
+  saleSymbol: 'PEALD',
+  quoteToken: '0xfE4315435fC84c30b84D9316a3EE37b48FFBc40E',
+  quoteSymbol: 'DUSD',
 };
 
 export const DEPLOYMENTS: Record<number, Deployment> = { [HOODI.chainId]: HOODI };

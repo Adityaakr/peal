@@ -3909,3 +3909,41 @@ body.landing-page main {
   .vr-check { grid-template-columns: 1.25rem 1fr; }
   .vr-detail { grid-column: 2; }
 }
+
+/* ---- AuctionKit (/auction) ------------------------------------------- */
+.ak { max-width: 68rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+.ak-head { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; justify-content: space-between; }
+.ak h1 { margin: 0 0 .25rem; font-size: 1.9rem; letter-spacing: -0.02em; }
+.ak-sub { margin: 0; opacity: .75; font-size: .9rem; }
+.ak-state { padding: .35rem .75rem; border-radius: 999px; font-size: .8rem; font-weight: 600;
+  border: 1px solid currentColor; white-space: nowrap; }
+.ak-state-2 { color: #16a34a; }   /* bidding open */
+.ak-state-7 { color: #2563eb; }   /* settled */
+.ak-state-8, .ak-state-9 { color: #dc2626; }
+.ak-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .75rem; margin: 1.5rem 0; }
+.ak-card { border: 1px solid rgba(128,128,128,.25); border-radius: .6rem; padding: .8rem .9rem; }
+.ak-card span { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; opacity: .6; }
+.ak-card strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.ak-privacy { border-left: 3px solid #f59e0b; background: rgba(245,158,11,.07);
+  padding: .85rem 1rem; border-radius: .3rem; font-size: .88rem; line-height: 1.5; margin: 1.25rem 0; }
+.ak-acct { font-size: .85rem; opacity: .8; margin: 1rem 0; }
+.ak-form { display: grid; gap: .85rem; max-width: 26rem; margin: 1.5rem 0; }
+.ak-form label { display: grid; gap: .3rem; font-size: .85rem; font-weight: 500; }
+.ak-form input, .ak-form select { padding: .55rem .7rem; border-radius: .4rem; font: inherit;
+  border: 1px solid rgba(128,128,128,.35); background: transparent; color: inherit; }
+.ak-btn { padding: .6rem 1.1rem; border-radius: .45rem; font: inherit; font-weight: 600; cursor: pointer;
+  border: 1px solid rgba(128,128,128,.35); background: transparent; color: inherit; }
+.ak-btn:disabled { opacity: .55; cursor: progress; }
+.ak-primary { background: #111; color: #fff; border-color: #111; }
+@media (prefers-color-scheme: dark) { .ak-primary { background: #fafafa; color: #111; border-color: #fafafa; } }
+.ak-hint { font-size: .8rem; opacity: .72; margin: 0; }
+.ak-status { padding: .6rem .8rem; border-radius: .4rem; font-size: .87rem; margin: 1rem 0; }
+.ak-info { background: rgba(37,99,235,.1); }
+.ak-ok { background: rgba(22,163,74,.12); }
+.ak-error { color: #dc2626; background: rgba(220,38,38,.08); }
+p.ak-hint.ak-error { background: none; padding: 0; }
+.ak-table { width: 100%; border-collapse: collapse; font-size: .85rem; margin: .75rem 0; }
+.ak-table th, .ak-table td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid rgba(128,128,128,.2); }
+.ak-table td { font-variant-numeric: tabular-nums; }
+.ak-list { font-size: .85rem; }
+.ak-foot { margin-top: 2.5rem; font-size: .78rem; opacity: .65; line-height: 1.6; }

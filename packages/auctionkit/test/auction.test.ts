@@ -92,9 +92,13 @@ describe('priceLadder', () => {
 });
 
 describe('deploymentFor', () => {
-  it('refuses a stale deployment rather than letting funds reach it', () => {
-    expect(HOODI.current).toBe(false);
-    expect(() => deploymentFor(560048)).toThrow(/out of date/);
+  it('returns the current Hoodi deployment', () => {
+    expect(HOODI.current).toBe(true);
+    expect(deploymentFor(560048).auctionImplementation).toBe(HOODI.auctionImplementation);
+  });
+
+  it('still refuses any deployment marked stale', () => {
+    expect(() => deploymentFor(999)).toThrow();
   });
 
   it('names the chains it does know when asked for one it does not', () => {

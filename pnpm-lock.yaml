@@ -82,12 +82,18 @@ importers:
       peal-actions:
         specifier: workspace:*
         version: link:../actions
+      peal-auctionkit:
+        specifier: workspace:*
+        version: link:../auctionkit
       react:
         specifier: ^19.1.0
         version: 19.2.7
       react-dom:
         specifier: ^19.1.0
         version: 19.2.7(react@19.2.7)
+      viem:
+        specifier: ^2.21.0
+        version: 2.54.3(typescript@5.9.3)
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.1.11
