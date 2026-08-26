@@ -17,7 +17,9 @@ on 2025-05-07. `spec/ROADMAP.md` item 5 predates that and is stale.
 
 The decision still stands, but for narrower and honest reasons:
 
-1. **The pairing is a multi-pairing that scales with batch size.**
+1. ~~**The pairing is a multi-pairing that scales with batch size.**~~
+   *Resolved by [0003](./0003-onchain-share-verification.md): measured, and it
+   fits.* Original reasoning:
    `sum_i e(ct_{i,0}, v_j^i)` is one term per ciphertext, so a B=64 batch is a
    ~65-term check per share, times `t` shares. EIP-2537 pairing gas is linear in
    term count. Nobody has benchmarked this, and designing around an unmeasured
@@ -66,9 +68,20 @@ becomes theft.
 
 ## When to revisit
 
-**Soon, and with a benchmark rather than an argument.** The concrete next step is
-to write a Solidity `verify_share` against the EIP-2537 precompiles and measure
-the gas for a realistic batch size on the target chain.
+**Benchmarked — see [0003](./0003-onchain-share-verification.md).**
+
+The answer is that it fits: 2.16M gas per share at B=64, 6.49M per three-share
+reveal, ~1.6% of a Base block. Reason 1 below is therefore resolved, and the
+committee signature layer is now a scheduled replacement rather than an open
+question. This decision stands until that replacement lands.
+
+Reason 2 is unchanged and permanent: verifying shares is still not decrypting
+them.
+
+The original next step, kept for the record:
+
+> write a Solidity `verify_share` against the EIP-2537 precompiles and measure
+> the gas for a realistic batch size on the target chain.
 
 If it fits, the committee signature layer can be replaced by onchain share
 verification: a valid share *is* an attestation, so the separate signing key,

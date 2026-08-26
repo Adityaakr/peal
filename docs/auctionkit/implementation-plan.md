@@ -33,6 +33,7 @@ Each slice ends with tests passing before the next begins.
 | 6 | Real Peal encryption integration | pending |
 | 7 | Multi-batch support | pending |
 | 8 | Committee-controlled reveal | **contract side done**, node side pending |
+| 8b | Onchain share verification (replaces the signature layer) | **benchmarked**, see [0003](./decisions/0003-onchain-share-verification.md) |
 | 9 | Settlement + recovery | **done** |
 | 10 | SDK + API | pending |
 | 11 | Indexer + relayer | pending |
