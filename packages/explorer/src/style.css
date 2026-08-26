@@ -4156,3 +4156,6 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 .ak-sub { color: var(--muted); margin: 0; }
 .ak-hero-copy { min-width: 0; }
 .ak-col-side { min-width: 0; }
+
+.ak-faucet { grid-template-columns: 1fr; gap: 10px; }
+.ak-faucet label { margin: 0; }

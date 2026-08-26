@@ -29,6 +29,7 @@ import {
   readBids,
   submitBid,
   DemoTokenAbi,
+  DemoFaucetAbi,
   type AuctionSnapshot,
   type CommittedBid,
   type PreparedBid,
@@ -137,6 +138,15 @@ function fmt(v: bigint, decimals: number, places = 4): string {
   return f ? `${i}.${f.slice(0, places).replace(/0+$/, '') || '0'}` : i!;
 }
 
+/** "in 4m", or a clock time once it is far enough out to be worth one. */
+function fmtWhen(atSec: bigint): string {
+  const delta = Number(atSec) - Math.floor(Date.now() / 1000);
+  if (delta <= 0) return 'now';
+  if (delta < 90) return `in ${delta}s`;
+  if (delta < 3600) return `in ${Math.ceil(delta / 60)}m`;
+  return `at ${new Date(Number(atSec) * 1000).toLocaleTimeString()}`;
+}
+
 function countdown(toSec: bigint, nowSec: bigint): string {
   let d = Number(toSec - nowSec);
   if (d <= 0) return 'closed';
@@ -152,6 +162,9 @@ export function renderAuction(root: HTMLElement): Cleanup {
   let snap: AuctionSnapshot | null = null;
   let quoteBalance = 0n;
   let bids: CommittedBid[] = [];
+  let faucetMax = 0n;
+  let faucetAvailableAt = 0n;
+  let faucetBusy = false;
   let detachTilt: (() => void) | null = null;
   let status = '';
   let statusKind: 'info' | 'error' | 'ok' = 'info';
@@ -193,6 +206,23 @@ export function renderAuction(root: HTMLElement): Cleanup {
         })) as bigint;
       } catch (e) {
         failures.push(`balance (${briefly(e)})`);
+      }
+
+      // Ask the faucet what it would actually give this address, rather than
+      // assuming the cap. It answers 0 while cooling down and reports its own
+      // remaining balance when that is the smaller number, so the button can
+      // say why instead of letting someone send a reverting transaction.
+      try {
+        const [amount, availableAt] = (await pub.readContract({
+          address: HOODI_DEMO.faucet,
+          abi: DemoFaucetAbi,
+          functionName: 'claimableBy',
+          args: [account],
+        })) as [bigint, bigint];
+        faucetMax = amount;
+        faucetAvailableAt = availableAt;
+      } catch (e) {
+        failures.push(`faucet (${briefly(e)})`);
       }
     }
 
@@ -311,6 +341,70 @@ export function renderAuction(root: HTMLElement): Cleanup {
       statusKind = 'error';
     } finally {
       busy = false;
+      await refresh();
+    }
+  }
+
+  async function claimFaucet(amountStr: string): Promise<void> {
+    if (!account || faucetBusy || !snap) return;
+    const eth = ethereum();
+    if (!eth) return;
+
+    let amount: bigint;
+    try {
+      amount = parseUnits(amountStr.trim() || '0', snap.config.quoteDecimals);
+    } catch {
+      status = 'Enter an amount, for example 500000.';
+      statusKind = 'error';
+      draw();
+      return;
+    }
+
+    // Checked here so a hopeless request never costs gas. The contract enforces
+    // the same bounds; this only saves the user a failed transaction.
+    if (amount <= 0n) {
+      status = 'Enter an amount greater than zero.';
+      statusKind = 'error';
+      draw();
+      return;
+    }
+    if (faucetMax === 0n) {
+      const wait = faucetAvailableAt > 0n ? ` Try again ${fmtWhen(faucetAvailableAt)}.` : '';
+      status = `The faucet has nothing for this address right now.${wait}`;
+      statusKind = 'error';
+      draw();
+      return;
+    }
+    if (amount > faucetMax) {
+      status = `The faucet will give at most ${fmt(faucetMax, snap.config.quoteDecimals, 0)} ${HOODI_DEMO.quoteSymbol} per claim.`;
+      statusKind = 'error';
+      draw();
+      return;
+    }
+
+    faucetBusy = true;
+    status = 'Confirm the claim in your wallet.';
+    statusKind = 'info';
+    draw();
+
+    try {
+      const wallet = createWalletClient({ account, chain: CHAIN, transport: custom(eth) });
+      const hash = await wallet.writeContract({
+        chain: CHAIN,
+        account,
+        address: HOODI_DEMO.faucet,
+        abi: DemoFaucetAbi,
+        functionName: 'claim',
+        args: [amount],
+      });
+      await pub.waitForTransactionReceipt({ hash });
+      status = `Received ${fmt(amount, snap.config.quoteDecimals, 0)} ${HOODI_DEMO.quoteSymbol}.`;
+      statusKind = 'ok';
+    } catch (e) {
+      status = briefly(e);
+      statusKind = 'error';
+    } finally {
+      faucetBusy = false;
       await refresh();
     }
   }
@@ -460,6 +554,24 @@ export function renderAuction(root: HTMLElement): Cleanup {
         ${account && !snap.biddingOpen ? `<p class="ak-hint">Bidding is closed for this auction.</p>` : ''}
       </div>
 
+      ${account ? `
+      <div class="ak-panel">
+        <h3>Test tokens <span class="ak-h2-note">free, no value</span></h3>
+        <p class="ak-hint">Escrow is paid in ${esc(HOODI_DEMO.quoteSymbol)}. Claim as much as you need.</p>
+        <form class="ak-form ak-faucet" id="ak-faucet-form">
+          <label>Amount <span>${esc(HOODI_DEMO.quoteSymbol)}</span>
+            <input id="ak-faucet-amt" type="text" inputmode="decimal" value="500000" autocomplete="off" />
+          </label>
+          <button class="ak-btn ak-wide" type="submit" ${faucetBusy || faucetMax === 0n ? 'disabled' : ''}>
+            ${faucetBusy ? 'Claiming…' : faucetMax === 0n
+              ? (faucetAvailableAt > 0n ? `Available again ${esc(fmtWhen(faucetAvailableAt))}` : 'Faucet empty')
+              : 'Claim from faucet'}
+          </button>
+        </form>
+        <p class="ak-hint">Up to ${fmt(faucetMax > 0n ? faucetMax : 0n, c.quoteDecimals, 0)} per claim, then a short cooldown.
+          <a href="${HOODI.explorer}/address/${HOODI_DEMO.faucet}" target="_blank" rel="noopener">Faucet contract</a></p>
+      </div>` : ''}
+
       <div class="ak-panel ak-panel-warn">
         <h3>What is hidden, and what is not</h3>
         <ul class="ak-facts">
@@ -509,6 +621,11 @@ export function renderAuction(root: HTMLElement): Cleanup {
 
     root.querySelector('#ak-connect')?.addEventListener('click', () => void connect());
     root.querySelector('#ak-download')?.addEventListener('click', downloadBids);
+    root.querySelector('#ak-faucet-form')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const el = root.querySelector<HTMLInputElement>('#ak-faucet-amt');
+      if (el) void claimFaucet(el.value);
+    });
 
     const qty = root.querySelector<HTMLInputElement>('#ak-qty');
     const tickSel = root.querySelector<HTMLSelectElement>('#ak-tick');

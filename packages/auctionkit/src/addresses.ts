@@ -52,6 +52,10 @@ export interface DemoAuction {
   saleSymbol: string;
   quoteToken: Address;
   quoteSymbol: string;
+  /** Hands out the quote token so anyone can try the auction. No owner, no
+   * admin: it holds a balance and dispenses it under a per-call cap and a
+   * per-address cooldown. */
+  faucet: Address;
 }
 
 export const HOODI_DEMO: DemoAuction = {
@@ -61,6 +65,7 @@ export const HOODI_DEMO: DemoAuction = {
   saleSymbol: 'PEALD',
   quoteToken: '0xfE4315435fC84c30b84D9316a3EE37b48FFBc40E',
   quoteSymbol: 'DUSD',
+  faucet: '0xa727B494D1Aae7Ec34C4891D0dcf1426f8eD6C93',
 };
 
 export const DEPLOYMENTS: Record<number, Deployment> = { [HOODI.chainId]: HOODI };
