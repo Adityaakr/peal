@@ -3,6 +3,7 @@
 
 pub mod api;
 pub mod db;
+pub mod eip712;
 pub mod engine;
 pub mod intents;
 pub mod merkle;

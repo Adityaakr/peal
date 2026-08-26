@@ -196,13 +196,6 @@ fn is_url_safe(s: &str, min: usize, max: usize) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
-fn is_hex_sig(s: &str) -> bool {
-    s.starts_with("0x")
-        && s.len() >= 4
-        && s.len() <= 1024
-        && s[2..].bytes().all(|b| b.is_ascii_hexdigit())
-}
-
 // ---------------------------------------------------------------------------
 // POST /v1/intents
 // ---------------------------------------------------------------------------
@@ -264,9 +257,6 @@ async fn submit_intent(
     if !is_address(&req.pseudonymous_signer) {
         return Err(bad("BAD_SIGNER", "pseudonymousSigner must be an address"));
     }
-    if !is_hex_sig(&req.signature) {
-        return Err(bad("BAD_SIGNATURE", "signature must be hex"));
-    }
     if req.execution_domain == 0 {
         return Err(bad("BAD_DOMAIN", "executionDomain must be a chain id"));
     }
@@ -277,6 +267,36 @@ async fn submit_intent(
     // the future would sit valid long past when its agent meant it to.
     if req.created_at > now + 300 {
         return Err(bad("BAD_CREATED_AT", "createdAt is in the future"));
+    }
+
+    // Authenticate the envelope. Until this passes, `pseudonymousSigner` is an
+    // unverified claim and nothing downstream may attribute the intent to it:
+    // the nonce replay index, the ordering commitment and the receipt all key
+    // off this address.
+    //
+    // Note the digest is rebuilt from the fields being stored, never taken from
+    // the request. A client-supplied digest would authenticate whatever the
+    // client chose to hash, which is to say nothing.
+    let digest = crate::eip712::intent_digest(
+        req.protocol_version,
+        &req.intent_id,
+        &req.encryption_key_id,
+        &req.ciphertext_hash,
+        &req.nonce,
+        req.expires_at,
+        req.execution_domain,
+    )
+    .ok_or_else(|| bad("BAD_SIGNATURE", "intent fields cannot be hashed"))?;
+
+    if let Err(e) = crate::eip712::verify(&digest, &req.signature, &req.pseudonymous_signer) {
+        // Deliberately one opaque code for every failure mode. Distinguishing
+        // "wrong signer" from "malformed" would tell a prober whether a given
+        // address is worth attacking.
+        tracing::warn!(intent_id = %req.intent_id, reason = ?e, "rejected intent signature");
+        return Err(bad(
+            "BAD_SIGNATURE",
+            "signature does not verify for pseudonymousSigner",
+        ));
     }
 
     let signer = req.pseudonymous_signer.to_lowercase();
@@ -591,9 +611,6 @@ async fn post_authorization(
             "authorizationHash must be 32 lowercase hex bytes",
         ));
     }
-    if !is_hex_sig(&req.signature) {
-        return Err(bad("BAD_SIGNATURE", "signature must be hex"));
-    }
     if !matches!(
         req.submission_mode.as_str(),
         "private" | "solver" | "public-rpc" | "simulated"
@@ -603,18 +620,39 @@ async fn post_authorization(
 
     let now = unix_now();
     let conn = app.0.db.lock().unwrap();
-    let cur: Option<(String, i64)> = conn
+    let cur: Option<(String, i64, String)> = conn
         .query_row(
-            "SELECT state, expires_at FROM intents WHERE id = ?1",
+            "SELECT state, expires_at, signer FROM intents WHERE id = ?1",
             params![id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()
         .map_err(internal)?;
 
-    let Some((state, expires_at)) = cur else {
+    let Some((state, expires_at, signer)) = cur else {
         return Err(not_found("UNKNOWN_INTENT", "no such intent"));
     };
+
+    // Only the agent that submitted the intent may authorize its execution.
+    // Without this, any caller who learns an intent id can drive somebody
+    // else's funds through a quote of their choosing.
+    //
+    // The digest is client-supplied here, so this proves the intent's owner
+    // signed *this hash* — not yet that the hash covers the quote they were
+    // shown. Binding the authorization to the reveal and the quote is the
+    // separate open item tracked in docs/private-actions-gaps.md.
+    let auth_digest: [u8; 32] = hex::decode(&req.authorization_hash)
+        .ok()
+        .and_then(|v| v.try_into().ok())
+        .ok_or_else(|| bad("BAD_AUTH_HASH", "authorizationHash must be 32 bytes"))?;
+
+    if let Err(e) = crate::eip712::verify(&auth_digest, &req.signature, &signer) {
+        tracing::warn!(intent_id = %id, reason = ?e, "rejected authorization signature");
+        return Err(bad(
+            "BAD_SIGNATURE",
+            "authorization signature does not verify for this intent's signer",
+        ));
+    }
     if expires_at <= now {
         return Err(conflict("EXPIRED", "intent has expired"));
     }

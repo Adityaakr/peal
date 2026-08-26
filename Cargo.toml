@@ -30,6 +30,11 @@ tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive"] }
+# EIP-712 verification on the coordinator: keccak256 for the digest, k256 for
+# ECDSA public-key recovery. Both are RustCrypto and already the de facto
+# standard here; no hand-rolled curve arithmetic.
+sha3 = "0.10"
+k256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 
 [profile.dev]
 opt-level = 3

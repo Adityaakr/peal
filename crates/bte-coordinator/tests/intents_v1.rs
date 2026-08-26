@@ -17,8 +17,61 @@ use rand_chacha::ChaCha20Rng;
 use serde_json::{json, Value};
 
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
-const SIGNER: &str = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8";
-const SIG: &str = "0xdeadbeef";
+/// Deterministic throwaway test keys. Not credentials, and not derived from any
+/// wallet: they exist because the coordinator now verifies EIP-712 signatures,
+/// so a test that wants an intent accepted has to actually sign one.
+///
+/// `ATTACKER` is the whole point of the pair — it lets the tests assert that a
+/// perfectly well-formed signature by the wrong key is refused, which is the
+/// case that a shape-only check used to wave through.
+const AGENT_KEY: [u8; 32] = [0x22; 32];
+const ATTACKER_KEY: [u8; 32] = [0x33; 32];
+
+fn signing_key(seed: [u8; 32]) -> k256::ecdsa::SigningKey {
+    k256::ecdsa::SigningKey::from_bytes(&seed.into()).expect("valid test scalar")
+}
+
+/// Sign an already-computed digest, in the 65-byte `r || s || v` form wallets
+/// emit. `sign_prehash_recoverable` yields a low-s signature, so these are
+/// exactly the shape the server accepts.
+fn sign(seed: [u8; 32], digest: &[u8; 32]) -> String {
+    let (sig, rec) = signing_key(seed)
+        .sign_prehash_recoverable(digest)
+        .expect("signable digest");
+    let mut out = sig.to_bytes().to_vec();
+    out.push(27 + rec.to_byte());
+    format!("0x{}", hex::encode(out))
+}
+
+/// The address a key signs as, learned by round-tripping through the same
+/// recovery the server uses rather than re-deriving it here. A second
+/// implementation of address derivation in the tests could agree with itself
+/// and disagree with production.
+fn address_of(seed: [u8; 32]) -> String {
+    let digest = [0x01u8; 32];
+    bte_coordinator::eip712::recover(&digest, &sign(seed, &digest)).expect("recoverable")
+}
+
+/// Re-sign an envelope, so a test that mutates a field is testing that field's
+/// validation rather than tripping over a stale signature.
+///
+/// This shares `intent_digest` with production, so it does not independently
+/// prove the digest is correct — `eip712::tests::digest_matches_viem` pins that
+/// against a vector produced by viem. What these tests prove is the wiring:
+/// that the endpoints verify at all, and against the right address.
+fn resign(b: &mut Value, seed: [u8; 32]) {
+    if let Some(d) = bte_coordinator::eip712::intent_digest(
+        b["protocol_version"].as_u64().unwrap_or(0) as u16,
+        b["intent_id"].as_str().unwrap_or(""),
+        b["encryption_key_id"].as_str().unwrap_or(""),
+        b["ciphertext_hash"].as_str().unwrap_or(""),
+        b["nonce"].as_str().unwrap_or(""),
+        b["expires_at"].as_i64().unwrap_or(0),
+        b["execution_domain"].as_u64().unwrap_or(0),
+    ) {
+        b["signature"] = json!(sign(seed, &d));
+    }
+}
 
 struct H {
     app: state::App,
@@ -124,7 +177,7 @@ impl H {
 }
 
 fn envelope(condition_id: &str, ct_hash: &str, nonce: &str) -> Value {
-    json!({
+    let mut b = json!({
         "protocol_version": 1,
         "intent_id": format!("intent_{nonce}"),
         "encryption_key_id": "a".repeat(64),
@@ -132,11 +185,13 @@ fn envelope(condition_id: &str, ct_hash: &str, nonce: &str) -> Value {
         "nonce": nonce,
         "created_at": db::unix_now(),
         "expires_at": db::unix_now() + 600,
-        "pseudonymous_signer": SIGNER,
+        "pseudonymous_signer": address_of(AGENT_KEY),
         "execution_domain": 8453,
-        "signature": SIG,
+        "signature": "0x00",
         "condition_id": condition_id,
-    })
+    });
+    resign(&mut b, AGENT_KEY);
+    b
 }
 
 // ---------------------------------------------------------------------------
@@ -303,8 +358,13 @@ async fn a_replayed_nonce_is_refused() {
     assert_eq!(st, 200);
 
     // Same signer, same nonce, different intent id: still a replay.
+    //
+    // Re-signed, because the agent owns the key and could legitimately produce
+    // this envelope — the point is that the nonce index refuses it anyway, not
+    // that the signature check happens to catch it.
     let mut second = envelope(&cond, &ct, "nonce_replay001");
     second["intent_id"] = json!("intent_different");
+    resign(&mut second, AGENT_KEY);
     let (st, r) = h.post("/v1/intents", second).await;
     assert_eq!(st, 409, "{r}");
     assert_eq!(r["error"]["code"], "REPLAY");
@@ -424,15 +484,95 @@ async fn authorization_is_refused_from_an_illegal_state() {
     h.post("/v1/intents", envelope(&cond, &ct, "nonce_auth00001"))
         .await;
 
-    // SUBMITTED -> AUTHORIZED would skip ordering, reveal, and quote validation.
+    // Correctly signed by the intent's own agent, so the refusal below is the
+    // state machine talking and not the signature check.
+    let auth = [0xb1u8; 32];
     let (st, r) = h
         .post(
             "/v1/intents/intent_nonce_auth00001/authorization",
-            json!({"authorization_hash": "b".repeat(64), "signature": "0xabcd", "submission_mode": "private"}),
+            json!({"authorization_hash": hex::encode(auth),
+                   "signature": sign(AGENT_KEY, &auth),
+                   "submission_mode": "private"}),
         )
         .await;
+    // SUBMITTED -> AUTHORIZED would skip ordering, reveal, and quote validation.
     assert_eq!(st, 409, "{r}");
     assert_eq!(r["error"]["code"], "ILLEGAL_TRANSITION");
+}
+
+/// The hole this whole change closes, stated as a test.
+///
+/// An envelope naming somebody else's address, signed perfectly well by a key
+/// that is not theirs, must be refused. Before server-side verification this
+/// was accepted, and every downstream artifact — the replay index, the ordering
+/// commitment, the receipt — attributed the intent to the impersonated address.
+#[tokio::test]
+async fn an_intent_cannot_be_submitted_on_someone_elses_behalf() {
+    let h = harness().await;
+    let (cond, ct) = h.sealed(b"impersonation", 60).await;
+
+    let victim = address_of(AGENT_KEY);
+    let mut b = envelope(&cond, &ct, "nonce_forged001");
+    // Keep the claimed signer; swap in a valid signature from the wrong key.
+    resign(&mut b, ATTACKER_KEY);
+    assert_eq!(b["pseudonymous_signer"], json!(victim));
+
+    let (st, r) = h.post("/v1/intents", b).await;
+    assert_eq!(st, 400, "forged envelope was accepted: {r}");
+    assert_eq!(r["error"]["code"], "BAD_SIGNATURE");
+
+    // And the impersonated address has nothing attributed to it.
+    let (st, _) = h.get("/v1/intents/intent_nonce_forged001").await;
+    assert_eq!(st, 404);
+}
+
+/// The same hole on the authorization endpoint, which was the worse of the two:
+/// the caller supplies the digest, so an unauthenticated authorization let
+/// anyone who learned an intent id bind that intent to a quote of their own
+/// choosing.
+#[tokio::test]
+async fn an_intent_cannot_be_authorized_by_a_stranger() {
+    let h = harness().await;
+    let (cond, ct) = h.sealed(b"stranger", 60).await;
+    let (st, _) = h
+        .post("/v1/intents", envelope(&cond, &ct, "nonce_strange01"))
+        .await;
+    assert_eq!(st, 200);
+
+    let auth = [0xc2u8; 32];
+    let (st, r) = h
+        .post(
+            "/v1/intents/intent_nonce_strange01/authorization",
+            json!({"authorization_hash": hex::encode(auth),
+                   "signature": sign(ATTACKER_KEY, &auth),
+                   "submission_mode": "private"}),
+        )
+        .await;
+    assert_eq!(st, 400, "a stranger authorized someone else's intent: {r}");
+    assert_eq!(r["error"]["code"], "BAD_SIGNATURE");
+}
+
+/// A signature over a different digest than the one submitted is refused, so an
+/// authorization cannot be lifted off one request and replayed onto another.
+#[tokio::test]
+async fn an_authorization_signature_is_bound_to_its_hash() {
+    let h = harness().await;
+    let (cond, ct) = h.sealed(b"rebind", 60).await;
+    h.post("/v1/intents", envelope(&cond, &ct, "nonce_rebind001"))
+        .await;
+
+    let signed = [0xd3u8; 32];
+    let submitted = [0xd4u8; 32];
+    let (st, r) = h
+        .post(
+            "/v1/intents/intent_nonce_rebind001/authorization",
+            json!({"authorization_hash": hex::encode(submitted),
+                   "signature": sign(AGENT_KEY, &signed),
+                   "submission_mode": "private"}),
+        )
+        .await;
+    assert_eq!(st, 400, "{r}");
+    assert_eq!(r["error"]["code"], "BAD_SIGNATURE");
 }
 
 #[tokio::test]
