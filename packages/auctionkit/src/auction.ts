@@ -80,23 +80,32 @@ export interface AuctionSnapshot {
   biddingOpen: boolean;
 }
 
+/**
+ * @param nowSeconds  Override the reference time. Defaults to the chain's
+ *   latest block timestamp, NOT the local clock: every deadline in the contract
+ *   is compared against `block.timestamp`, so using wall-clock time here would
+ *   make the client disagree with the chain about whether bidding is open
+ *   whenever the two drift — which is always, on a test chain, and
+ *   intermittently on a real one with a skewed local clock.
+ */
 export async function readAuction(
   client: PublicClient,
   address: Address,
   nowSeconds?: bigint,
 ): Promise<AuctionSnapshot> {
   const contract = { address, abi: SealedBidAuctionAbi } as const;
-  const [config, state, committed, processed, voided, clearingPrice] = await Promise.all([
+  const [config, state, committed, processed, voided, clearingPrice, block] = await Promise.all([
     client.readContract({ ...contract, functionName: 'getConfig' }),
     client.readContract({ ...contract, functionName: 'state' }),
     client.readContract({ ...contract, functionName: 'committedBidCount' }),
     client.readContract({ ...contract, functionName: 'processedBidCount' }),
     client.readContract({ ...contract, functionName: 'voidedBidCount' }),
     client.readContract({ ...contract, functionName: 'clearingPrice' }),
+    client.getBlock(),
   ]);
 
   const cfg = config as unknown as AuctionConfig;
-  const now = nowSeconds ?? BigInt(Math.floor(Date.now() / 1000));
+  const now = nowSeconds ?? block.timestamp;
   const s = Number(state) as AuctionState;
 
   return {
