@@ -93,11 +93,36 @@ So BLS12-381 pairings are reachable from Solidity on the target chain. If
 a realistic batch, a valid share *becomes* the attestation: item 6 disappears
 entirely, and item 4 becomes onchain rather than an API concern.
 
-Benchmark that before building either. The term count scales with batch size
-(~`1 + B` pairings per share), so the answer may be "fits at B=16, not at
-B=64", which is tuning rather than redesign.
+**Benchmarked — see [auctionkit decision 0003](./auctionkit/decisions/0003-onchain-share-verification.md).**
+It fits: 6.49M gas per reveal at B=64, t=3, or ~11% of a 60M Ethereum block. No
+tuning of B required.
 
 Caveat that survives a good result: verifying a share is not decrypting one.
 Recovering plaintexts still needs FFT plus FO decryption, which is not going
 onchain. Onchain verification removes the trust assumption about *who
 attests*, not the committee itself.
+
+## Chain target: Ethereum Hoodi
+
+`PEAL_DEFAULT_CHAIN_ID=560048`. The execution domain is bound into the EIP-712
+domain separator, so this is enforced rather than documentary — a signature made
+for another chain does not verify.
+
+**0x and Across serve mainnets only.** Confirmed for Across by querying
+`available-routes`: 78 routes from Ethereum mainnet, routes from Base, and zero
+from Hoodi. 0x could not be confirmed directly without an API key, but it is a
+mainnet-only service and should be assumed unavailable until a keyed call says
+otherwise.
+
+Consequently, on Hoodi:
+
+- **AuctionKit runs fully.** It is self-contained — Peal's own contracts plus an
+  ERC-20 — and needs no external venue. EIP-2537 is live. Nothing is blocked.
+- **Private Actions runs everything except the execution tail.** Intents,
+  sealing, ordering commitment, threshold reveal and receipts all work. The swap
+  and bridge adapters have nothing to quote against, so submission stays
+  `simulated`. `execute()` already throws `NOT_IMPLEMENTED` by design, so this
+  is a missing counterparty rather than a broken path.
+
+A live end-to-end swap therefore needs a mainnet or an L2, not Hoodi. That is a
+property of 0x and Across, not of Peal.

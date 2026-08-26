@@ -2,6 +2,10 @@
 
 **Status:** accepted · **Date:** 2026-08-26 · **Supersedes the open question in [0001](./0001-reveal-root.md)**
 
+**Target chain: Ethereum Hoodi (560048), moving to Ethereum L1.** Measured on
+Base first; re-measured on Hoodi when the target changed. The gas *counts* are
+identical — same EVM, same precompile — so only the economics below differ.
+
 ## Context
 
 [0001](./0001-reveal-root.md) chose a committee-attested reveal root over
@@ -17,9 +21,13 @@ release notes:
 
 | chain | `0x0b` G1ADD | `0x0f` PAIRING_CHECK |
 |---|---|---|
-| Base Sepolia | 128 zero bytes | `1` |
-| Base mainnet | 128 zero bytes | `1` |
+| **Ethereum Hoodi (560048)** | 128 zero bytes | `1` |
 | Ethereum mainnet | 128 zero bytes | — |
+| Base mainnet | 128 zero bytes | `1` |
+| Base Sepolia | 128 zero bytes | `1` |
+
+Hoodi's chain id was confirmed as 560048 against three independent public RPCs
+before anything was pointed at it.
 
 Control: address `0x…ff` with identical input returns `0x`, so the probe
 distinguishes a live precompile from an empty account. This RPC probe — not the
@@ -28,7 +36,8 @@ implements EIP-2537 too and would give the same numbers on a chain that did not.
 
 ## Measured cost
 
-`contracts/test/auctionkit/BlsPairing.t.sol`, against a Base fork.
+`contracts/test/auctionkit/BlsPairing.t.sol`, against a Hoodi fork
+(`forge test --match-contract BlsPairingGas --fork-url hoodi -vv`).
 
 Peal's share check is `e(pd_j, g_2) == Π_i e(ct_{i,0}, v_j^i)`, which rearranges
 to `e(pd_j, -g_2) · Π_i e(ct_{i,0}, v_j^i) == 1` — a single product the
@@ -45,19 +54,27 @@ EIP-2537 formula `32600k + 37700`.
 | 32 | 33 | 1,117,043 | 3,351,129 |
 | **64** | **65** | **2,163,439** | **6,490,317** |
 
-At B=64, t=3 — 74,880 bytes of calldata per reveal:
+At B=64, t=3 — 6,490,317 gas and 74,880 bytes of calldata per reveal:
 
-| component | wei |
-|---|---:|
-| L1 data fee (`GasPriceOracle.getL1Fee`) | 400,518,599,276 |
-| L2 execution @ 0.006 gwei | 38,941,902,000,000 |
-| **total** | **39,342,420,599,276** (≈ 0.0000393 ETH) |
+| chain | block gas limit | reveal as % of a block | avg base fee | reveal cost |
+|---|---:|---:|---:|---:|
+| **Ethereum Hoodi** | 60,000,000 | **10.8%** | 0.994 gwei | 0.00645 ETH |
+| Ethereum mainnet | ~60,000,000 | ~10.8% | 0.064 gwei | 0.000416 ETH |
+| Base mainnet | 400,000,000 | 1.6% | 0.006 gwei | 0.0000393 ETH |
 
-The L1 data fee is **1% of the total** — the intuition that data availability
-dominates on an L2 is wrong here, and was worth measuring rather than assuming.
+Fees averaged over 20 blocks via `eth_feeHistory`. Hoodi averaged 54% full over
+that window with a 98.9% peak, so a 6.5M-gas transaction is not free to
+schedule there even though the ETH is.
 
-Base mainnet's block gas limit is 400,000,000, so a full reveal is ~1.6% of a
-block.
+Testnet ETH has no price, so Hoodi's fee column matters only as a shape. The
+mainnet row is the one to plan against, and it is volatile: at 10 gwei the same
+reveal is 0.065 ETH rather than 0.0004.
+
+On Base the L1 data fee was measured at 400,518,599,276 wei — **1% of the
+total**, so the intuition that data availability dominates on an L2 turned out
+to be wrong. That figure does not apply on Hoodi or L1, where there is no L1 fee
+because it *is* the L1; the test skips itself there and is kept for the case
+where the target moves back to an L2.
 
 ## Decision
 
@@ -96,5 +113,7 @@ to a bidder, which share verification does not address.
 2. **The verification key shares `v_j^i` are not yet onchain.** Getting them
    there — storage versus calldata, and who pays — is unmeasured and is the next
    thing to size.
-3. **0.006 gwei is a snapshot.** Base gas can spike; the gas *counts* are stable,
-   the fiat cost is not.
+3. **Fees are a snapshot.** Ethereum L1 base fees were unusually low when this
+   was measured. The gas *counts* are stable and chain-independent; the fiat
+   cost is neither. A reveal is ~11% of an L1 block, so this competes for
+   blockspace in a way it does not on Base.

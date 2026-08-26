@@ -25,6 +25,11 @@ const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STA
 /// perfectly well-formed signature by the wrong key is refused, which is the
 /// case that a shape-only check used to wave through.
 const AGENT_KEY: [u8; 32] = [0x22; 32];
+
+/// Ethereum Hoodi. The execution domain is bound into the EIP-712 domain
+/// separator, so this is not cosmetic: a signature made for another chain does
+/// not verify here.
+const HOODI: u64 = 560_048;
 const ATTACKER_KEY: [u8; 32] = [0x33; 32];
 
 fn signing_key(seed: [u8; 32]) -> k256::ecdsa::SigningKey {
@@ -186,7 +191,7 @@ fn envelope(condition_id: &str, ct_hash: &str, nonce: &str) -> Value {
         "created_at": db::unix_now(),
         "expires_at": db::unix_now() + 600,
         "pseudonymous_signer": address_of(AGENT_KEY),
-        "execution_domain": 8453,
+        "execution_domain": HOODI,
         "signature": "0x00",
         "condition_id": condition_id,
     });
@@ -211,7 +216,7 @@ async fn submit_and_read_back_an_intent() {
     assert_eq!(st, 200, "{got}");
     assert_eq!(got["ciphertextHash"], ct);
     assert_eq!(got["state"], "SUBMITTED");
-    assert_eq!(got["executionDomain"], 8453);
+    assert_eq!(got["executionDomain"], HOODI);
 }
 
 /// Invariant: the coordinator cannot serve intent contents early, because it

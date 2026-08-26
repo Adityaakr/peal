@@ -162,9 +162,14 @@ mod tests {
     // types. Pinned rather than recomputed so that a change to either side of
     // the wire shows up as a failing test instead of as agents being silently
     // rejected in production. The key is a throwaway 0x22..22 test key.
-    const DIGEST: &str = "354c5b5e23d3565d8dc2fedcfb25657275f66327367f546773da0192209c703c";
+    const DIGEST: &str = "ac039d74344b84f7dc88be984299c64d0f2719042910195e2143fe90788dace6";
     const SIGNER: &str = "0x1563915e194d8cfba1943570603f7606a3115508";
-    const SIG: &str = "0xb2ea167d2970e260c12719a151265916844e6617f3e140b421f56101f92a365578b6924aa2db1ebdde78eb526b958d1d11fc0ab67e635a27ea07704a997940401b";
+    const SIG: &str = "0xaf16f42f10606d7bc19a3f987a8adcbbc8a8574c93ee4da46cf583af2e6138d42e75b315c25afe2c4278ade8a7a0eb64b49f4986144eb84965ac871ce26db6241b";
+
+    /// Ethereum Hoodi, the deployment target.
+    const CHAIN: u64 = 560_048;
+    /// Ethereum mainnet, used only as "a different chain".
+    const OTHER_CHAIN: u64 = 1;
 
     fn vector_digest() -> [u8; 32] {
         intent_digest(
@@ -174,7 +179,7 @@ mod tests {
             &"ab".repeat(32),
             "nonce-test-0001",
             1_893_456_000,
-            8453,
+            CHAIN,
         )
         .expect("well-formed vector")
     }
@@ -220,7 +225,7 @@ mod tests {
                 &"ab".repeat(32),
                 "nonce-test-0001",
                 1_893_456_000,
-                8453,
+                CHAIN,
             ),
             intent_digest(
                 1,
@@ -229,7 +234,7 @@ mod tests {
                 &"ab".repeat(32),
                 "nonce-test-0001",
                 1_893_456_000,
-                8453,
+                CHAIN,
             ),
             intent_digest(
                 1,
@@ -238,7 +243,7 @@ mod tests {
                 &"ab".repeat(32),
                 "nonce-test-0001",
                 1_893_456_000,
-                8453,
+                CHAIN,
             ),
             intent_digest(
                 1,
@@ -247,7 +252,7 @@ mod tests {
                 &"ac".repeat(32),
                 "nonce-test-0001",
                 1_893_456_000,
-                8453,
+                CHAIN,
             ),
             intent_digest(
                 1,
@@ -256,7 +261,7 @@ mod tests {
                 &"ab".repeat(32),
                 "nonce-test-0002",
                 1_893_456_000,
-                8453,
+                CHAIN,
             ),
             intent_digest(
                 1,
@@ -265,7 +270,7 @@ mod tests {
                 &"ab".repeat(32),
                 "nonce-test-0001",
                 1_893_456_001,
-                8453,
+                CHAIN,
             ),
             // executionDomain also moves the domain separator, not just the struct.
             intent_digest(
@@ -275,7 +280,7 @@ mod tests {
                 &"ab".repeat(32),
                 "nonce-test-0001",
                 1_893_456_000,
-                84532,
+                OTHER_CHAIN,
             ),
         ];
         for (i, v) in variants.iter().enumerate() {
@@ -283,7 +288,7 @@ mod tests {
         }
     }
 
-    /// A signature valid on Base must not be replayable on Base Sepolia.
+    /// A signature valid on Hoodi must not be replayable on Ethereum mainnet.
     #[test]
     fn signature_does_not_replay_across_chains() {
         let other_chain = intent_digest(
@@ -293,7 +298,7 @@ mod tests {
             &"ab".repeat(32),
             "nonce-test-0001",
             1_893_456_000,
-            84532,
+            OTHER_CHAIN,
         )
         .unwrap();
         assert_eq!(

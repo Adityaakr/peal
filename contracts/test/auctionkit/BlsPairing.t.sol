@@ -10,7 +10,7 @@ import {BlsPairingHarness} from "../../src/auctionkit/BlsPairingHarness.sol";
 /// Run against a real fork, because the EIP-2537 precompiles do not exist in a
 /// bare EVM and a local run would measure nothing:
 ///
-///     forge test --match-contract BlsPairingGas --fork-url https://sepolia.base.org -vv
+///     forge test --match-contract BlsPairingGas --fork-url hoodi -vv
 ///
 /// Gas for `BLS12_PAIRING_CHECK` is a function of the term count alone, not of
 /// the point values, so infinity points give a truthful gas figure while
@@ -99,8 +99,10 @@ contract BlsPairingGasTest is Test {
     /// elements is a lot of data availability, so measure it rather than assume
     /// either way.
     ///
-    /// Reads the OP-Stack `GasPriceOracle` predeploy, so this only means
-    /// anything on an OP-Stack fork.
+    /// Reads the OP-Stack `GasPriceOracle` predeploy, so it skips on L1 - Hoodi
+    /// included, where there is no L1 fee to pay because it *is* the L1. Kept
+    /// because it is the figure that matters if the target ever moves back to
+    /// an L2.
     function test_l1DataFeeForAReveal() public view {
         if (!_skipUnlessAvailable()) return;
 
