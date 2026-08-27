@@ -26,6 +26,7 @@ import {
   keccak256, parseUnits, stringToHex, type Address,
 } from 'viem';
 import { session, onAuthChange, type Eip1193Like } from '../auth';
+import { recordTx, recordMany, txlogHtml, onTxLogChange } from '../txlog';
 import { esc } from '../util';
 
 type Cleanup = () => void;
@@ -100,6 +101,7 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
   let status = '';
   let statusKind: 'info' | 'error' | 'ok' = 'info';
   let created: Address | null = null;
+  let createdTx: `0x${string}` | null = null;
   let problems: string[] = [];
   const funded = new Set<string>();
 
@@ -133,7 +135,8 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ address: addr, chainId: ACTIVE.chainId }),
       });
-      const body = (await res.json()) as { funded?: boolean; error?: string };
+      const body = (await res.json()) as { funded?: boolean; error?: string; hashes?: string[] };
+      recordMany(body.hashes ?? [], 'Account funded');
       status = body.funded
         ? 'Signed in and funded. You can create an auction.'
         : body.error
@@ -236,6 +239,9 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
         publicClient: pub, walletClient: wallet, account, chain: activeChain,
         factory: ACTIVE.factory, create: form,
       });
+      recordTx(res.approvalTx as `0x${string}`, 'Approved the sale supply');
+      recordTx(res.createTx, `Created "${form.name}"`);
+      createdTx = res.createTx;
       created = res.auction;
       status = '';
       statusKind = 'ok';
@@ -277,7 +283,8 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
             </div>
             <div class="ml-hero-ctas">
               <a class="ml-btn ml-btn-dark" href="#/a/${created}">open it</a>
-              <a class="ml-btn" href="${ACTIVE.explorer}/address/${created}" target="_blank" rel="noopener">onchain</a>
+              <a class="ml-btn" href="${ACTIVE.explorer}/address/${created}" target="_blank" rel="noopener">the contract</a>
+              ${createdTx ? `<a class="ml-btn" href="${ACTIVE.explorer}/tx/${createdTx}" target="_blank" rel="noopener">the transaction</a>` : ''}
             </div>
           </div>` : `
           ${account
@@ -335,6 +342,8 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
           </form>` : ''}
           `}
 
+          ${txlogHtml()}
+
           <p class="sl-create-foot">
             testnet demo. the reveal committee's signing keys are published on purpose so anyone can
             reproduce the demo, which means an auction created here is revealed by a committee anyone
@@ -386,9 +395,11 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
   };
   applySession();
   const stopAuth = onAuthChange(applySession);
+  const stopTxLog = onTxLogChange(() => draw());
 
   return () => {
     stopAuth();
+    stopTxLog();
     document.title = prevTitle;
   };
 }

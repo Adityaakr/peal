@@ -4354,3 +4354,17 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 .ak-share-input { width: 100%; max-width: 520px; font-family: var(--mono); font-size: 11.5px;
   padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface); color: var(--muted); }
+
+/* transaction log. Whatever this app executed, linked to the chain. */
+.tx-panel .tx-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.tx-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: baseline;
+  padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.tx-row:last-child { border-bottom: none; }
+.tx-label { color: var(--text); }
+.tx-hash { font-family: var(--mono); font-size: 11.5px; color: var(--accent); text-decoration: none; }
+.tx-hash:hover { text-decoration: underline; }
+.tx-when { grid-column: 1 / -1; font-size: 11px; color: var(--muted-soft); }
+.sl-alist-item { display: grid; gap: 6px; }
+.sl-alist-chain { font-family: var(--mono); font-size: 11px; color: var(--muted);
+  text-decoration: none; padding-left: 2px; }
+.sl-alist-chain:hover { color: var(--accent); text-decoration: underline; }

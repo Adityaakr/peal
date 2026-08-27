@@ -36,7 +36,9 @@ function when(startTime: bigint, endTime: bigint, now: bigint): { label: string;
 
 function card(l: AuctionListing, now: bigint): string {
   const w = when(l.startTime, l.endTime, now);
-  return `<a class="sl-alist-card" href="#/a/${l.auction}">
+  // The card links into the app; the line under it links to the chain, so a
+  // reader can check the contract without taking this page's word for it.
+  return `<div class="sl-alist-item"><a class="sl-alist-card" href="#/a/${l.auction}">
     <div class="sl-alist-head">
       <span class="sl-alist-use">${esc(useCaseLabel(l.useCase))}</span>
       <span class="sl-alist-when sl-alist-${w.tone}">${esc(w.label)}</span>
@@ -47,7 +49,10 @@ function card(l: AuctionListing, now: bigint): string {
       <dt>for sale</dt><dd>${esc(formatUnits(l.totalSupply, 18))}</dd>
       <dt>issuer</dt><dd class="mono">${esc(truncMiddle(l.issuer, 6, 4))}</dd>
     </dl>
-  </a>`;
+  </a>
+  <a class="sl-alist-chain" href="${ACTIVE.explorer}/address/${l.auction}" target="_blank" rel="noopener">
+    ${esc(truncMiddle(l.auction, 8, 6))} onchain
+  </a></div>`;
 }
 
 export function renderAuctionsList(root: HTMLElement): Cleanup {

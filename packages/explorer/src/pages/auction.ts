@@ -60,6 +60,7 @@ import {
 } from 'viem';
 import { recoverSeededBid } from '../demo-bids';
 import { session, onAuthChange, type Eip1193Like } from '../auth';
+import { recordTx, recordMany, txlogHtml, onTxLogChange } from '../txlog';
 import { esc, truncMiddle } from '../util';
 
 type Cleanup = () => void;
@@ -398,7 +399,8 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ address: addr, chainId: ACTIVE.chainId }),
       });
-      const body = (await res.json()) as { funded?: boolean; alreadyFunded?: boolean; error?: string };
+      const body = (await res.json()) as { funded?: boolean; alreadyFunded?: boolean; error?: string; hashes?: string[] };
+      recordMany(body.hashes ?? [], 'Account funded');
       if (body.funded) {
         status = `Signed in and funded. You have test tokens and gas.`;
         statusKind = 'ok';
@@ -480,6 +482,8 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         ciphertextHash: keccak256(stringToHex(`${account}:${bid.salt}`)),
       });
 
+      recordTx(res.approvalTx as `0x${string}`, 'Approved escrow');
+      recordTx(res.commitTx, `Sealed bid #${res.bidId}`);
       completeBid(bid.commitment, res.bidId, res.commitTx);
 
       status = `Bid #${res.bidId} committed. Save your salt. Without it the bid cannot be revealed.`;
@@ -546,6 +550,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         functionName: 'claim',
         args: [amount],
       });
+      recordTx(hash, `Claimed ${fmt(amount, snap.config.quoteDecimals, 0)} ${target.quoteSymbol} from the faucet`);
       await pub.waitForTransactionReceipt({ hash });
       status = `Received ${fmt(amount, snap.config.quoteDecimals, 0)} ${target.quoteSymbol}.`;
       statusKind = 'ok';
@@ -753,6 +758,8 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         <p>This is not bid-size privacy, and AuctionKit does not claim it is. That would need shielded funding.</p>
       </div>
 
+      ${txlogHtml()}
+
       ${saved.length ? `
       <div class="ak-panel">
         <h3>Your bids <span class="ak-h2-note">this browser</span></h3>
@@ -862,6 +869,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   };
   applySession();
   const stopAuth = onAuthChange(applySession);
+  const stopTxLog = onTxLogChange(() => draw());
 
   void refresh();
   const timer = window.setInterval(() => void refresh(), 15_000);
@@ -869,6 +877,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   return () => {
     stopped = true;
     stopAuth();
+    stopTxLog();
     detachTilt?.();
     window.clearInterval(timer);
   };
