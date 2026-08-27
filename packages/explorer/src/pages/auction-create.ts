@@ -14,12 +14,10 @@
 import {
   USE_CASES,
   createAuction,
-  hoodiChain,
+  activeChain,
   metadataHash,
   validateCreate,
-  HOODI,
-  HOODI_DEMO,
-  HOODI_PERMIT_TOKENS,
+  ACTIVE,
   type AuctionConfig,
 } from 'peal-auctionkit';
 import {
@@ -32,7 +30,7 @@ import { esc } from '../util';
 type Cleanup = () => void;
 
 const pub = createPublicClient({
-  chain: hoodiChain,
+  chain: activeChain,
   transport: http(undefined, { timeout: 15_000, retryCount: 2 }),
   batch: { multicall: { wait: 16 } },
 });
@@ -101,13 +99,13 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     // Move the wallet before anything is funded or signed, so the first button
     // a user presses is not the one that discovers the wrong chain.
     try {
-      await ensureChain(HOODI.chainId);
+      await ensureChain(ACTIVE.chainId);
     } catch { /* reported when a write actually needs it */ }
     try {
       const res = await fetch('/api/fund', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address: addr, chainId: HOODI.chainId }),
+        body: JSON.stringify({ address: addr, chainId: ACTIVE.chainId }),
       });
       const body = (await res.json()) as { funded?: boolean; error?: string };
       status = body.funded
@@ -137,8 +135,8 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
 
     const cfg: AuctionConfig = {
       issuer: account,
-      saleToken: (g('c-sale') || HOODI_PERMIT_TOKENS.saleToken) as Address,
-      quoteToken: (g('c-quote') || HOODI_PERMIT_TOKENS.quoteToken) as Address,
+      saleToken: (g('c-sale') || ACTIVE.tokens.saleToken) as Address,
+      quoteToken: (g('c-quote') || ACTIVE.tokens.quoteToken) as Address,
       totalSupply: parseUnits(g('c-supply') || '0', 18),
       saleDecimals: 18,
       quoteDecimals: 18,
@@ -154,7 +152,7 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
       allowlistRoot: `0x${'0'.repeat(64)}`,
       protocolFeeBps: 0,
       feeRecipient: account,
-      committeeSetId: HOODI_DEMO.committeeSetId,
+      committeeSetId: ACTIVE.committeeSetId,
       encryptionEpoch: keccak256(stringToHex(`${name}:${useCase}:${now}`)),
       // Bound at creation, so a label shown beside an auction can be checked
       // against what its issuer actually committed to.
@@ -184,11 +182,11 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     draw();
 
     try {
-      await ensureChain(HOODI.chainId);
-      const wallet = createWalletClient({ account, chain: hoodiChain, transport: custom(eth) });
+      await ensureChain(ACTIVE.chainId);
+      const wallet = createWalletClient({ account, chain: activeChain, transport: custom(eth) });
       const res = await createAuction({
-        publicClient: pub, walletClient: wallet, account, chain: hoodiChain,
-        factory: HOODI.factory, create: form,
+        publicClient: pub, walletClient: wallet, account, chain: activeChain,
+        factory: ACTIVE.factory, create: form,
       });
       created = res.auction;
       status = '';
@@ -231,7 +229,7 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
             </div>
             <div class="ml-hero-ctas">
               <a class="ml-btn ml-btn-dark" href="#/a/${created}">open it</a>
-              <a class="ml-btn" href="${HOODI.explorer}/address/${created}" target="_blank" rel="noopener">onchain</a>
+              <a class="ml-btn" href="${ACTIVE.explorer}/address/${created}" target="_blank" rel="noopener">onchain</a>
             </div>
           </div>` : `
           ${account
@@ -255,8 +253,8 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
 
             <div class="sl-fieldset">
               <h3>tokens</h3>
-              ${field('c-sale', 'token you are selling', HOODI_PERMIT_TOKENS.saleToken, 'defaults to the demo token')}
-              ${field('c-quote', 'token bidders pay in', HOODI_PERMIT_TOKENS.quoteToken, 'defaults to the demo stablecoin')}
+              ${field('c-sale', 'token you are selling', ACTIVE.tokens.saleToken, 'defaults to the demo token')}
+              ${field('c-quote', 'token bidders pay in', ACTIVE.tokens.quoteToken, 'defaults to the demo stablecoin')}
               <p class="ak-hint">the defaults support EIP-2612, so bidders sign once and send one transaction instead of two. a token without it still works, it just costs an extra prompt.</p>
               ${field('c-supply', 'total supply for sale', '1000000', '', 'decimal')}
               <p class="ak-hint">you must hold this amount. creating the auction moves it into the contract in the same transaction, so an auction never exists holding nothing.</p>

@@ -16,9 +16,8 @@
 // The page says so, in those words. Claiming bid-size privacy would need
 // shielded funding, which is not implemented.
 import {
-  HOODI,
-  HOODI_DEMO,
-  HOODI_PERMIT_TOKENS,
+  ACTIVE,
+  ACTIVE_DEMO,
   STATE_LABELS,
   allocationFor,
   demandFromBids,
@@ -33,7 +32,7 @@ import {
   DemoFaucetAbi,
   SealedBidAuctionAbi,
   supportsPermit,
-  hoodiChain,
+  activeChain,
   type AuctionSnapshot,
   type CommittedBid,
   type PreparedBid,
@@ -69,7 +68,7 @@ const RPC = 'https://rpc.hoodi.ethpandaops.io';
 // From the package, so the multicall3 address travels with it. A bare chain
 // literal silently disables viem's batching: 60 reads measured 3008ms without
 // the declaration and 727ms with it.
-const CHAIN = hoodiChain;
+const CHAIN = activeChain;
 
 // A public RPC will occasionally be slow or refuse. Bound the wait and retry
 // rather than letting a single hung request hold the page in "loading".
@@ -231,12 +230,12 @@ export interface AuctionTarget {
 }
 
 export const DEMO_TARGET: AuctionTarget = {
-  auction: HOODI_DEMO.auction,
-  quoteToken: HOODI_DEMO.quoteToken,
-  saleToken: HOODI_DEMO.saleToken,
-  saleSymbol: HOODI_DEMO.saleSymbol,
-  quoteSymbol: HOODI_DEMO.quoteSymbol,
-  faucet: HOODI_DEMO.faucet,
+  auction: (ACTIVE_DEMO?.auction ?? '0x0000000000000000000000000000000000000000') as Address,
+  quoteToken: ACTIVE.tokens.quoteToken,
+  saleToken: ACTIVE.tokens.saleToken,
+  saleSymbol: ACTIVE.tokens.saleSymbol,
+  quoteSymbol: ACTIVE.tokens.quoteSymbol,
+  faucet: ACTIVE.tokens.faucet,
 };
 
 export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TARGET): Cleanup {
@@ -254,7 +253,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   let statusKind: 'info' | 'error' | 'ok' = 'info';
   let busy = false;
 
-  root.innerHTML = `<section class="ak"><h1>Sealed-bid auction</h1><p class="ak-sub">Loading from ${esc(HOODI.name)}…</p></section>`;
+  root.innerHTML = `<section class="ak"><h1>Sealed-bid auction</h1><p class="ak-sub">Loading from ${esc(ACTIVE.name)}…</p></section>`;
 
   /** Each read is independent on purpose.
    *
@@ -357,13 +356,13 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
     // Move the wallet before anything is funded or signed, so the first button
     // a user presses is not the one that discovers the wrong chain.
     try {
-      await ensureChain(HOODI.chainId);
+      await ensureChain(ACTIVE.chainId);
     } catch { /* reported when a write actually needs it */ }
     try {
       const res = await fetch('/api/fund', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address: addr, chainId: HOODI.chainId }),
+        body: JSON.stringify({ address: addr, chainId: ACTIVE.chainId }),
       });
       const body = (await res.json()) as { funded?: boolean; alreadyFunded?: boolean; error?: string };
       if (body.funded) {
@@ -393,7 +392,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
       const quantity = parseUnits(quantityStr, snap.config.saleDecimals);
       const bid: PreparedBid = prepareBid({
         cfg: snap.config,
-        chainId: HOODI.chainId,
+        chainId: ACTIVE.chainId,
         auction: target.auction,
         bidder: account,
         quantity,
@@ -407,7 +406,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         );
       }
 
-      await ensureChain(HOODI.chainId);
+      await ensureChain(ACTIVE.chainId);
       const wallet = createWalletClient({ account, chain: CHAIN, transport: custom(eth) });
       // The message has to match what actually happens. A token with EIP-2612
       // needs one signature and one transaction; one without needs two
@@ -421,7 +420,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
 
       // Written before the transaction exists. See saveBid.
       saveBid({
-        chainId: HOODI.chainId,
+        chainId: ACTIVE.chainId,
         auction: target.auction,
         bidder: account,
         bidId: null,
@@ -503,7 +502,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
     draw();
 
     try {
-      await ensureChain(HOODI.chainId);
+      await ensureChain(ACTIVE.chainId);
       const wallet = createWalletClient({ account, chain: CHAIN, transport: custom(eth) });
       const hash = await wallet.writeContract({
         chain: CHAIN,
@@ -562,7 +561,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
       // reproduce its onchain commitment. Never true for a real user's bid.
       const recovered = sealed
         ? recoverSeededBid({
-            chainId: HOODI.chainId,
+            chainId: ACTIVE.chainId,
             auction: target.auction,
             bidder: b.bidder,
             commitment: b.commitment,
@@ -607,7 +606,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   <div class="ak-hero">
     <div class="ak-hero-copy">
       <div class="ak-eyebrow">
-        <span class="ak-live-dot"></span> Live on ${esc(HOODI.name)}, a testnet
+        <span class="ak-live-dot"></span> Live on ${esc(ACTIVE.name)}, a testnet
       </div>
       <h1>Bids stay sealed<br/>until the auction closes.</h1>
       <p class="ak-lede">
@@ -616,7 +615,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         At close they are revealed together and settle at one uniform price.
       </p>
       <div class="ak-hero-meta">
-        <a href="${HOODI.explorer}/address/${target.auction}" target="_blank" rel="noopener">
+        <a href="${ACTIVE.explorer}/address/${target.auction}" target="_blank" rel="noopener">
           <code>${esc(truncMiddle(target.auction, 8, 6))}</code></a>
         <span class="ak-state ak-state-${snap.state}">${esc(STATE_LABELS[snap.state] ?? String(snap.state))}</span>
         <button class="ak-share-btn" id="ak-share">copy share link</button>
@@ -706,7 +705,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
           </button>
         </form>
         <p class="ak-hint">Up to ${fmt(faucetMax > 0n ? faucetMax : 0n, c.quoteDecimals, 0)} per claim, then a short cooldown.
-          <a href="${HOODI.explorer}/address/${target.faucet}" target="_blank" rel="noopener">Faucet contract</a></p>
+          <a href="${ACTIVE.explorer}/address/${target.faucet}" target="_blank" rel="noopener">Faucet contract</a></p>
       </div>` : ''}
 
       <div class="ak-panel ak-panel-warn">
@@ -731,7 +730,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
             <td>${fmt(BigInt(b.quantity), c.saleDecimals, 2)}</td>
             <td>${fmt(priceAt(c.reservePrice, c.tickSize, b.maxPriceTick), c.quoteDecimals)}</td>
             <td>${b.txHash
-              ? `<a href="${HOODI.explorer}/tx/${b.txHash}" target="_blank" rel="noopener">${esc(truncMiddle(b.txHash, 5, 4))}</a>`
+              ? `<a href="${ACTIVE.explorer}/tx/${b.txHash}" target="_blank" rel="noopener">${esc(truncMiddle(b.txHash, 5, 4))}</a>`
               : '<span class="ak-pending">not confirmed</span>'}</td>
           </tr>`).join('')}</tbody>
         </table>
@@ -741,9 +740,9 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   </div>
 
   <p class="ak-foot">
-    Testnet demo on ${esc(HOODI.name)}. The reveal committee's signing keys are
+    Testnet demo on ${esc(ACTIVE.name)}. The reveal committee's signing keys are
     <strong>publicly derivable</strong> (see <code>DeployDemoAuction.s.sol</code>), so it is a prop, not custody.
-    Implementation <code>${esc(truncMiddle(HOODI.auctionImplementation, 8, 6))}</code>.
+    Implementation <code>${esc(truncMiddle(ACTIVE.auctionImplementation, 8, 6))}</code>.
   </p>
 </section>`;
 
@@ -790,7 +789,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
       try {
         const q = parseUnits(qty.value || '0', snap.config.saleDecimals);
         const bid = prepareBid({
-          cfg: snap.config, chainId: HOODI.chainId, auction: target.auction,
+          cfg: snap.config, chainId: ACTIVE.chainId, auction: target.auction,
           bidder: account, quantity: q, maxPriceTick: Number(tickSel.value),
         });
         const short = bid.escrow > quoteBalance;
@@ -844,8 +843,8 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
 /** Which faucet, if any, hands out this auction's payment token. */
 function faucetFor(quoteToken: Address): Address | undefined {
   const q = quoteToken.toLowerCase();
-  if (q === HOODI_DEMO.quoteToken.toLowerCase()) return HOODI_DEMO.faucet;
-  if (q === HOODI_PERMIT_TOKENS.quoteToken.toLowerCase()) return HOODI_PERMIT_TOKENS.faucet;
+  if (q === ACTIVE.tokens.quoteToken.toLowerCase()) return ACTIVE.tokens.faucet;
+  if (q === ACTIVE.tokens.quoteToken.toLowerCase()) return ACTIVE.tokens.faucet;
   return undefined;
 }
 
@@ -864,7 +863,7 @@ export function renderAuctionAt(root: HTMLElement, auction: Address): Cleanup {
   let cancelled = false;
 
   root.innerHTML = `<section class="ak"><div class="ak-hero"><h1>Sealed-bid auction</h1>
-    <p class="ak-sub">Reading ${esc(truncMiddle(auction, 8, 6))} from ${esc(HOODI.name)}.</p></div></section>`;
+    <p class="ak-sub">Reading ${esc(truncMiddle(auction, 8, 6))} from ${esc(ACTIVE.name)}.</p></div></section>`;
 
   void (async () => {
     try {

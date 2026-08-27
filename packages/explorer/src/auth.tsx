@@ -12,7 +12,7 @@
 import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CHAIN_FOR, HOODI, TEMPO } from 'peal-auctionkit';
+import { ACTIVE, CHAIN_FOR, HOODI, TEMPO } from 'peal-auctionkit';
 import type { Address } from 'viem';
 
 /** Just the method the pages use.
@@ -150,10 +150,14 @@ export function mountAuth(): void {
         },
         loginMethods: ['email', 'google', 'wallet'],
         // Without this an embedded wallet lands on Ethereum mainnet and every
-        // transaction is refused for targeting the wrong chain. Hoodi is first
-        // and therefore the default.
-        supportedChains: [CHAIN_FOR[HOODI.chainId]!, CHAIN_FOR[TEMPO.chainId]!],
-        defaultChain: CHAIN_FOR[HOODI.chainId]!,
+        // transaction is refused for targeting the wrong chain.
+        //
+        // The default follows ACTIVE rather than being written out, so moving
+        // the app between chains cannot leave new wallets provisioned on the
+        // old one. Both stay supported, so a link to an auction on the other
+        // chain still works.
+        supportedChains: [CHAIN_FOR[TEMPO.chainId]!, CHAIN_FOR[HOODI.chainId]!],
+        defaultChain: CHAIN_FOR[ACTIVE.chainId]!,
         appearance: { theme: 'light', accentColor: '#2563eb' },
       }}
     >

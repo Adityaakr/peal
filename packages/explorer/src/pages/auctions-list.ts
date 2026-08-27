@@ -8,8 +8,8 @@
 // Logs are read from the factory's deployment block, a known constant. Reading
 // from zero is what made the first bid loader time out on this chain.
 import {
-  hoodiChain,
-  HOODI,
+  activeChain,
+  ACTIVE,
   readListings,
   useCaseLabel,
   type AuctionListing,
@@ -20,7 +20,7 @@ import { esc, truncMiddle } from '../util';
 type Cleanup = () => void;
 
 const pub = createPublicClient({
-  chain: hoodiChain,
+  chain: activeChain,
   transport: http(undefined, { timeout: 15_000, retryCount: 2 }),
   batch: { multicall: { wait: 16 } },
 });
@@ -63,12 +63,12 @@ export function renderAuctionsList(root: HTMLElement): Cleanup {
           <p class="ml-sec-kicker">sealbid</p>
           <h1 class="ml-h2 sl-alist-h1">every auction</h1>
           <p class="ml-sub sl-alist-sub">
-            read from the factory's own logs on ${esc(HOODI.name)}, not from a server. anyone can
+            read from the factory's own logs on ${esc(ACTIVE.name)}, not from a server. anyone can
             create one, and anyone can verify this list without asking us.
           </p>
           <div class="ml-hero-ctas">
             <a class="ml-btn ml-btn-dark" href="#/create">create an auction</a>
-            <a class="ml-btn" href="${HOODI.explorer}/address/${HOODI.factory}" target="_blank" rel="noopener">the factory onchain</a>
+            <a class="ml-btn" href="${ACTIVE.explorer}/address/${ACTIVE.factory}" target="_blank" rel="noopener">the factory onchain</a>
           </div>
           ${body}
         </div>
@@ -80,7 +80,7 @@ export function renderAuctionsList(root: HTMLElement): Cleanup {
 
   void (async () => {
     try {
-      const listings = await readListings(pub, HOODI.factory, HOODI.factoryBlock);
+      const listings = await readListings(pub, ACTIVE.factory, ACTIVE.factoryBlock);
       const now = BigInt(Math.floor(Date.now() / 1000));
       draw(
         listings.length

@@ -231,3 +231,28 @@ export const HOODI_PERMIT_TOKENS = {
   quoteSymbol: 'DUSD',
   faucet: '0xbB80D8c0546E99Db85cEbf7DC99C521ceC41fB07' as Address,
 } as const;
+
+/**
+ * The chain the app runs on.
+ *
+ * Tempo, for its ~0.5s deterministic BFT finality: a bid confirms about as fast
+ * as the click, which is what the preconfirmation conversation was actually
+ * after. Hoodi stays deployed and reachable by address, so nothing that was
+ * shared stops working.
+ *
+ * One export rather than a constant repeated across pages, because the failure
+ * mode of getting it wrong in one place is a transaction sent to a chain the
+ * wallet is not on, which is exactly the error this replaced.
+ */
+export const ACTIVE: Deployment = TEMPO;
+
+/** The chain object for whatever ACTIVE is. */
+export const activeChain = CHAIN_FOR[ACTIVE.chainId]!;
+
+/** The demo auction on the active chain, if one has been created.
+ *
+ * Null when none exists yet, which the interface must handle rather than
+ * rendering a page for an address that is not an auction. */
+export const ACTIVE_DEMO: { auction: Address } | null = {
+  auction: '0xbbf4ba215f614b204DAe8D136EdCAa7ae56f01ac',
+};
