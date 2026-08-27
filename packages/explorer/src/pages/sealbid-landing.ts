@@ -152,10 +152,19 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
   <section class="ml-hero">
     <p class="ml-kicker scroll-reveal">sealbid</p>
     <h1 class="ml-h1 scroll-reveal">the auctioneer bids blind.</h1>
-    <p class="ml-sub scroll-reveal">
-      every bid is a commitment onchain. the seller cannot read the quantity or the price inside it,
-      and neither can another bidder. at close the whole book opens at once and settles at one price.
-    </p>
+    <div class="sl-pitch scroll-reveal">
+      <p class="sl-pitch-problem">
+        <span class="sl-pitch-label">the problem</span>
+        an open book publishes your quantity and your price the moment you bid. the last bidder reads it
+        and only has to beat it by one tick, so bidding early is strictly worse and the sale discovers its
+        price in the final block.
+      </p>
+      <p class="sl-pitch-solution">
+        <span class="sl-pitch-label">what sealbid does</span>
+        every bid is a commitment onchain. the seller cannot read the quantity or the price inside it, and
+        neither can another bidder. at close the whole book opens at once and settles at one price.
+      </p>
+    </div>
     <div class="ml-hero-ctas scroll-reveal">
       <a class="ml-btn ml-btn-dark" href="#/sealed-bid-auction">open the live auction</a>
       <a class="ml-btn" href="${HOODI.explorer}/address/${HOODI_DEMO.auction}" target="_blank" rel="noopener">see it onchain</a>
