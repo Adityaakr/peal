@@ -14,7 +14,7 @@
 // bids are encrypted today would be the one lie that costs the product its
 // credibility with the exact reader it wants.
 import { mountScrollReveal } from '../reveal';
-import { HOODI, HOODI_DEMO } from 'peal-auctionkit';
+import { ACTIVE, ACTIVE_DEMO } from 'peal-auctionkit';
 
 type Cleanup = () => void;
 
@@ -58,7 +58,7 @@ function stepCard(s: Step): string {
  * unencrypted transaction does on the mempool landing. */
 function openBid(qty: string, price: string, top = false): string {
   return `<div class="ml-pub-card sl-obid${top ? ' sl-obid-victim' : ''}">
-    <div class="ml-pub-top"><span class="ml-strong">${qty}</span><span class="ml-arrow">at</span><span class="ml-strong sl-obid-price">${price} ${HOODI_DEMO.quoteSymbol}</span></div>
+    <div class="ml-pub-top"><span class="ml-strong">${qty}</span><span class="ml-arrow">at</span><span class="ml-strong sl-obid-price">${price} ${ACTIVE.tokens.quoteSymbol}</span></div>
     <div class="ml-pub-meta">${top ? 'top of book, and everyone can see it' : 'readable the moment it lands'}</div>
     ${top ? '<span class="sl-outbid">outbid</span>' : ''}
   </div>`;
@@ -85,7 +85,7 @@ function sealedBid(hash: string, escrow: string, qty: string, price: string): st
     <div class="ml-sealed-env mono">
       <span>escrow ${escrow}</span>
       <span class="sl-sbid-q"><span class="sl-q-sealed">quantity ?</span><span class="sl-q-open">${qty}</span></span>
-      <span class="sl-sbid-p"><span class="sl-q-sealed">price ?</span><span class="sl-q-open">${price} ${HOODI_DEMO.quoteSymbol}</span></span>
+      <span class="sl-sbid-p"><span class="sl-q-sealed">price ?</span><span class="sl-q-open">${price} ${ACTIVE.tokens.quoteSymbol}</span></span>
     </div>
   </div>`;
 }
@@ -167,7 +167,7 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
     </div>
     <div class="ml-hero-ctas scroll-reveal">
       <a class="ml-btn ml-btn-dark" href="#/sealed-bid-auction">open the live auction</a>
-      <a class="ml-btn" href="${HOODI.explorer}/address/${HOODI_DEMO.auction}" target="_blank" rel="noopener">see it onchain</a>
+      <a class="ml-btn" href="${ACTIVE.explorer}/address/${ACTIVE_DEMO?.auction ?? ACTIVE.factory}" target="_blank" rel="noopener">see it onchain</a>
     </div>
 
     <div class="ml-stage scroll-reveal" id="sl-stage">
@@ -193,7 +193,7 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
         ${sealedBid('0xca75e985…e0a436', '336,000', '120,000', '2.80')}
         ${sealedBid('0x03934b44…921716', '660,000', '300,000', '2.20')}
         ${sealedBid('0x6e6c7151…b88828', '765,000', '450,000', '1.70')}
-        <div class="sl-clearbar"><span>clearing price</span><b>1.70 ${HOODI_DEMO.quoteSymbol}</b><span>everyone pays it</span></div>
+        <div class="sl-clearbar"><span>clearing price</span><b>1.70 ${ACTIVE.tokens.quoteSymbol}</b><span>everyone pays it</span></div>
         <div class="ml-micro">
           <span class="sl-m-rest">nothing to beat by one tick, because there is nothing to read</span>
           <span class="sl-m-open">no bid was ever readable before the close</span>
@@ -289,7 +289,7 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
             { label: 'visible', value: 'the escrow amount', tone: 'bad' as const },
             { label: 'not published', value: 'how it splits' },
           ],
-          visual: `<div class="sl-escrow">765,000 <span>${HOODI_DEMO.quoteSymbol}</span></div>`,
+          visual: `<div class="sl-escrow">765,000 <span>${ACTIVE.tokens.quoteSymbol}</span></div>`,
         },
         {
           n: '3',
@@ -434,7 +434,7 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
   <section class="ml-section sl-cta-band">
     <div class="ml-wrap scroll-reveal">
       <h2 class="ml-h2">seal now. clear together.</h2>
-      <p class="ml-sub">a live auction is open on ${HOODI.name} right now, with real escrow and real commitments.</p>
+      <p class="ml-sub">a live auction is open right now, with real escrow and real commitments.</p>
       <div class="ml-hero-ctas"><a class="ml-cta" href="#/sealed-bid-auction">open the live auction</a></div>
     </div>
   </section>

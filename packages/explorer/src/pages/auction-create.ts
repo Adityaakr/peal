@@ -65,6 +65,21 @@ function firstLine(s: string): string {
   return s.split(String.fromCharCode(10))[0]!.trim();
 }
 
+/** Read a duration expressed as an amount plus a unit, in hours.
+ *
+ * Hours-only inputs made a three day auction "72", which is arithmetic an
+ * issuer should not have to do and is easy to get wrong by a factor of ten. */
+const UNIT_HOURS: Record<string, number> = { minutes: 1 / 60, hours: 1, days: 24 };
+
+function durationHours(amountId: string, unitId: string, fallback: number): number {
+  const amount = Number(
+    (document.getElementById(amountId) as HTMLInputElement | null)?.value ?? '',
+  );
+  const unit = (document.getElementById(unitId) as HTMLSelectElement | null)?.value ?? 'hours';
+  if (!Number.isFinite(amount) || amount <= 0) return fallback;
+  return amount * (UNIT_HOURS[unit] ?? 1);
+}
+
 function brief(e: unknown): string {
   const err = e as {
     shortMessage?: string;
@@ -158,8 +173,8 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     const useCase = g('c-usecase');
     const details = g('c-details');
     const now = BigInt(Math.floor(Date.now() / 1000));
-    const bidHours = Number(g('c-bid-hours') || '6');
-    const revealHours = Number(g('c-reveal-hours') || '4');
+    const bidHours = durationHours('c-bid-amount', 'c-bid-unit', 6);
+    const revealHours = durationHours('c-reveal-amount', 'c-reveal-unit', 4);
     const endTime = now + BigInt(Math.round(bidHours * 3600));
 
     const cfg: AuctionConfig = {
@@ -325,9 +340,27 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
 
             <div class="sl-fieldset">
               <h3>timing</h3>
-              ${field('c-bid-hours', 'bidding stays open for', '6', 'hours', 'decimal')}
-              ${field('c-reveal-hours', 'reveal window after that', '4', 'hours, at least 1', 'decimal')}
-              <p class="ak-hint">the reveal window must clear an hour. a bidder whose bid is wrongly voided needs time to prove it before settlement.</p>
+              <label>bidding stays open for
+                <div class="sl-duration">
+                  <input id="c-bid-amount" value="6" inputmode="decimal" autocomplete="off" />
+                  <select id="c-bid-unit">
+                    <option value="minutes">minutes</option>
+                    <option value="hours" selected>hours</option>
+                    <option value="days">days</option>
+                  </select>
+                </div>
+              </label>
+              <label>reveal window after that <span>at least 1 hour</span>
+                <div class="sl-duration">
+                  <input id="c-reveal-amount" value="4" inputmode="decimal" autocomplete="off" />
+                  <select id="c-reveal-unit">
+                    <option value="minutes">minutes</option>
+                    <option value="hours" selected>hours</option>
+                    <option value="days">days</option>
+                  </select>
+                </div>
+              </label>
+              <p class="ak-hint" id="c-schedule"></p>
             </div>
 
             <div class="sl-fieldset">
@@ -379,6 +412,31 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
       root.querySelector(`#${id}`)?.addEventListener('input', ladder);
     }
     ladder();
+
+    // Show the actual clock times. A duration is what an issuer types; a
+    // deadline is what they and every bidder have to live with.
+    const schedule = (): void => {
+      const el = root.querySelector<HTMLElement>('#c-schedule');
+      if (!el) return;
+      const bidH = durationHours('c-bid-amount', 'c-bid-unit', 6);
+      const revH = durationHours('c-reveal-amount', 'c-reveal-unit', 4);
+      const now = Date.now();
+      const close = new Date(now + bidH * 3600_000);
+      const deadline = new Date(now + (bidH + revH) * 3600_000);
+      const fmtWhen = (d: Date): string =>
+        d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      el.innerHTML =
+        revH < 1
+          ? `the reveal window has to be at least an hour, so a bidder whose bid is wrongly voided has time to prove it.`
+          : `bidding closes <b>${esc(fmtWhen(close))}</b>, and the reveal deadline is <b>${esc(fmtWhen(deadline))}</b>.`;
+      el.className = revH < 1 ? 'ak-hint ak-error' : 'ak-hint';
+    };
+    for (const id of ['c-bid-amount', 'c-bid-unit', 'c-reveal-amount', 'c-reveal-unit']) {
+      const el = root.querySelector(`#${id}`);
+      el?.addEventListener('input', schedule);
+      el?.addEventListener('change', schedule);
+    }
+    schedule();
   }
 
   const applySession = (): void => {

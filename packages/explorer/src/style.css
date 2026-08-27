@@ -4368,3 +4368,5 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 .sl-alist-chain { font-family: var(--mono); font-size: 11px; color: var(--muted);
   text-decoration: none; padding-left: 2px; }
 .sl-alist-chain:hover { color: var(--accent); text-decoration: underline; }
+.sl-duration { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.sl-duration select { min-width: 7rem; }

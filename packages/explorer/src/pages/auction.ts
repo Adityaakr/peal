@@ -288,7 +288,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   let statusKind: 'info' | 'error' | 'ok' = 'info';
   let busy = false;
 
-  root.innerHTML = `<section class="ak"><h1>Sealed-bid auction</h1><p class="ak-sub">Loading from ${esc(ACTIVE.name)}…</p></section>`;
+  root.innerHTML = `<section class="ak"><h1>Sealed-bid auction</h1><p class="ak-sub">Reading the chain…</p></section>`;
 
   /** Each read is independent on purpose.
    *
@@ -645,7 +645,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   <div class="ak-hero">
     <div class="ak-hero-copy">
       <div class="ak-eyebrow">
-        <span class="ak-live-dot"></span> Live on ${esc(ACTIVE.name)}, a testnet
+        <span class="ak-live-dot"></span> Live, on a testnet
       </div>
       <h1>Bids stay sealed<br/>until the auction closes.</h1>
       <p class="ak-lede">
@@ -781,7 +781,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   </div>
 
   <p class="ak-foot">
-    Testnet demo on ${esc(ACTIVE.name)}. The reveal committee's signing keys are
+    Testnet demo. The reveal committee's signing keys are
     <strong>publicly derivable</strong> (see <code>DeployDemoAuction.s.sol</code>), so it is a prop, not custody.
     Implementation <code>${esc(truncMiddle(ACTIVE.auctionImplementation, 8, 6))}</code>.
   </p>
@@ -906,7 +906,7 @@ export function renderAuctionAt(root: HTMLElement, auction: Address): Cleanup {
   let cancelled = false;
 
   root.innerHTML = `<section class="ak"><div class="ak-hero"><h1>Sealed-bid auction</h1>
-    <p class="ak-sub">Reading ${esc(truncMiddle(auction, 8, 6))} from ${esc(ACTIVE.name)}.</p></div></section>`;
+    <p class="ak-sub">Reading ${esc(truncMiddle(auction, 8, 6))}.</p></div></section>`;
 
   void (async () => {
     try {

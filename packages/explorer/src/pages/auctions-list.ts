@@ -68,7 +68,7 @@ export function renderAuctionsList(root: HTMLElement): Cleanup {
           <p class="ml-sec-kicker">sealbid</p>
           <h1 class="ml-h2 sl-alist-h1">every auction</h1>
           <p class="ml-sub sl-alist-sub">
-            read from the factory's own logs on ${esc(ACTIVE.name)}, not from a server. anyone can
+            read from the factory's own logs, not from a server. anyone can
             create one, and anyone can verify this list without asking us.
           </p>
           <div class="ml-hero-ctas">
