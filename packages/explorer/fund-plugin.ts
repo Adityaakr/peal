@@ -35,6 +35,14 @@ interface ChainCfg {
   /** The auction payment token, so a funded user can actually bid. */
   quoteToken: Address;
   quoteAmount: bigint;
+  /** The sale token, so a funded user can actually CREATE an auction.
+   *
+   * Missing this is not a smaller omission than missing gas. Creating an
+   * auction pulls the full sale supply from the issuer, so an account with
+   * gas and payment tokens but no sale token can browse and bid and then
+   * fails on create with a bare revert. */
+  saleToken: Address;
+  saleAmount: bigint;
 }
 
 const CHAINS: Record<number, ChainCfg> = {
@@ -44,6 +52,8 @@ const CHAINS: Record<number, ChainCfg> = {
     gas: { kind: 'native', amount: parseUnits('0.02', 18) },
     quoteToken: '0xc246151117190833d671004bFB16c91b69b10356',
     quoteAmount: parseUnits('1000', 18),
+    saleToken: '0x25526E55ABcED385BE642Fb7A00506D6Fa28dcbF',
+    saleAmount: parseUnits('2000000', 18),
   },
   42431: {
     chainId: 42431,
@@ -52,6 +62,8 @@ const CHAINS: Record<number, ChainCfg> = {
     gas: { kind: 'erc20', token: '0x20c0000000000000000000000000000000000000', amount: parseUnits('50', 6) },
     quoteToken: '0x94521876dbE846a1a3eccF6636c2ec8E0BE82091',
     quoteAmount: parseUnits('1000', 18),
+    saleToken: '0xdB1c20cF990Cd94c4806Aed7974Da8d4103A09b9',
+    saleAmount: parseUnits('2000000', 18),
   },
 };
 
@@ -145,6 +157,12 @@ export function fundPlugin(): Plugin {
           hashes.push(await wallet.writeContract({
             address: cfg.quoteToken, abi: ERC20, functionName: 'mint',
             args: [address, cfg.quoteAmount], gas: gasLimit,
+          }));
+          // Enough to create an auction at the form's default supply, with
+          // room to create more than one.
+          hashes.push(await wallet.writeContract({
+            address: cfg.saleToken, abi: ERC20, functionName: 'mint',
+            args: [address, cfg.saleAmount], gas: gasLimit,
           }));
 
           funded.add(tag);

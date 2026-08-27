@@ -18,6 +18,7 @@ import {
   metadataHash,
   validateCreate,
   ACTIVE,
+  DemoTokenAbi,
   type AuctionConfig,
 } from 'peal-auctionkit';
 import {
@@ -59,10 +60,35 @@ async function ensureChain(chainId: number): Promise<void> {
   await session().switchChain(chainId);
 }
 
+function firstLine(s: string): string {
+  return s.split(String.fromCharCode(10))[0]!.trim();
+}
+
 function brief(e: unknown): string {
-  const err = e as { shortMessage?: string; details?: string; message?: string };
-  const m = err?.shortMessage ?? err?.details ?? err?.message ?? String(e);
-  return m.split('\n')[0]!.trim().slice(0, 200);
+  const err = e as {
+    shortMessage?: string;
+    details?: string;
+    message?: string;
+    metaMessages?: string[];
+    cause?: { shortMessage?: string; reason?: string; message?: string };
+  };
+
+  // viem's shortMessage for a revert ends with "reverted with the following
+  // signature:" and puts the selector or reason on the NEXT line, so taking
+  // only the first line produced the message a user just saw: an error that
+  // announces a failure and then says nothing about it.
+  const head = err?.shortMessage ?? err?.details ?? err?.message ?? String(e);
+  const reason =
+    err?.cause?.reason ??
+    err?.cause?.shortMessage ??
+    err?.metaMessages?.find((m) => m && !/^(Contract Call|Request Arguments)/.test(m.trim()));
+
+  const parts = [firstLine(head)];
+  if (reason) {
+    const r = firstLine(String(reason));
+    if (r && !parts[0]!.includes(r)) parts.push(r);
+  }
+  return parts.join(' ').slice(0, 300);
 }
 
 export function renderAuctionCreate(root: HTMLElement): Cleanup {
@@ -168,6 +194,28 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     if (!form) return;
 
     problems = validateCreate(form, BigInt(Math.floor(Date.now() / 1000)));
+
+    // Creating an auction pulls the whole sale supply from the issuer. Check
+    // that they hold it, because the onchain failure is a bare transferFrom
+    // revert with no reason string, which tells a user nothing about what to
+    // do next.
+    try {
+      const held = (await pub.readContract({
+        address: form.cfg.saleToken,
+        abi: DemoTokenAbi,
+        functionName: 'balanceOf',
+        args: [account],
+      })) as bigint;
+      if (held < form.cfg.totalSupply) {
+        problems.push(
+          `You are selling ${formatUnits(form.cfg.totalSupply, 18)} of ${form.cfg.saleToken.slice(0, 10)}… but hold ${formatUnits(held, 18)}. ` +
+            `Creating an auction moves the whole supply into the contract, so you have to own it first.`,
+        );
+      }
+    } catch {
+      problems.push('Could not read your balance of the token you are selling. Check the address is a token on this chain.');
+    }
+
     if (problems.length) {
       status = '';
       draw();

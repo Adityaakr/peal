@@ -93,11 +93,35 @@ async function ensureChain(chainId: number): Promise<void> {
   await session().switchChain(chainId);
 }
 
+function firstLine(s: string): string {
+  return s.split(String.fromCharCode(10))[0]!.trim();
+}
+
 function briefly(e: unknown): string {
-  const err = e as { shortMessage?: string; details?: string; message?: string };
-  const m = err?.shortMessage ?? err?.details ?? err?.message ?? String(e);
-  const firstLine = m.split('\n')[0]!.trim();
-  return firstLine.length > 160 ? `${firstLine.slice(0, 160)}…` : firstLine;
+  const err = e as {
+    shortMessage?: string;
+    details?: string;
+    message?: string;
+    metaMessages?: string[];
+    cause?: { shortMessage?: string; reason?: string; message?: string };
+  };
+
+  // viem's shortMessage for a revert ends with "reverted with the following
+  // signature:" and puts the selector or reason on the NEXT line, so taking
+  // only the first line produced the message a user just saw: an error that
+  // announces a failure and then says nothing about it.
+  const head = err?.shortMessage ?? err?.details ?? err?.message ?? String(e);
+  const reason =
+    err?.cause?.reason ??
+    err?.cause?.shortMessage ??
+    err?.metaMessages?.find((m) => m && !/^(Contract Call|Request Arguments)/.test(m.trim()));
+
+  const parts = [firstLine(head)];
+  if (reason) {
+    const r = firstLine(String(reason));
+    if (r && !parts[0]!.includes(r)) parts.push(r);
+  }
+  return parts.join(' ').slice(0, 300);
 }
 
 /** Bids live in localStorage because the salt exists nowhere else.
