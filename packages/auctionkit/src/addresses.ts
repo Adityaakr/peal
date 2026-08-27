@@ -23,6 +23,19 @@ export interface Deployment {
   factory: Address;
   factoryBlock: bigint;
   explorer: string;
+  rpcUrl: string;
+  /** What gas is paid in. Tempo has no native token and charges in a
+   * stablecoin, so a UI that says "you need ETH" would be wrong there. */
+  gasSymbol: string;
+  /** Demo tokens and the faucet that hands out the quote side. */
+  tokens: {
+    saleToken: Address;
+    saleSymbol: string;
+    quoteToken: Address;
+    quoteSymbol: string;
+    faucet: Address;
+  };
+  committeeSetId: Hex;
 }
 
 export const HOODI: Deployment = {
@@ -36,6 +49,49 @@ export const HOODI: Deployment = {
    * one no public RPC will finish. */
   factoryBlock: 3502790n,
   explorer: 'https://hoodi.etherscan.io',
+  rpcUrl: 'https://rpc.hoodi.ethpandaops.io',
+  gasSymbol: 'ETH',
+  tokens: {
+    saleToken: '0x25526E55ABcED385BE642Fb7A00506D6Fa28dcbF',
+    saleSymbol: 'PEALD',
+    quoteToken: '0xc246151117190833d671004bFB16c91b69b10356',
+    quoteSymbol: 'DUSD',
+    faucet: '0xbB80D8c0546E99Db85cEbf7DC99C521ceC41fB07',
+  },
+  committeeSetId: '0x919713e6844c14557b3da10b2deea33d9c00d70229bedadbb93d81f596d4af85',
+  current: true,
+};
+
+/** Tempo Moderato.
+ *
+ * Chosen over adding a Vara.eth layer for speed. Tempo settles with ~0.5s
+ * deterministic BFT finality, which is strictly better than a preconfirmation:
+ * a preconf is a soft promise that has to be caveated in the interface, and
+ * this is settled. It also has EIP-2537, so onchain share verification stays
+ * reachable here (see docs/auctionkit/decisions/0003).
+ *
+ * Gas is paid in PathUSD, not a native token. `eth_getBalance` is hardcoded and
+ * `BALANCE`/`SELFBALANCE` return zero, so nothing here may depend on native
+ * value. AuctionKit is entirely ERC-20, so it does not.
+ */
+export const TEMPO: Deployment = {
+  chainId: 42431,
+  name: 'Tempo Moderato',
+  committeeRegistry: '0xA9228c1ceA27C86f700782e46Bb237e965f23b47',
+  auctionImplementation: '0xfE4315435fC84c30b84D9316a3EE37b48FFBc40E',
+  factory: '0x720063ab08722b86D2B1140D04F24523bD482B7A',
+  factoryBlock: 32735509n,
+  explorer: 'https://explore.testnet.tempo.xyz',
+  rpcUrl: 'https://rpc.moderato.tempo.xyz',
+  gasSymbol: 'PathUSD',
+  tokens: {
+    saleToken: '0xdB1c20cF990Cd94c4806Aed7974Da8d4103A09b9',
+    saleSymbol: 'PEALD',
+    quoteToken: '0x94521876dbE846a1a3eccF6636c2ec8E0BE82091',
+    quoteSymbol: 'DUSD',
+    faucet: '0x7f49125581a3228379b01B73e19c4c9A831FE552',
+  },
+  committeeSetId: '0xd19f4dd9a205e3edb80e46666fa6a6a02497bb16411755e9355413e4dea9327f',
   current: true,
 };
 
@@ -87,7 +143,13 @@ export const HOODI_DEMO: DemoAuction = {
   faucet: '0xa727B494D1Aae7Ec34C4891D0dcf1426f8eD6C93',
 };
 
-export const DEPLOYMENTS: Record<number, Deployment> = { [HOODI.chainId]: HOODI };
+export const DEPLOYMENTS: Record<number, Deployment> = {
+  [HOODI.chainId]: HOODI,
+  [TEMPO.chainId]: TEMPO,
+};
+
+/** Chains a user can pick between, in the order they should be offered. */
+export const CHAINS: Deployment[] = [HOODI, TEMPO];
 
 /** Throws on a stale deployment. Callers that genuinely want the address
  * anyway — a redeploy script, an explorer link — should read `DEPLOYMENTS`
@@ -124,6 +186,26 @@ const MULTICALL3: Address = '0xcA11bde05977b3631167028862bE2a173976CA11';
  * `getBid` reads. Through multicall they aggregate into a handful of calls; one
  * by one they are 200, and the page crawls.
  */
+function chainFor(d: Deployment) {
+  return defineChain({
+    id: d.chainId,
+    name: d.name,
+    nativeCurrency: { name: d.gasSymbol, symbol: d.gasSymbol, decimals: 18 },
+    rpcUrls: { default: { http: [d.rpcUrl] } },
+    blockExplorers: { default: { name: 'Explorer', url: d.explorer } },
+    contracts: { multicall3: { address: MULTICALL3 } },
+    testnet: true,
+  });
+}
+
+/** Chain definitions, keyed by id. Multicall3 is verified present on both. */
+export const CHAIN_FOR: Record<number, ReturnType<typeof chainFor>> = {
+  [HOODI.chainId]: chainFor(HOODI),
+  [TEMPO.chainId]: chainFor(TEMPO),
+};
+
+export const tempoChain = CHAIN_FOR[TEMPO.chainId]!;
+
 export const hoodiChain = defineChain({
   id: HOODI.chainId,
   name: HOODI.name,

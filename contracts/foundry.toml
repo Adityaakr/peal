@@ -18,6 +18,20 @@ via_ir = true
 # Public endpoints, deliberately: nothing here needs a key, and a rate limit on
 # a benchmark is not worth a secret in a config file. Override for real work
 # with `forge test --fork-url <url>`, which takes precedence.
+# Tempo charges ~1000 gas per byte of deployed code and 250k per new storage
+# slot, and its eth_estimateGas does not account for either. SealedBidAuction is
+# 15,409 bytes, so its code alone needs ~15.4M gas while the estimate comes back
+# an order of magnitude under. A gas-estimate multiplier does not help, because
+# a multiple of a wrong estimate is still wrong.
+#
+# Tempo's block limit is 500M, so an explicit ceiling well above any single
+# deploy is safe and costs nothing: gas is charged on what is used, not on what
+# is reserved.
+gas_limit = 400000000
+
 [rpc_endpoints]
 hoodi = "https://rpc.hoodi.ethpandaops.io"
+# Tempo Moderato. ~0.5s deterministic BFT finality, EIP-2537 present, and
+# gas is paid in pathUSD rather than a native token.
+tempo = "https://rpc.moderato.tempo.xyz"
 mainnet = "https://ethereum-rpc.publicnode.com"
