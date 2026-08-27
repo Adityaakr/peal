@@ -1,0 +1,9 @@
+# Gear's host provides the allocator and syscall symbols at execution time, not
+# at link time. Without this the wasm link fails on `alloc`, `free_range`,
+# `gr_source` and friends, which look like missing code and are actually
+# imports the runtime supplies.
+[target.wasm32v1-none]
+rustflags = ["-C", "link-arg=--import-undefined", "-C", "link-arg=--allow-undefined"]
+
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=--import-undefined", "-C", "link-arg=--allow-undefined"]

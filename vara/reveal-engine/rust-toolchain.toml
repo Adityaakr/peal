@@ -1,0 +1,6 @@
+# Matches the reference examples in gear-foundation/vara-eth-skills. Both wasm
+# targets are needed: sails builds the program for wasm32v1-none and the
+# no_std runtime pieces expect the pair to be installed.
+[toolchain]
+channel = "stable"
+targets = ["wasm32-unknown-unknown", "wasm32v1-none"]
