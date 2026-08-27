@@ -6,6 +6,7 @@ import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/Safe
 import {ReentrancyGuard} from "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 import {ECDSA} from "openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
 import {MerkleProof} from "openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
+import {IERC20Permit} from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {Initializable} from "openzeppelin-contracts/contracts/proxy/utils/Initializable.sol";
 
 import {ClearingPrice} from "./ClearingPrice.sol";
@@ -339,6 +340,48 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
         nonReentrant
         returns (uint32 bidId)
     {
+        return _commitBid(commitment, ciphertextHash, escrowAmount, allowlistProof);
+    }
+
+    /// @notice Commit a bid and approve its escrow in a single transaction.
+    ///
+    /// Bidding used to cost two transactions and two wallet prompts: an
+    /// `approve`, then a `commitBid`. On a twelve second chain that is most of
+    /// the wait a bidder actually feels, and the second prompt is where people
+    /// stop. With EIP-2612 the approval becomes an offchain signature, so this
+    /// is one transaction and one prompt.
+    ///
+    /// @dev The permit is wrapped in try/catch on purpose. A permit signature
+    ///      is public once broadcast, so anyone can submit it first, consume
+    ///      the nonce, and leave the real transaction reverting on a permit
+    ///      that has already been used. Swallowing that failure means the bid
+    ///      still lands, because the allowance it needed now exists either way.
+    ///      If no allowance exists the `safeTransferFrom` below reverts, which
+    ///      is the correct and only failure.
+    ///
+    ///      Requires a quote token implementing EIP-2612. Tokens without it
+    ///      still work through `commitBid`.
+    function commitBidWithPermit(
+        bytes32 commitment,
+        bytes32 ciphertextHash,
+        uint256 escrowAmount,
+        bytes32[] calldata allowlistProof,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external inState(State.CommitOpen) nonReentrant returns (uint32 bidId) {
+        try IERC20Permit(config.quoteToken).permit(msg.sender, address(this), escrowAmount, deadline, v, r, s) {}
+        catch {}
+        return _commitBid(commitment, ciphertextHash, escrowAmount, allowlistProof);
+    }
+
+    function _commitBid(
+        bytes32 commitment,
+        bytes32 ciphertextHash,
+        uint256 escrowAmount,
+        bytes32[] calldata allowlistProof
+    ) private returns (uint32 bidId) {
         if (block.timestamp < config.startTime) revert TooEarly();
         if (block.timestamp >= config.endTime) revert TooLate();
         if (committedBidCount >= config.maxBids) revert TooManyBids();

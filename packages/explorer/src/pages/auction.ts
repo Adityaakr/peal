@@ -18,6 +18,7 @@
 import {
   HOODI,
   HOODI_DEMO,
+  HOODI_PERMIT_TOKENS,
   STATE_LABELS,
   allocationFor,
   demandFromBids,
@@ -31,6 +32,7 @@ import {
   DemoTokenAbi,
   DemoFaucetAbi,
   SealedBidAuctionAbi,
+  supportsPermit,
   hoodiChain,
   type AuctionSnapshot,
   type CommittedBid,
@@ -369,7 +371,14 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
       }
 
       const wallet = createWalletClient({ account, chain: CHAIN, transport: custom(eth) });
-      status = 'Approve the escrow, then confirm the bid…';
+      // The message has to match what actually happens. A token with EIP-2612
+      // needs one signature and one transaction; one without needs two
+      // transactions. Saying "approve, then confirm" to someone who is about to
+      // see a single prompt is a small lie that makes the app feel broken.
+      const onePrompt = await supportsPermit(pub, target.quoteToken);
+      status = onePrompt
+        ? 'Sign the bid in your wallet. One signature, one transaction.'
+        : 'Approve the escrow, then confirm the bid. Two transactions.';
       draw();
 
       // Written before the transaction exists. See saveBid.
@@ -775,6 +784,14 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   };
 }
 
+/** Which faucet, if any, hands out this auction's payment token. */
+function faucetFor(quoteToken: Address): Address | undefined {
+  const q = quoteToken.toLowerCase();
+  if (q === HOODI_DEMO.quoteToken.toLowerCase()) return HOODI_DEMO.faucet;
+  if (q === HOODI_PERMIT_TOKENS.quoteToken.toLowerCase()) return HOODI_PERMIT_TOKENS.faucet;
+  return undefined;
+}
+
 /** Render any auction by address, for the shareable `#/a/0x…` link.
  *
  * Token symbols are read from the chain rather than assumed: a stranger's
@@ -810,10 +827,9 @@ export function renderAuctionAt(root: HTMLElement, auction: Address): Cleanup {
         quoteToken: cfg.quoteToken,
         saleSymbol: String(saleSymbol),
         quoteSymbol: String(quoteSymbol),
-        faucet:
-          cfg.quoteToken.toLowerCase() === HOODI_DEMO.quoteToken.toLowerCase()
-            ? HOODI_DEMO.faucet
-            : undefined,
+        // Each demo token has its own faucet. Offering the wrong one would
+        // mint tokens this auction does not accept.
+        faucet: faucetFor(cfg.quoteToken),
       });
     } catch (e) {
       if (cancelled) return;

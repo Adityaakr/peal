@@ -15,6 +15,7 @@ import {
 import { SealedBidAuctionAbi, DemoTokenAbi } from './abi.js';
 import { bidCommitment, randomSalt } from './commitment.js';
 import { escrowFor, priceAt } from './clearing.js';
+import { signPermit, supportsPermit } from './permit.js';
 
 /** Mirrors the contract's `State` enum. Order is load-bearing. */
 export enum AuctionState {
@@ -232,6 +233,40 @@ export async function submitBid(args: {
     args: [owner, args.auction],
   })) as bigint;
 
+  // One transaction where the token allows it. A permit turns the approval
+  // into a signature, so the bidder sees one wallet prompt instead of two and
+  // waits one block instead of two. That is a larger cut in perceived time
+  // than any change of chain, because the second prompt is where people stop.
+  if (allowance < args.bid.escrow && (await supportsPermit(args.publicClient, args.quoteToken))) {
+    const permit = await signPermit({
+      publicClient: args.publicClient,
+      walletClient: args.walletClient,
+      account: args.account,
+      token: args.quoteToken,
+      spender: args.auction,
+      value: args.bid.escrow,
+    });
+
+    const commitTx = await args.walletClient.writeContract({
+      chain: null,
+      account: args.account,
+      address: args.auction,
+      abi: SealedBidAuctionAbi,
+      functionName: 'commitBidWithPermit',
+      args: [
+        args.bid.commitment,
+        args.ciphertextHash,
+        args.bid.escrow,
+        args.allowlistProof ?? [],
+        permit.deadline,
+        permit.v,
+        permit.r,
+        permit.s,
+      ],
+    });
+    return { commitTx, bidId: await bidIdFrom(args.publicClient, args.auction, commitTx) };
+  }
+
   let approvalTx: Hex | undefined;
   if (allowance < args.bid.escrow) {
     approvalTx = await args.walletClient.writeContract({
@@ -257,19 +292,27 @@ export async function submitBid(args: {
     functionName: 'commitBid',
     args: [args.bid.commitment, args.ciphertextHash, args.bid.escrow, args.allowlistProof ?? []],
   });
-  const receipt = await args.publicClient.waitForTransactionReceipt({ hash: commitTx });
+  return { approvalTx, commitTx, bidId: await bidIdFrom(args.publicClient, args.auction, commitTx) };
+}
+
+/** Which bid id the chain assigned.
+ *
+ * Read from the event after the fact rather than predicted. The contract
+ * assigns it, nothing binds it into the commitment, and predicting it was the
+ * race that let one bidder commit to another's id. */
+async function bidIdFrom(client: PublicClient, auction: Address, commitTx: Hex): Promise<number> {
+  const receipt = await client.waitForTransactionReceipt({ hash: commitTx });
   if (receipt.status !== 'success') throw new Error('commitBid reverted');
 
-  const logs = await args.publicClient.getContractEvents({
-    address: args.auction,
+  const logs = await client.getContractEvents({
+    address: auction,
     abi: SealedBidAuctionAbi,
     eventName: 'BidCommitted',
     blockHash: receipt.blockHash,
   });
   const mine = logs.find((l) => l.transactionHash === commitTx);
   if (!mine) throw new Error('commitBid succeeded but emitted no BidCommitted event');
-
-  return { approvalTx, commitTx, bidId: Number((mine.args as { bidId: number }).bidId) };
+  return Number((mine.args as { bidId: number }).bidId);
 }
 
 export interface CommittedBid {

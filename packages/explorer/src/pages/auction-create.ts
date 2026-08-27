@@ -19,6 +19,7 @@ import {
   validateCreate,
   HOODI,
   HOODI_DEMO,
+  HOODI_PERMIT_TOKENS,
   type AuctionConfig,
 } from 'peal-auctionkit';
 import {
@@ -104,8 +105,8 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
 
     const cfg: AuctionConfig = {
       issuer: account,
-      saleToken: (g('c-sale') || HOODI_DEMO.saleToken) as Address,
-      quoteToken: (g('c-quote') || HOODI_DEMO.quoteToken) as Address,
+      saleToken: (g('c-sale') || HOODI_PERMIT_TOKENS.saleToken) as Address,
+      quoteToken: (g('c-quote') || HOODI_PERMIT_TOKENS.quoteToken) as Address,
       totalSupply: parseUnits(g('c-supply') || '0', 18),
       saleDecimals: 18,
       quoteDecimals: 18,
@@ -221,8 +222,9 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
 
             <div class="sl-fieldset">
               <h3>tokens</h3>
-              ${field('c-sale', 'token you are selling', HOODI_DEMO.saleToken, 'defaults to the demo token')}
-              ${field('c-quote', 'token bidders pay in', HOODI_DEMO.quoteToken, 'defaults to the demo stablecoin')}
+              ${field('c-sale', 'token you are selling', HOODI_PERMIT_TOKENS.saleToken, 'defaults to the demo token')}
+              ${field('c-quote', 'token bidders pay in', HOODI_PERMIT_TOKENS.quoteToken, 'defaults to the demo stablecoin')}
+              <p class="ak-hint">the defaults support EIP-2612, so bidders sign once and send one transaction instead of two. a token without it still works, it just costs an extra prompt.</p>
               ${field('c-supply', 'total supply for sale', '1000000', '', 'decimal')}
               <p class="ak-hint">you must hold this amount. creating the auction moves it into the contract in the same transaction, so an auction never exists holding nothing.</p>
             </div>

@@ -133,3 +133,19 @@ export const hoodiChain = defineChain({
   contracts: { multicall3: { address: MULTICALL3 } },
   testnet: true,
 });
+
+/** Permit-capable demo tokens, the defaults for new auctions.
+ *
+ * The original DUSD is a hand-rolled token with no EIP-2612, so a bid against
+ * it will always cost two transactions and two wallet prompts. These are the
+ * same demo money with permit, which makes bidding one signature and one
+ * transaction. The old tokens still work; auctions quoted in them simply take
+ * the approve path.
+ */
+export const HOODI_PERMIT_TOKENS = {
+  saleToken: '0x25526E55ABcED385BE642Fb7A00506D6Fa28dcbF' as Address,
+  saleSymbol: 'PEALD',
+  quoteToken: '0xc246151117190833d671004bFB16c91b69b10356' as Address,
+  quoteSymbol: 'DUSD',
+  faucet: '0xbB80D8c0546E99Db85cEbf7DC99C521ceC41fB07' as Address,
+} as const;
