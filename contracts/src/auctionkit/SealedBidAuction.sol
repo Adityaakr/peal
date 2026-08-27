@@ -265,7 +265,23 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
     /// @notice Escrow the full sale supply. Must happen before bidding opens —
     /// a bidder must never be able to commit funds to an auction whose tokens
     /// are not already locked.
-    function fund() external onlyIssuer inState(State.Created) nonReentrant {
+    /// @dev Deliberately NOT `onlyIssuer`. Funding only ever moves the full
+    ///      supply *into* the auction, from whoever calls it, and the tokens are
+    ///      then bound by the auction's own rules regardless of who sent them.
+    ///      There is nothing an outside funder can gain and nothing a bidder can
+    ///      lose by it.
+    ///
+    ///      Requiring the issuer would mean an auction could only be created and
+    ///      funded in two separate transactions by the same key, which leaves a
+    ///      window where an auction exists, looks live, and holds no supply. A
+    ///      bidder finding it in that window would commit real escrow against
+    ///      tokens that were never escrowed. `AuctionFactory` closes that window
+    ///      by doing both in one call, and it can only do so because of this.
+    ///
+    ///      One consequence to know: `cancel` returns the supply to
+    ///      `config.issuer`, not to whoever funded. Funding an auction you do
+    ///      not control is therefore a gift to its issuer.
+    function fund() external inState(State.Created) nonReentrant {
         IERC20 sale = IERC20(config.saleToken);
         uint256 before = sale.balanceOf(address(this));
         sale.safeTransferFrom(msg.sender, address(this), config.totalSupply);

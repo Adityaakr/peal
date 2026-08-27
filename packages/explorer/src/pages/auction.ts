@@ -30,6 +30,7 @@ import {
   submitBid,
   DemoTokenAbi,
   DemoFaucetAbi,
+  hoodiChain,
   type AuctionSnapshot,
   type CommittedBid,
   type PreparedBid,
@@ -61,12 +62,10 @@ import { esc, truncMiddle } from '../util';
 type Cleanup = () => void;
 
 const RPC = 'https://rpc.hoodi.ethpandaops.io';
-const CHAIN = {
-  id: HOODI.chainId,
-  name: HOODI.name,
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: { default: { http: [RPC] } },
-} as const;
+// From the package, so the multicall3 address travels with it. A bare chain
+// literal silently disables viem's batching: 60 reads measured 3008ms without
+// the declaration and 727ms with it.
+const CHAIN = hoodiChain;
 
 // A public RPC will occasionally be slow or refuse. Bound the wait and retry
 // rather than letting a single hung request hold the page in "loading".
