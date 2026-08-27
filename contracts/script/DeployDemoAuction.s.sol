@@ -97,6 +97,7 @@ contract DeployDemoAuction is Script {
             committeeSetId: setId,
             encryptionEpoch: keccak256("peal-demo-epoch-1"),
             metadataHash: keccak256("peal-demo-auction-1"),
+            voidDisputeWindow: 1 hours,
             version: 1
         });
         auction.initialize(cfg, address(registry));

@@ -129,6 +129,7 @@ contract SealedBidAuctionTest is Test {
             committeeSetId: setId,
             encryptionEpoch: keccak256("epoch-1"),
             metadataHash: keccak256("meta"),
+            voidDisputeWindow: 1 hours,
             version: 1
         });
     }

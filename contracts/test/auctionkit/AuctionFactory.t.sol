@@ -61,6 +61,7 @@ contract AuctionFactoryTest is Test {
             committeeSetId: setId,
             encryptionEpoch: keccak256("e"),
             metadataHash: mh,
+            voidDisputeWindow: 1 hours,
             version: 1
         });
     }

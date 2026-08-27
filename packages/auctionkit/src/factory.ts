@@ -130,11 +130,15 @@ export function validateCreate(args: CreateArgs, nowSeconds: bigint): string[] {
   if (cfg.numTicks === 0 || cfg.numTicks > 256) problems.push('Price steps must be between 1 and 256.');
   if (cfg.startTime >= cfg.endTime) problems.push('Bidding must close after it opens.');
   if (cfg.endTime <= nowSeconds) problems.push('Bidding closes in the past.');
-  // VOID_DISPUTE_WINDOW is 1 hour, and initialize requires the reveal window to
-  // clear it. Without that a late void leaves no time to finalize, which is the
+  // The reveal period has to contain the dispute window the issuer chose.
+  // Without room for both, a late void leaves no time to finalize, which is the
   // denial of service voiding exists to remove.
-  if (cfg.revealDeadline < cfg.endTime + 3600n) {
-    problems.push('Leave at least an hour between bidding closing and the reveal deadline.');
+  if (cfg.revealDeadline <= cfg.endTime) {
+    problems.push('The reveal deadline has to be after bidding closes.');
+  } else if (cfg.revealDeadline < cfg.endTime + cfg.voidDisputeWindow) {
+    problems.push(
+      'The reveal period is shorter than the dispute window you chose, so a late void would leave no time to settle.',
+    );
   }
   if (cfg.protocolFeeBps > 1000) problems.push('Fee cannot exceed 10 percent.');
   if (cfg.minBidQuantity <= 0n) problems.push('Minimum bid must be more than zero.');

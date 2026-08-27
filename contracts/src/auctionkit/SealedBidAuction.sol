@@ -82,6 +82,20 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
         bytes32 committeeSetId;
         bytes32 encryptionEpoch;
         bytes32 metadataHash;
+        /// @notice How long settlement waits after a bid is voided, so a
+        ///         bidder whose bid was wrongly voided can prove it.
+        ///
+        /// Chosen by the issuer rather than fixed, because the right value is a
+        /// judgement about their own auction: an hour is sensible for a real
+        /// sale, and a test that has to wait an hour to see a settlement is a
+        /// test nobody runs.
+        ///
+        /// Zero is permitted and is a real weakening, not a formality. With no
+        /// window the committee can void a bid and finalize in the same block,
+        /// leaving the bidder no opportunity to dispute. Their escrow is still
+        /// refundable, so this is censorship rather than theft, but an auction
+        /// carrying value should not be run this way.
+        uint64 voidDisputeWindow;
         uint16 version;
     }
 
@@ -112,7 +126,7 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
     uint32 public committedBidCount;
     uint32 public processedBidCount;
     /// @dev How many bids were attested but did not match their commitment.
-    ///      Nonzero means settlement waits out `VOID_DISPUTE_WINDOW`.
+    ///      Nonzero means settlement waits out `config.voidDisputeWindow`.
     uint32 public voidedBidCount;
     uint64 public lastVoidAt;
     bytes32 public revealRoot;
@@ -212,16 +226,13 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
         "BidCommitment(uint256 chainId,address auction,address bidder,uint256 quantity,uint16 maxPriceTick,bytes32 salt,uint16 bidVersion)"
     );
 
-    /// @notice How long a voided bidder has to prove the void was wrong.
+    /// @notice The dispute window a sale carrying value should use.
     ///
-    /// @dev Only applies when something was actually voided. An auction where
-    ///      every bid matched its commitment - the ordinary case - settles with
-    ///      no delay at all.
-    ///
-    ///      The window is bounded above by `revealDeadline` regardless: if it
-    ///      would run past that, `failOnRevealTimeout` becomes callable and
-    ///      everyone is refunded, which is the safe direction.
-    uint64 public constant VOID_DISPUTE_WINDOW = 1 hours;
+    /// @dev Not enforced. `config.voidDisputeWindow` is what the contract
+    ///      actually applies; this is the value an issuer should reach for
+    ///      unless they have a reason not to, and what the interface offers by
+    ///      default.
+    uint64 public constant RECOMMENDED_VOID_DISPUTE_WINDOW = 1 hours;
 
     // ---------------------------------------------------------------------
     // Lifecycle
@@ -238,11 +249,15 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
         require(cfg.totalSupply > 0, "supply");
         require(cfg.numTicks > 0 && cfg.numTicks <= ClearingPrice.MAX_TICKS, "ticks");
         require(cfg.startTime < cfg.endTime, "schedule");
-        // Enough room after the close for reveals AND for a voided bidder to
-        // dispute. Without this a griefer could post a junk bid, have it voided
-        // late, and leave no time to finalize - which would put back the very
-        // denial of service that voiding exists to remove.
-        require(cfg.revealDeadline >= cfg.endTime + VOID_DISPUTE_WINDOW, "reveal window too short");
+        // Reveals happen after the close, and a voided bidder needs the
+        // dispute window inside that same period. Without room for both, a
+        // griefer could post a junk bid, have it voided late, and leave no time
+        // to finalize, which is the denial of service voiding exists to remove.
+        //
+        // The issuer picks the window, so this only checks the two are
+        // consistent rather than imposing a duration.
+        require(cfg.revealDeadline > cfg.endTime, "reveal window");
+        require(cfg.revealDeadline >= cfg.endTime + cfg.voidDisputeWindow, "reveal window too short");
         require(cfg.protocolFeeBps <= 1_000, "fee too high"); // hard cap 10%
         require(cfg.feeRecipient != address(0) || cfg.protocolFeeBps == 0, "fee recipient");
         require(CommitteeRegistry(registry_).exists(cfg.committeeSetId), "committee");
@@ -668,7 +683,7 @@ contract SealedBidAuction is Initializable, ReentrancyGuard {
         // If anything was voided, settlement waits so a wronged bidder can
         // produce their preimage first. Without this the committee could void a
         // bid and finalize in the same block, leaving no window to dispute.
-        if (voidedBidCount > 0 && block.timestamp < lastVoidAt + VOID_DISPUTE_WINDOW) {
+        if (voidedBidCount > 0 && block.timestamp < lastVoidAt + config.voidDisputeWindow) {
             revert TooEarly();
         }
         // Every committed bid must be accounted for. This is what turns

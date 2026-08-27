@@ -72,7 +72,7 @@ describe.skipIf(!up)('permit, end to end', () => {
         startTime: now, endTime: now + 3600n, revealDeadline: now + 3600n + 4n * 3600n,
         minBidQuantity: ONE, maxQuantityPerAddress: 0n, maxBids: 256,
         allowlistRoot: `0x${'0'.repeat(64)}`, protocolFeeBps: 0, feeRecipient: deployer.address,
-        committeeSetId: setId, encryptionEpoch: keccak256('0x01'), metadataHash: keccak256('0x02'), version: 1,
+        committeeSetId: setId, encryptionEpoch: keccak256('0x01'), metadataHash: keccak256('0x02'), voidDisputeWindow: 3600n, version: 1,
       }, registry] }) });
 
     for (const [tok, to, amt] of [[sale, deployer.address, 1000n * ONE], [quote, alice.address, 100_000n * ONE]] as const) {

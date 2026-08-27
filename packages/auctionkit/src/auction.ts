@@ -66,6 +66,8 @@ export interface AuctionConfig {
   committeeSetId: Hex;
   encryptionEpoch: Hex;
   metadataHash: Hex;
+  /** Seconds settlement waits after a bid is voided, chosen by the issuer. */
+  voidDisputeWindow: bigint;
   version: number;
 }
 

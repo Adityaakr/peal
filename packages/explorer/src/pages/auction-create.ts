@@ -373,6 +373,7 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
       // Bound at creation, so a label shown beside an auction can be checked
       // against what its issuer actually committed to.
       metadataHash: metadataHash(name, useCase, details),
+      voidDisputeWindow: BigInt(Math.max(0, Math.round(durationHours('c-dispute-amount', 'c-dispute-unit', 1) * 3600))),
       version: 1,
     };
     return { cfg, name, useCase, details };
@@ -558,6 +559,18 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
                 <p class="ak-hint">times are on your own clock. the contract stores them as absolute instants, so a bidder in another timezone sees the same moment.</p>
               </div>
 
+              <label>settlement waits after a voided bid <span>so the bidder can dispute it</span>
+                <div class="sl-duration">
+                  <input id="c-dispute-amount" value="1" inputmode="decimal" autocomplete="off" />
+                  <select id="c-dispute-unit">
+                    <option value="minutes">minutes</option>
+                    <option value="hours" selected>hours</option>
+                    <option value="days">days</option>
+                  </select>
+                </div>
+              </label>
+              <p class="ak-hint" id="c-dispute-note"></p>
+
               <p class="ak-hint" id="c-schedule"></p>
             </div>
 
@@ -657,8 +670,11 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
 
       const problems: string[] = [];
       if (endTime <= now) problems.push('bidding would close in the past.');
-      if (revealDeadline < endTime + 3600n) {
-        problems.push('the reveal deadline has to be at least an hour after close, so a bidder whose bid is wrongly voided has time to prove it.');
+      const disputeSecs = BigInt(Math.max(0, Math.round(durationHours('c-dispute-amount', 'c-dispute-unit', 1) * 3600)));
+      if (revealDeadline <= endTime) {
+        problems.push('the reveal deadline has to be after bidding closes.');
+      } else if (revealDeadline < endTime + disputeSecs) {
+        problems.push('the reveal period is shorter than the dispute window you chose, so a late void would leave no time to settle.');
       }
 
       if (problems.length) {
@@ -681,6 +697,31 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
       root.querySelector<HTMLElement>('#c-mode-exact')?.toggleAttribute('hidden', !exact);
       showSchedule();
     };
+
+    // A zero dispute window is legitimate for testing and is a real weakening.
+    // Say which it is rather than letting someone set it and find out later.
+    const disputeNote = (): void => {
+      const el = root.querySelector<HTMLElement>('#c-dispute-note');
+      if (!el) return;
+      const h = durationHours('c-dispute-amount', 'c-dispute-unit', 1);
+      if (h <= 0) {
+        el.textContent =
+          'zero means the committee can void a bid and settle in the same block, so a wrongly voided bidder has no chance to prove it. their escrow is still refundable, so this is censorship rather than theft. fine for a test, not for a sale carrying value.';
+        el.className = 'ak-hint ak-error';
+      } else {
+        el.textContent =
+          `a voided bidder has ${h < 1 ? `${Math.round(h * 60)} minutes` : `${h} hours`} to produce their preimage before settlement. it only delays an auction where something was actually voided.`;
+        el.className = 'ak-hint';
+      }
+      showSchedule();
+    };
+
+    for (const id of ['c-dispute-amount', 'c-dispute-unit']) {
+      const el = root.querySelector(`#${id}`);
+      el?.addEventListener('input', disputeNote);
+      el?.addEventListener('change', disputeNote);
+    }
+    disputeNote();
 
     for (const id of ['c-bid-amount', 'c-bid-unit', 'c-reveal-amount', 'c-reveal-unit', 'c-close-at', 'c-reveal-at']) {
       const el = root.querySelector(`#${id}`);

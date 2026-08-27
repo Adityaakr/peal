@@ -84,9 +84,12 @@ contract BidIdRaceTest is Test {
     }
 
     function _open() internal returns (SealedBidAuction a) {
-        a = SealedBidAuction(Clones.clone(address(impl)));
-        a.initialize(
-            SealedBidAuction.Config({
+        return _openWith(1 hours);
+    }
+
+
+    function _cfgWith(uint64 disputeWindow) internal view returns (SealedBidAuction.Config memory) {
+        return SealedBidAuction.Config({
                 issuer: issuer,
                 saleToken: address(sale),
                 quoteToken: address(quote),
@@ -108,10 +111,14 @@ contract BidIdRaceTest is Test {
                 committeeSetId: setId,
                 encryptionEpoch: keccak256("e"),
                 metadataHash: keccak256("m"),
+                voidDisputeWindow: disputeWindow,
                 version: 1
-            }),
-            address(registry)
-        );
+            });
+    }
+
+    function _openWith(uint64 disputeWindow) internal returns (SealedBidAuction a) {
+        a = SealedBidAuction(Clones.clone(address(impl)));
+        a.initialize(_cfgWith(disputeWindow), address(registry));
         sale.mint(issuer, SUPPLY);
         vm.startPrank(issuer);
         sale.approve(address(a), SUPPLY);
@@ -223,7 +230,7 @@ contract BidIdRaceTest is Test {
         vm.expectRevert(SealedBidAuction.TooEarly.selector);
         a.finalize();
 
-        vm.warp(block.timestamp + a.VOID_DISPUTE_WINDOW());
+        vm.warp(block.timestamp + a.getConfig().voidDisputeWindow);
 
         // The auction settles. This is the whole point.
         a.finalize();
@@ -237,5 +244,61 @@ contract BidIdRaceTest is Test {
         (uint256 tokens, uint256 refund) = a.claim(1);
         assertEq(tokens, 0);
         assertEq(refund, 1, "voided escrow is fully refundable");
+    }
+
+    /// A zero dispute window settles immediately, which is what makes a test
+    /// runnable, and it is a real weakening rather than a formality.
+    function test_zeroDisputeWindowSettlesWithoutWaiting() public {
+        SealedBidAuction a = _openWith(0);
+        _commit(a, alice, 10e18, 3);
+
+        quote.mint(griefer, 1);
+        vm.startPrank(griefer);
+        quote.approve(address(a), 1);
+        a.commitBid(keccak256("junk"), keccak256("ct-junk"), 1, new bytes32[](0));
+        vm.stopPrank();
+
+        vm.warp(endTime);
+        a.closeCommit();
+
+        bytes32 leafA = a.revealLeaf(0, 10e18, 3, keccak256("salt"));
+        bytes32 leafJunk = a.revealLeaf(1, 0, 0, bytes32(0));
+        bytes32 root = _hashPair(leafA, leafJunk);
+        a.registerRevealRoot(root, 2, _signRoot(a, root, 2));
+
+        SealedBidAuction.RevealEntry[] memory entries = new SealedBidAuction.RevealEntry[](2);
+        bytes32[] memory pA = new bytes32[](1); pA[0] = leafJunk;
+        entries[0] = SealedBidAuction.RevealEntry({
+            bidId: 0, quantity: 10e18, tick: 3, salt: keccak256("salt"), bidVersion: 1, proof: pA
+        });
+        bytes32[] memory pJ = new bytes32[](1); pJ[0] = leafA;
+        entries[1] = SealedBidAuction.RevealEntry({
+            bidId: 1, quantity: 0, tick: 0, salt: bytes32(0), bidVersion: 1, proof: pJ
+        });
+        a.processReveals(entries);
+        assertTrue(a.getBid(1).voided);
+
+        // No wait. With a nonzero window this same call reverts TooEarly.
+        a.finalize();
+        assertEq(uint256(a.state()), uint256(SealedBidAuction.State.Settled));
+    }
+
+    /// An issuer cannot promise a dispute window their reveal period has no
+    /// room for. That combination is what let a late void strand an auction.
+    function test_revealWindowMustContainTheDisputeWindow() public {
+        SealedBidAuction a = SealedBidAuction(Clones.clone(address(impl)));
+        SealedBidAuction.Config memory cfg = _cfgWith(2 hours);
+        cfg.revealDeadline = cfg.endTime + 1 hours;
+        vm.expectRevert("reveal window too short");
+        a.initialize(cfg, address(registry));
+    }
+
+    /// The reveal deadline must be after the close whatever the window is.
+    function test_revealDeadlineMustBeAfterClose() public {
+        SealedBidAuction a = SealedBidAuction(Clones.clone(address(impl)));
+        SealedBidAuction.Config memory cfg = _cfgWith(0);
+        cfg.revealDeadline = cfg.endTime;
+        vm.expectRevert("reveal window");
+        a.initialize(cfg, address(registry));
     }
 }

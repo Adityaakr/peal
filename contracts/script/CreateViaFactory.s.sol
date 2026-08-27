@@ -43,6 +43,7 @@ contract CreateViaFactory is Script {
             committeeSetId: vm.envBytes32("COMMITTEE_SET_ID"),
             encryptionEpoch: keccak256("factory-demo-1"),
             metadataHash: factory.metadataHash(name, useCase, details),
+            voidDisputeWindow: 1 hours,
             version: 1
         });
 

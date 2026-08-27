@@ -165,6 +165,7 @@ describe.skipIf(!up)('AuctionKit end to end on anvil', () => {
             committeeSetId: setId,
             encryptionEpoch: keccak256('0x01'),
             metadataHash: keccak256('0x02'),
+            voidDisputeWindow: 3600n,
             version: 1,
           },
           registry,

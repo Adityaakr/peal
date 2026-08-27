@@ -78,9 +78,9 @@ export const TEMPO: Deployment = {
   chainId: 42431,
   name: 'Tempo Moderato',
   committeeRegistry: '0xA9228c1ceA27C86f700782e46Bb237e965f23b47',
-  auctionImplementation: '0xfE4315435fC84c30b84D9316a3EE37b48FFBc40E',
-  factory: '0x720063ab08722b86D2B1140D04F24523bD482B7A',
-  factoryBlock: 32735509n,
+  auctionImplementation: '0x5b7538dC18DBaE3b75C2FaE2Cd3BB5a705002AEB',
+  factory: '0x165De57129F3EC3c13e72b496D22989dd7eC55EB',
+  factoryBlock: 32750314n,
   explorer: 'https://explore.testnet.tempo.xyz',
   rpcUrl: 'https://rpc.moderato.tempo.xyz',
   gasSymbol: 'PathUSD',
@@ -98,6 +98,10 @@ export const TEMPO: Deployment = {
 /** Superseded. Kept so anyone holding one of these addresses learns why it
  * stopped working, instead of debugging a contract we already replaced. */
 export const SUPERSEDED: Record<Address, string> = {
+  '0x720063ab08722b86D2B1140D04F24523bD482B7A':
+    'AuctionFactory pointing at an implementation with a fixed one hour dispute ' +
+    'window. The window is now chosen per auction, so its clones cannot express ' +
+    'a shorter one. Replaced by 0x165De57129F3EC3c13e72b496D22989dd7eC55EB',
   '0x05CB737305f2D4226011b3B50dD43D7a2e2de32b':
     'AuctionKit implementation deployed before fund() dropped its onlyIssuer guard. ' +
     'A factory cannot fund an auction it creates against this one, so createAuction ' +
@@ -254,5 +258,5 @@ export const activeChain = CHAIN_FOR[ACTIVE.chainId]!;
  * Null when none exists yet, which the interface must handle rather than
  * rendering a page for an address that is not an auction. */
 export const ACTIVE_DEMO: { auction: Address } | null = {
-  auction: '0xbbf4ba215f614b204DAe8D136EdCAa7ae56f01ac',
+  auction: '0xCA90E426b2dF09C800CDb39b9F0BE00492E551B9',
 };

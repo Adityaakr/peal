@@ -48,7 +48,7 @@ contract CommitWithPermitTest is Test {
                 minBidQuantity: 1e18, maxQuantityPerAddress: 0, maxBids: 256,
                 allowlistRoot: bytes32(0), protocolFeeBps: 0, feeRecipient: issuer,
                 committeeSetId: setId, encryptionEpoch: keccak256("e"),
-                metadataHash: keccak256("m"), version: 1
+                metadataHash: keccak256("m"), voidDisputeWindow: 1 hours, version: 1
             }),
             address(registry)
         );

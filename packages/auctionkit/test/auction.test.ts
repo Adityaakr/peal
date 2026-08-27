@@ -28,6 +28,7 @@ const cfg: AuctionConfig = {
   committeeSetId: `0x${'a'.repeat(64)}`,
   encryptionEpoch: `0x${'b'.repeat(64)}`,
   metadataHash: `0x${'c'.repeat(64)}`,
+  voidDisputeWindow: 3600n,
   version: 1,
 };
 
