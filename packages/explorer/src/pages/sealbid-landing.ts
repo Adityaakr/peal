@@ -18,6 +18,9 @@ import { HOODI, HOODI_DEMO } from 'peal-auctionkit';
 
 type Cleanup = () => void;
 
+const reduced = (): boolean =>
+  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 type Row = { label: string; value: string; tone?: 'bad' | 'good' | 'link' };
 type Step = {
   n: string;
@@ -54,20 +57,35 @@ function stepCard(s: Step): string {
  * Reuses .ml-pub-card so an open bid reads in the same visual language as an
  * unencrypted transaction does on the mempool landing. */
 function openBid(qty: string, price: string, top = false): string {
-  return `<div class="ml-pub-card${top ? ' ml-pub-victim' : ''}">
-    <div class="ml-pub-top"><span class="ml-strong">${qty}</span><span class="ml-arrow">at</span><span class="ml-strong">${price} ${HOODI_DEMO.quoteSymbol}</span></div>
+  return `<div class="ml-pub-card sl-obid${top ? ' sl-obid-victim' : ''}">
+    <div class="ml-pub-top"><span class="ml-strong">${qty}</span><span class="ml-arrow">at</span><span class="ml-strong sl-obid-price">${price} ${HOODI_DEMO.quoteSymbol}</span></div>
     <div class="ml-pub-meta">${top ? 'top of book, and everyone can see it' : 'readable the moment it lands'}</div>
+    ${top ? '<span class="sl-outbid">outbid</span>' : ''}
   </div>`;
 }
 
-/** The same bid as a commitment: an object you can count but not read. */
-function sealedBid(hash: string, escrow: string): string {
-  return `<div class="ml-sealed">
+/** The bot's reply. Hidden until the snipe beat, then it slides in above the
+ * bid it just read. Same shape as .ml-bot on the mempool landing, because it
+ * is the same actor doing the same thing. */
+function sniperCard(): string {
+  return `<div class="ml-bot sl-sniper">
+    <span class="mono">bot 0xee…42</span>
+    <span class="ml-strong">450,001 at 1.75, one tick above</span>
+  </div>`;
+}
+
+/** The same bid as a commitment: an object you can count but not read.
+ * `open` is what it turns out to have contained, shown only after the reveal
+ * beat so the page demonstrates the order that actually happens. */
+function sealedBid(hash: string, escrow: string, qty: string, price: string): string {
+  return `<div class="ml-sealed sl-sbid">
     <div class="ml-sealed-top">
       <span class="mono ml-hdr">&#x2B21; <b>${hash}</b></span>
     </div>
     <div class="ml-sealed-env mono">
-      <span>escrow ${escrow}</span><span>quantity ?</span><span>price ?</span>
+      <span>escrow ${escrow}</span>
+      <span class="sl-sbid-q"><span class="sl-q-sealed">quantity ?</span><span class="sl-q-open">${qty}</span></span>
+      <span class="sl-sbid-p"><span class="sl-q-sealed">price ?</span><span class="sl-q-open">${price} ${HOODI_DEMO.quoteSymbol}</span></span>
     </div>
   </div>`;
 }
@@ -143,20 +161,34 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
       <a class="ml-btn" href="${HOODI.explorer}/address/${HOODI_DEMO.auction}" target="_blank" rel="noopener">see it onchain</a>
     </div>
 
-    <div class="ml-stage scroll-reveal">
+    <div class="ml-stage scroll-reveal" id="sl-stage">
       <div class="ml-col ml-col-public">
         <div class="ml-col-head"><span class="ml-col-title">open book &middot; today</span><span class="ml-col-note">every bid readable</span></div>
+        ${sniperCard()}
         ${openBid('450,000', '1.70', true)}
         ${openBid('300,000', '2.20')}
         ${openBid('260,000', '1.20')}
-        <div class="ml-micro">the last bidder reads all of it, and beats it by one tick</div>
+        <div class="ml-micro">
+          <span class="sl-m-rest">the last bidder reads all of it, and beats it by one tick</span>
+          <span class="sl-m-snipe">read, then beaten by 0.05</span>
+        </div>
       </div>
       <div class="ml-col ml-col-peal">
-        <div class="ml-col-head"><span class="ml-col-title">sealed book</span><span class="ml-col-note">commitments only</span></div>
-        ${sealedBid('0xca75e985…e0a436', '336,000')}
-        ${sealedBid('0x03934b44…921716', '660,000')}
-        ${sealedBid('0x6e6c7151…b88828', '765,000')}
-        <div class="ml-micro">nothing to beat by one tick, because there is nothing to read</div>
+        <div class="ml-col-head">
+          <span class="ml-col-title">sealed book</span>
+          <span class="ml-col-note">
+            <span class="sl-m-rest">commitments only</span>
+            <span class="sl-m-open">opened together</span>
+          </span>
+        </div>
+        ${sealedBid('0xca75e985…e0a436', '336,000', '120,000', '2.80')}
+        ${sealedBid('0x03934b44…921716', '660,000', '300,000', '2.20')}
+        ${sealedBid('0x6e6c7151…b88828', '765,000', '450,000', '1.70')}
+        <div class="sl-clearbar"><span>clearing price</span><b>1.70 ${HOODI_DEMO.quoteSymbol}</b><span>everyone pays it</span></div>
+        <div class="ml-micro">
+          <span class="sl-m-rest">nothing to beat by one tick, because there is nothing to read</span>
+          <span class="sl-m-open">no bid was ever readable before the close</span>
+        </div>
       </div>
     </div>
 
@@ -237,7 +269,7 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
             { label: 'onchain', value: 'one 32 byte commitment' },
             { label: 'quantity and price', value: 'not published', tone: 'good' as const },
           ],
-          visual: sealedBid('0xca75e985…e0a436', '336,000'),
+          visual: sealedBid('0xca75e985…e0a436', '336,000', '120,000', '2.80'),
         },
         {
           n: '2',
@@ -399,9 +431,37 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
   </section>
 </div>`;
 
+  // The hero loop. Eight beats, and the order is the argument: the open book
+  // is read and then beaten by one tick, while the sealed book sits inert
+  // through exactly those beats. Only after the close does it open, all at
+  // once, and settle at one price.
+  //
+  // Phase classes on the stage; CSS does the transitions. Nothing is animated
+  // per frame, so this costs almost nothing and stops dead under
+  // prefers-reduced-motion, where it parks on the beat that shows the most.
+  const stage = root.querySelector<HTMLElement>('#sl-stage');
+  let beat = reduced() ? 6 : 0;
+  const paint = (): void => {
+    if (!stage) return;
+    stage.classList.toggle('is-scan', beat === 1);
+    stage.classList.toggle('is-snipe', beat >= 2 && beat <= 4);
+    stage.classList.toggle('is-open', beat >= 5);
+    stage.classList.toggle('is-cleared', beat >= 6);
+  };
+  paint();
+
+  let timer = 0;
+  if (!reduced()) {
+    timer = window.setInterval(() => {
+      beat = (beat + 1) % 8;
+      paint();
+    }, 1200);
+  }
+
   const stopReveal = mountScrollReveal(root);
 
   return () => {
+    if (timer) clearInterval(timer);
     stopReveal?.();
     document.title = prevTitle;
   };

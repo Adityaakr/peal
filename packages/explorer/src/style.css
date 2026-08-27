@@ -4219,3 +4219,65 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 .sl-list li { font-family: var(--body); font-size: 13px; line-height: 1.6; color: var(--muted); }
 .sl-list b { color: var(--text); font-weight: 500; }
 .sl-list code { font-family: var(--mono); font-size: 12px; }
+
+/* ---- sealbid hero motion ----
+   Phase classes are toggled on #sl-stage; every rule below is a transition off
+   one of them. The narrative is the point: the open column is read and then
+   beaten during is-scan/is-snipe, and the sealed column is deliberately inert
+   through exactly those beats. It only changes at is-open, which is the close.
+
+   Everything degrades to a static, readable stage. Under reduced motion the
+   loop parks on the beat that shows the most and the transitions are removed,
+   so nothing here is load-bearing for comprehension. */
+
+.sl-obid { transition: opacity 420ms ease, border-color 420ms ease, transform 420ms ease; }
+
+/* the bid about to be sniped: highlighted while it is being read */
+#sl-stage.is-scan .sl-obid-victim { border-color: var(--red-border); }
+#sl-stage.is-scan .sl-obid-victim .sl-obid-price { color: var(--red); }
+
+/* then beaten, and visibly demoted */
+#sl-stage.is-snipe .sl-obid-victim { opacity: 0.45; transform: translateY(2px); }
+.sl-outbid {
+  position: absolute; right: 12px; bottom: 10px;
+  font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--red);
+  opacity: 0; transition: opacity 380ms ease;
+}
+#sl-stage.is-snipe .sl-outbid { opacity: 1; }
+
+/* the sniper slides in only for the beats where it acts */
+.sl-sniper { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0;
+  transition: max-height 480ms ease, opacity 380ms ease, padding 480ms ease; }
+#sl-stage.is-snipe .sl-sniper { max-height: 40px; opacity: 1; padding-top: 7px; padding-bottom: 7px; }
+
+/* sealed values: the swap from "?" to the real number happens at the close,
+   never before, because that is the sequence the product guarantees */
+.sl-sbid-q, .sl-sbid-p { position: relative; display: inline-grid; }
+.sl-q-sealed, .sl-q-open { grid-area: 1 / 1; transition: opacity 420ms ease; }
+.sl-q-open { opacity: 0; color: var(--accent); font-weight: 500; }
+#sl-stage.is-open .sl-q-sealed { opacity: 0; }
+#sl-stage.is-open .sl-q-open { opacity: 1; }
+#sl-stage.is-open .sl-sbid { border-color: var(--accent); }
+
+/* the clearing bar drops in last, after every bid is open */
+.sl-clearbar {
+  display: flex; align-items: baseline; justify-content: center; gap: 10px;
+  font-family: var(--body); font-size: 12px; color: var(--green);
+  border: 1px solid #bbf7d0; background: var(--green-weak); border-radius: 10px;
+  max-height: 0; opacity: 0; padding: 0 12px; overflow: hidden;
+  transition: max-height 460ms ease, opacity 380ms ease, padding 460ms ease;
+}
+.sl-clearbar b { font-size: 14px; font-weight: 500; }
+#sl-stage.is-cleared .sl-clearbar { max-height: 46px; opacity: 1; padding: 10px 12px; }
+
+/* the caption under each column tracks the beat */
+.ml-micro .sl-m-snipe, .ml-micro .sl-m-open,
+.ml-col-note .sl-m-open { display: none; }
+#sl-stage.is-snipe .ml-col-public .sl-m-rest { display: none; }
+#sl-stage.is-snipe .ml-col-public .sl-m-snipe { display: inline; color: var(--red); }
+#sl-stage.is-open .ml-col-peal .sl-m-rest { display: none; }
+#sl-stage.is-open .ml-col-peal .sl-m-open { display: inline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sl-obid, .sl-sniper, .sl-clearbar, .sl-q-sealed, .sl-q-open, .sl-outbid { transition: none; }
+}
