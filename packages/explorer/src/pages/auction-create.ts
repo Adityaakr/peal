@@ -90,6 +90,103 @@ function unixToLocalInput(sec: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** What a use case actually changes about the form.
+ *
+ * The contract is generic: supply, a price ladder, and limits. What differs
+ * between selling a token and selling fifty NFTs is what those numbers mean
+ * and what sensible starting values are. Getting the words wrong makes an
+ * issuer translate their own sale into someone else's vocabulary, and that is
+ * where the expensive typos come from.
+ */
+interface Preset {
+  /** What the thing being sold is called. */
+  supplyLabel: string;
+  supplyHint: string;
+  supplyDefault: string;
+  /** What one unit of it is, for the price ladder. */
+  unit: string;
+  reserveLabel: string;
+  reserveDefault: string;
+  tickDefault: string;
+  minLabel: string;
+  minDefault: string;
+  capLabel: string;
+  capHint: string;
+  capDefault: string;
+  /** Shown under the use case, so the choice explains itself. */
+  blurb: string;
+}
+
+const PRESETS: Record<string, Preset> = {
+  'token-launch': {
+    supplyLabel: 'tokens for sale', supplyHint: 'the whole amount goes into the contract',
+    supplyDefault: '1000000', unit: 'token',
+    reserveLabel: 'reserve price per token', reserveDefault: '1', tickDefault: '0.1',
+    minLabel: 'smallest bid', minDefault: '100',
+    capLabel: 'most one address can buy', capHint: '0 for no cap. a cap spreads the allocation',
+    capDefault: '200000',
+    blurb: 'everyone names a maximum privately, and every winner pays the same clearing price.',
+  },
+  'dao-treasury': {
+    supplyLabel: 'tokens to sell from the treasury', supplyHint: 'moved into the contract when you create',
+    supplyDefault: '500000', unit: 'token',
+    reserveLabel: 'lowest price the treasury will accept', reserveDefault: '1', tickDefault: '0.05',
+    minLabel: 'smallest bid', minDefault: '1000',
+    capLabel: 'most one buyer can take', capHint: 'a cap stops one desk taking the whole block',
+    capDefault: '100000',
+    blurb: 'the market learns the price once, at settlement, instead of learning your intent weeks early.',
+  },
+  'nft-primary': {
+    supplyLabel: 'number of items', supplyHint: 'how many editions are for sale',
+    supplyDefault: '100', unit: 'item',
+    reserveLabel: 'reserve price per item', reserveDefault: '0.5', tickDefault: '0.05',
+    minLabel: 'smallest bid', minDefault: '1',
+    capLabel: 'most one collector can win', capHint: '0 for no cap',
+    capDefault: '5',
+    blurb: 'no bid tells the next collector where the ceiling is, and the seller cannot bid against their own lot.',
+  },
+  'rwa-issuance': {
+    supplyLabel: 'notional for issue', supplyHint: 'the full size of the issue',
+    supplyDefault: '1000000', unit: 'unit',
+    reserveLabel: 'lowest price you will accept', reserveDefault: '1', tickDefault: '0.01',
+    minLabel: 'minimum ticket', minDefault: '10000',
+    capLabel: 'largest single allocation', capHint: '0 for no cap',
+    capDefault: '250000',
+    blurb: 'pro rata at the clearing tick, computed onchain and checkable afterwards, instead of an arranger deciding.',
+  },
+  tournament: {
+    supplyLabel: 'number of seats', supplyHint: 'how many entries are available',
+    supplyDefault: '64', unit: 'seat',
+    reserveLabel: 'minimum entry price', reserveDefault: '10', tickDefault: '1',
+    minLabel: 'smallest bid', minDefault: '1',
+    capLabel: 'most seats one entrant can take', capHint: '0 for no cap',
+    capDefault: '1',
+    blurb: 'seats go to the highest sealed bids, and everyone who gets one pays the same price.',
+  },
+  campaign: {
+    supplyLabel: 'allocation being raised against', supplyHint: 'the total on offer',
+    supplyDefault: '250000', unit: 'unit',
+    reserveLabel: 'lowest price you will accept', reserveDefault: '1', tickDefault: '0.05',
+    minLabel: 'smallest contribution', minDefault: '50',
+    capLabel: 'most one supporter can take', capHint: '0 for no cap',
+    capDefault: '25000',
+    blurb: 'supporters commit privately, so nobody anchors on what came before them.',
+  },
+  other: {
+    supplyLabel: 'total supply for sale', supplyHint: 'the whole amount goes into the contract',
+    supplyDefault: '1000000', unit: 'unit',
+    reserveLabel: 'reserve, the lowest price you accept', reserveDefault: '1', tickDefault: '0.1',
+    minLabel: 'smallest bid allowed', minDefault: '1',
+    capLabel: 'most one address can bid for', capHint: '0 for no cap',
+    capDefault: '0',
+    blurb: '',
+  },
+};
+
+function preset(id: string): Preset {
+  return PRESETS[id] ?? PRESETS.other!;
+}
+
 type TimingMode = 'duration' | 'exact';
 
 function timingMode(): TimingMode {
@@ -160,6 +257,18 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
   let createdTx: `0x${string}` | null = null;
   let problems: string[] = [];
   const funded = new Set<string>();
+  /** Read from the tokens themselves, never assumed.
+   *
+   * These were hardcoded to 18. A payment token with 6 decimals, which is what
+   * every real stablecoin uses, would have made every price wrong by a factor
+   * of a trillion, and the form would have looked entirely correct while doing
+   * it. */
+  /** Which pair `meta` describes, so it is not refetched on every keystroke. */
+  let metaFor = { sale: '' as string, quote: '' as string };
+  let meta = {
+    sale: { symbol: ACTIVE.tokens.saleSymbol, decimals: 18 },
+    quote: { symbol: ACTIVE.tokens.quoteSymbol, decimals: 18 },
+  };
 
   /** Sign in, then fund, so an issuer can actually pay to create.
    *
@@ -206,6 +315,29 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     draw();
   }
 
+  /** Ask each token what it is. Falls back to the deployment's defaults when a
+   * token cannot be read, so a typo in an address does not silently produce a
+   * form that computes with the wrong scale. */
+  async function loadTokenMeta(sale: Address, quote: Address): Promise<void> {
+    const one = async (addr: Address, fallbackSymbol: string) => {
+      try {
+        const [symbol, decimals] = await Promise.all([
+          pub.readContract({ address: addr, abi: DemoTokenAbi, functionName: 'symbol' }),
+          pub.readContract({ address: addr, abi: DemoTokenAbi, functionName: 'decimals' }),
+        ]);
+        return { symbol: String(symbol), decimals: Number(decimals) };
+      } catch {
+        return { symbol: fallbackSymbol, decimals: 18, unreadable: true };
+      }
+    };
+    const [s1, q1] = await Promise.all([
+      one(sale, ACTIVE.tokens.saleSymbol),
+      one(quote, ACTIVE.tokens.quoteSymbol),
+    ]);
+    meta = { sale: s1, quote: q1 };
+    draw();
+  }
+
   function readForm(): { cfg: AuctionConfig; name: string; useCase: string; details: string } | null {
     const g = (id: string): string => root.querySelector<HTMLInputElement>(`#${id}`)?.value.trim() ?? '';
     if (!account) return null;
@@ -220,17 +352,18 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
       issuer: account,
       saleToken: (g('c-sale') || ACTIVE.tokens.saleToken) as Address,
       quoteToken: (g('c-quote') || ACTIVE.tokens.quoteToken) as Address,
-      totalSupply: parseUnits(g('c-supply') || '0', 18),
-      saleDecimals: 18,
-      quoteDecimals: 18,
-      reservePrice: parseUnits(g('c-reserve') || '0', 18),
-      tickSize: parseUnits(g('c-tick') || '0', 18),
+      totalSupply: parseUnits(g('c-supply') || '0', meta.sale.decimals),
+      saleDecimals: meta.sale.decimals,
+      quoteDecimals: meta.quote.decimals,
+      // Prices are quoted in the payment token, so they scale by its decimals.
+      reservePrice: parseUnits(g('c-reserve') || '0', meta.quote.decimals),
+      tickSize: parseUnits(g('c-tick') || '0', meta.quote.decimals),
       numTicks: Number(g('c-ticks') || '32'),
       startTime: now,
       endTime,
       revealDeadline,
-      minBidQuantity: parseUnits(g('c-min') || '1', 18),
-      maxQuantityPerAddress: parseUnits(g('c-cap') || '0', 18),
+      minBidQuantity: parseUnits(g('c-min') || '1', meta.sale.decimals),
+      maxQuantityPerAddress: parseUnits(g('c-cap') || '0', meta.sale.decimals),
       maxBids: 256,
       allowlistRoot: `0x${'0'.repeat(64)}`,
       protocolFeeBps: 0,
@@ -315,6 +448,9 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
 
   function draw(): void {
     const shareUrl = created ? `${location.origin}${location.pathname}#/a/${created}` : '';
+    // Which use case is selected drives the words and the starting numbers.
+    const useCase = root.querySelector<HTMLSelectElement>('#c-usecase')?.value ?? 'token-launch';
+    const p = preset(useCase);
 
     root.innerHTML = `<div class="ml sl">
       <section class="ml-section sl-alist-top">
@@ -355,24 +491,29 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
               <h3>what you are selling</h3>
               ${field('c-name', 'name', '', 'shown on the listing')}
               <label>use case
-                <select id="c-usecase">${USE_CASES.map((u) => `<option value="${u.id}">${esc(u.label)}</option>`).join('')}</select>
+                <select id="c-usecase">${USE_CASES.map((u) => `<option value="${u.id}"${u.id === useCase ? ' selected' : ''}>${esc(u.label)}</option>`).join('')}</select>
               </label>
+              ${p.blurb ? `<p class="ak-hint">${esc(p.blurb)}</p>` : ''}
               ${field('c-details', 'details', '', 'optional')}
             </div>
 
             <div class="sl-fieldset">
-              <h3>tokens</h3>
-              ${field('c-sale', 'token you are selling', ACTIVE.tokens.saleToken, 'defaults to the demo token')}
-              ${field('c-quote', 'token bidders pay in', ACTIVE.tokens.quoteToken, 'defaults to the demo stablecoin')}
+              <h3>what bidders pay with</h3>
+              ${field('c-sale', `token you are selling`, ACTIVE.tokens.saleToken, `read as ${meta.sale.symbol}, ${meta.sale.decimals} decimals`)}
+              ${field('c-quote', 'token bidders pay in', ACTIVE.tokens.quoteToken, `read as ${meta.quote.symbol}, ${meta.quote.decimals} decimals`)}
               <p class="ak-hint">the defaults support EIP-2612, so bidders sign once and send one transaction instead of two. a token without it still works, it just costs an extra prompt.</p>
-              ${field('c-supply', 'total supply for sale', '1000000', '', 'decimal')}
-              <p class="ak-hint">you must hold this amount. creating the auction moves it into the contract in the same transaction, so an auction never exists holding nothing.</p>
+            </div>
+
+            <div class="sl-fieldset">
+              <h3>${esc(p.supplyLabel)}</h3>
+              ${field('c-supply', esc(p.supplyLabel), p.supplyDefault, esc(p.supplyHint), 'decimal')}
+              <p class="ak-hint">you must hold this much ${esc(meta.sale.symbol)}. creating the auction moves it into the contract in the same transaction, so an auction never exists holding nothing.</p>
             </div>
 
             <div class="sl-fieldset">
               <h3>price ladder</h3>
-              ${field('c-reserve', 'reserve, the lowest price you accept', '1', '', 'decimal')}
-              ${field('c-tick', 'step between prices', '0.1', '', 'decimal')}
+              ${field('c-reserve', esc(p.reserveLabel), p.reserveDefault, `in ${meta.quote.symbol}`, 'decimal')}
+              ${field('c-tick', 'step between prices', p.tickDefault, `in ${meta.quote.symbol}`, 'decimal')}
               ${field('c-ticks', 'number of steps', '32', 'up to 256', 'numeric')}
               <p class="ak-hint" id="c-ladder"></p>
             </div>
@@ -422,8 +563,8 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
 
             <div class="sl-fieldset">
               <h3>limits</h3>
-              ${field('c-min', 'smallest bid allowed', '1', '', 'decimal')}
-              ${field('c-cap', 'most one address can bid for', '0', '0 for no cap', 'decimal')}
+              ${field('c-min', esc(p.minLabel), p.minDefault, `in ${meta.sale.symbol}`, 'decimal')}
+              ${field('c-cap', esc(p.capLabel), p.capDefault, esc(p.capHint), 'decimal')}
             </div>
 
             <button class="ml-btn ml-btn-dark sl-submit" type="submit" ${busy ? 'disabled' : ''}>
@@ -444,6 +585,36 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     </div>`;
 
     root.querySelector('#c-connect')?.addEventListener('click', () => void connect());
+
+    // Changing the use case re-renders with that preset's words and defaults.
+    // Values the issuer already typed are preserved, because silently
+    // discarding somebody's numbers because they reclassified their sale is a
+    // worse failure than showing a default they have to change.
+    root.querySelector('#c-usecase')?.addEventListener('change', () => {
+      const keep = ['c-name', 'c-details', 'c-sale', 'c-quote'] as const;
+      const held = Object.fromEntries(
+        keep.map((id) => [id, root.querySelector<HTMLInputElement>(`#${id}`)?.value ?? '']),
+      );
+      draw();
+      for (const [id, v] of Object.entries(held)) {
+        const el = root.querySelector<HTMLInputElement>(`#${id}`);
+        if (el && v) el.value = v;
+      }
+    });
+
+    // Ask the tokens what they are, so decimals and symbols come from chain
+    // rather than from an assumption that every token looks like the demo one.
+    const refreshMeta = (): void => {
+      const sale = (root.querySelector<HTMLInputElement>('#c-sale')?.value.trim() || ACTIVE.tokens.saleToken) as Address;
+      const quote = (root.querySelector<HTMLInputElement>('#c-quote')?.value.trim() || ACTIVE.tokens.quoteToken) as Address;
+      if (!/^0x[0-9a-fA-F]{40}$/.test(sale) || !/^0x[0-9a-fA-F]{40}$/.test(quote)) return;
+      if (sale === metaFor.sale && quote === metaFor.quote) return;
+      metaFor = { sale, quote };
+      void loadTokenMeta(sale, quote);
+    };
+    root.querySelector('#c-sale')?.addEventListener('change', refreshMeta);
+    root.querySelector('#c-quote')?.addEventListener('change', refreshMeta);
+    refreshMeta();
     root.querySelector('#c-form')?.addEventListener('submit', (e) => { e.preventDefault(); void submit(); });
     root.querySelector('#c-copy')?.addEventListener('click', () => {
       const el = root.querySelector<HTMLInputElement>('#c-share');
