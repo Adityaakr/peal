@@ -4,7 +4,7 @@
  * public chain, and a wrong address here should be a failing test in CI rather
  * than a runtime surprise in somebody's browser.
  */
-import { defineChain, type Address } from 'viem';
+import { defineChain, type Address, type Hex } from 'viem';
 
 export interface Deployment {
   chainId: number;
@@ -19,6 +19,9 @@ export interface Deployment {
   /** The clone template. Never an auction itself: its initializers are
    * permanently disabled, so it can hold no funds. */
   auctionImplementation: Address;
+  /** Creates auctions, and is the registry of them. */
+  factory: Address;
+  factoryBlock: bigint;
   explorer: string;
 }
 
@@ -26,7 +29,12 @@ export const HOODI: Deployment = {
   chainId: 560048,
   name: 'Ethereum Hoodi',
   committeeRegistry: '0xDDDbE56276cCfA46144934D89A6c0cf06f208Ac7',
-  auctionImplementation: '0x05CB737305f2D4226011b3B50dD43D7a2e2de32b',
+  auctionImplementation: '0x5CA49EC0e0dF31beD979290239769862cd99524B',
+  factory: '0x8bc14a5F8910E827AaFf61722522EeC795F32CeF',
+  /** The block the factory was deployed in. Reading AuctionCreated from here
+   * rather than from zero is the difference between a listing that loads and
+   * one no public RPC will finish. */
+  factoryBlock: 3502790n,
   explorer: 'https://hoodi.etherscan.io',
   current: true,
 };
@@ -34,6 +42,12 @@ export const HOODI: Deployment = {
 /** Superseded. Kept so anyone holding one of these addresses learns why it
  * stopped working, instead of debugging a contract we already replaced. */
 export const SUPERSEDED: Record<Address, string> = {
+  '0x05CB737305f2D4226011b3B50dD43D7a2e2de32b':
+    'AuctionKit implementation deployed before fund() dropped its onlyIssuer guard. ' +
+    'A factory cannot fund an auction it creates against this one, so createAuction ' +
+    'reverts NotIssuer. Replaced by ' + HOODI.auctionImplementation,
+  '0x3Ce04CA7a6de3D0603202d8693DB7EC4543B794E':
+    'AuctionFactory pointing at that stale implementation. Replaced by ' + HOODI.factory,
   '0x3C918e75eb7037e50D5A319fDAa907CCe6048785':
     'AuctionKit implementation deployed before decisions/0004. bidCommitment bound bidId, ' +
     'and one mismatched reveal permanently prevented settlement. Replaced by ' +
@@ -52,6 +66,10 @@ export interface DemoAuction {
   saleSymbol: string;
   quoteToken: Address;
   quoteSymbol: string;
+  /** The registered committee set new auctions snapshot. On this testnet its
+   * signing keys are derived from a published string, so it is a prop rather
+   * than custody. See DeployDemoAuction.s.sol. */
+  committeeSetId: Hex;
   /** Hands out the quote token so anyone can try the auction. No owner, no
    * admin: it holds a balance and dispenses it under a per-call cap and a
    * per-address cooldown. */
@@ -65,6 +83,7 @@ export const HOODI_DEMO: DemoAuction = {
   saleSymbol: 'PEALD',
   quoteToken: '0xfE4315435fC84c30b84D9316a3EE37b48FFBc40E',
   quoteSymbol: 'DUSD',
+  committeeSetId: '0x919713e6844c14557b3da10b2deea33d9c00d70229bedadbb93d81f596d4af85',
   faucet: '0xa727B494D1Aae7Ec34C4891D0dcf1426f8eD6C93',
 };
 

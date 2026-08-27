@@ -4295,3 +4295,51 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 .sl-pitch-problem .sl-pitch-label { color: var(--red-text); }
 .sl-pitch-solution { color: #4b5563; background: rgb(255 255 255 / 0.75); border: 1px solid var(--accent-border); }
 .sl-pitch-solution .sl-pitch-label { color: var(--accent); }
+
+/* ---------- auction list + create ---------- */
+.sl-alist-top { border-top: none; padding-top: 40px; }
+.sl-alist-h1 { font-size: clamp(28px, 4vw, 36px); margin-bottom: 10px; }
+.sl-alist-sub { margin: 0 0 22px; max-width: 60ch; }
+
+.sl-alist { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 28px; }
+.sl-alist-card { display: block; border: 1px solid var(--border); border-radius: 12px; background: #fff;
+  padding: 16px 18px; text-decoration: none; color: inherit;
+  box-shadow: var(--shadow-hairline, 0 1px 2px rgb(0 0 0 / 0.05));
+  transition: border-color 120ms, transform 120ms; }
+.sl-alist-card:hover { border-color: var(--accent-border); transform: translateY(-1px); text-decoration: none; }
+.sl-alist-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sl-alist-use { font-family: var(--body); font-size: 11px; font-weight: 500; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--accent); }
+.sl-alist-when { font-size: 11px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border); }
+.sl-alist-open { color: var(--green); background: var(--green-weak); border-color: #bbf7d0; }
+.sl-alist-soon { color: var(--accent); background: var(--accent-weak); border-color: var(--accent-border); }
+.sl-alist-closed { color: var(--muted); }
+.sl-alist-name { font-family: var(--body); font-size: 16px; font-weight: 500; margin: 0 0 6px; }
+.sl-alist-details { font-family: var(--body); font-size: 13px; color: var(--muted); margin: 0 0 12px; line-height: 1.55; }
+.sl-alist-kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 12.5px; }
+.sl-alist-kv dt { color: var(--muted); }
+.sl-alist-kv dd { margin: 0; text-align: right; }
+.sl-alist-empty { border: 1px dashed var(--border); border-radius: 12px; background: #fff;
+  padding: 40px 24px; text-align: center; color: var(--muted); margin-top: 28px; }
+.sl-alist-empty b { color: var(--text); font-weight: 500; }
+
+.sl-create-wrap { max-width: 660px; }
+.sl-form { display: grid; gap: 20px; margin-top: 24px; }
+.sl-fieldset { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 18px 20px;
+  display: grid; gap: 12px; box-shadow: var(--shadow-hairline, 0 1px 2px rgb(0 0 0 / 0.05)); }
+.sl-fieldset h3 { font-family: var(--body); font-size: 14px; font-weight: 500; margin: 0 0 2px; }
+.sl-fieldset label { display: grid; gap: 5px; font-family: var(--body); font-size: 13px; color: var(--muted); }
+.sl-fieldset label span { color: var(--muted-soft); font-size: 12px; }
+.sl-fieldset input, .sl-fieldset select { font: inherit; font-size: 14px; padding: 9px 11px; min-height: 40px;
+  border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); }
+.sl-fieldset input:focus, .sl-fieldset select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.sl-submit { justify-self: start; }
+.sl-problems { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+
+.sl-created { border: 1px solid #bbf7d0; background: var(--green-weak); border-radius: 12px; padding: 20px 22px; margin: 22px 0; }
+.sl-created h3 { font-family: var(--body); font-size: 16px; font-weight: 500; margin: 0 0 6px; color: var(--green); }
+.sl-share { display: flex; gap: 8px; margin: 12px 0 14px; }
+.sl-share input { flex: 1; font-family: var(--mono); font-size: 12px; padding: 9px 11px; min-height: 40px;
+  border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); }
+.sl-create-foot { font-family: var(--body); font-size: 12px; color: var(--muted); line-height: 1.6;
+  border-top: 1px solid var(--border); padding-top: 16px; margin-top: 32px; }

@@ -30,6 +30,7 @@ import {
   submitBid,
   DemoTokenAbi,
   DemoFaucetAbi,
+  SealedBidAuctionAbi,
   hoodiChain,
   type AuctionSnapshot,
   type CommittedBid,
@@ -179,7 +180,34 @@ function countdown(toSec: bigint, nowSec: bigint): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m ${d - m * 60}s`;
 }
 
-export function renderAuction(root: HTMLElement): Cleanup {
+/** Which auction this page is showing.
+ *
+ * Was hardcoded to the demo, which meant there was exactly one auction and no
+ * way to share another. Now every read takes the address, and the token symbols
+ * are read from the chain rather than assumed, because a stranger's auction
+ * will not be selling PEALD for DUSD. */
+export interface AuctionTarget {
+  auction: Address;
+  quoteToken: Address;
+  saleToken: Address;
+  saleSymbol: string;
+  quoteSymbol: string;
+  /** Only the demo tokens have a faucet. A real auction's quote token has no
+   * reason to mint on request, so the panel is hidden rather than offered and
+   * then failing. */
+  faucet?: Address;
+}
+
+export const DEMO_TARGET: AuctionTarget = {
+  auction: HOODI_DEMO.auction,
+  quoteToken: HOODI_DEMO.quoteToken,
+  saleToken: HOODI_DEMO.saleToken,
+  saleSymbol: HOODI_DEMO.saleSymbol,
+  quoteSymbol: HOODI_DEMO.quoteSymbol,
+  faucet: HOODI_DEMO.faucet,
+};
+
+export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TARGET): Cleanup {
   let stopped = false;
   let account: Address | null = null;
   let snap: AuctionSnapshot | null = null;
@@ -205,7 +233,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
     const failures: string[] = [];
 
     try {
-      snap = await readAuction(pub, HOODI_DEMO.auction);
+      snap = await readAuction(pub, target.auction);
     } catch (e) {
       failures.push(`auction state (${briefly(e)})`);
     }
@@ -214,7 +242,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
     // the bidder are onchain. Showing them is what makes the guarantee legible.
     // You can see a bid exists and see that its contents are not there.
     try {
-      bids = await readBids(pub, HOODI_DEMO.auction);
+      bids = await readBids(pub, target.auction);
     } catch (e) {
       failures.push(`bids (${briefly(e)})`);
     }
@@ -222,7 +250,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
     if (account) {
       try {
         quoteBalance = (await pub.readContract({
-          address: HOODI_DEMO.quoteToken,
+          address: target.quoteToken,
           abi: DemoTokenAbi,
           functionName: 'balanceOf',
           args: [account],
@@ -235,9 +263,13 @@ export function renderAuction(root: HTMLElement): Cleanup {
       // assuming the cap. It answers 0 while cooling down and reports its own
       // remaining balance when that is the smaller number, so the button can
       // say why instead of letting someone send a reverting transaction.
-      try {
+      //
+      // Only the demo tokens have a faucet. A real issuer's payment token has
+      // no reason to mint on request, so there is nothing to ask.
+      const faucetAddr = target.faucet;
+      if (faucetAddr) try {
         const [amount, availableAt] = (await pub.readContract({
-          address: HOODI_DEMO.faucet,
+          address: faucetAddr,
           abi: DemoFaucetAbi,
           functionName: 'claimableBy',
           args: [account],
@@ -313,7 +345,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
       const bid: PreparedBid = prepareBid({
         cfg: snap.config,
         chainId: HOODI.chainId,
-        auction: HOODI_DEMO.auction,
+        auction: target.auction,
         bidder: account,
         quantity,
         maxPriceTick: tick,
@@ -321,7 +353,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
 
       if (bid.escrow > quoteBalance) {
         throw new Error(
-          `Escrow needs ${fmt(bid.escrow, snap.config.quoteDecimals)} ${HOODI_DEMO.quoteSymbol}, ` +
+          `Escrow needs ${fmt(bid.escrow, snap.config.quoteDecimals)} ${target.quoteSymbol}, ` +
             `you hold ${fmt(quoteBalance, snap.config.quoteDecimals)}.`,
         );
       }
@@ -333,7 +365,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
       // Written before the transaction exists. See saveBid.
       saveBid({
         chainId: HOODI.chainId,
-        auction: HOODI_DEMO.auction,
+        auction: target.auction,
         bidder: account,
         bidId: null,
         quantity: quantity.toString(),
@@ -350,8 +382,8 @@ export function renderAuction(root: HTMLElement): Cleanup {
         publicClient: pub,
         walletClient: wallet,
         account,
-        auction: HOODI_DEMO.auction,
-        quoteToken: HOODI_DEMO.quoteToken,
+        auction: target.auction,
+        quoteToken: target.quoteToken,
         bid,
         // Stands in for the Peal ciphertext hash until sealing is wired in.
         // Registered onchain so ciphertext loss stays provable and attributable.
@@ -372,7 +404,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
   }
 
   async function claimFaucet(amountStr: string): Promise<void> {
-    if (!account || faucetBusy || !snap) return;
+    if (!account || faucetBusy || !snap || !target.faucet) return;
     const eth = ethereum();
     if (!eth) return;
 
@@ -402,7 +434,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
       return;
     }
     if (amount > faucetMax) {
-      status = `The faucet will give at most ${fmt(faucetMax, snap.config.quoteDecimals, 0)} ${HOODI_DEMO.quoteSymbol} per claim.`;
+      status = `The faucet will give at most ${fmt(faucetMax, snap.config.quoteDecimals, 0)} ${target.quoteSymbol} per claim.`;
       statusKind = 'error';
       draw();
       return;
@@ -418,13 +450,13 @@ export function renderAuction(root: HTMLElement): Cleanup {
       const hash = await wallet.writeContract({
         chain: CHAIN,
         account,
-        address: HOODI_DEMO.faucet,
+        address: target.faucet,
         abi: DemoFaucetAbi,
         functionName: 'claim',
         args: [amount],
       });
       await pub.waitForTransactionReceipt({ hash });
-      status = `Received ${fmt(amount, snap.config.quoteDecimals, 0)} ${HOODI_DEMO.quoteSymbol}.`;
+      status = `Received ${fmt(amount, snap.config.quoteDecimals, 0)} ${target.quoteSymbol}.`;
       statusKind = 'ok';
     } catch (e) {
       status = briefly(e);
@@ -454,7 +486,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
     const now = BigInt(Math.floor(Date.now() / 1000));
     const ladder = priceLadder(c);
     const saved = loadBids().filter(
-      (b) => b.auction.toLowerCase() === HOODI_DEMO.auction.toLowerCase(),
+      (b) => b.auction.toLowerCase() === target.auction.toLowerCase(),
     );
     const mineIds = new Set(
       saved.filter((b) => !account || b.bidder.toLowerCase() === account.toLowerCase()).map((b) => b.bidId),
@@ -473,7 +505,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
       const recovered = sealed
         ? recoverSeededBid({
             chainId: HOODI.chainId,
-            auction: HOODI_DEMO.auction,
+            auction: target.auction,
             bidder: b.bidder,
             commitment: b.commitment,
           })
@@ -526,8 +558,8 @@ export function renderAuction(root: HTMLElement): Cleanup {
         At close they are revealed together and settle at one uniform price.
       </p>
       <div class="ak-hero-meta">
-        <a href="${HOODI.explorer}/address/${HOODI_DEMO.auction}" target="_blank" rel="noopener">
-          <code>${esc(truncMiddle(HOODI_DEMO.auction, 8, 6))}</code></a>
+        <a href="${HOODI.explorer}/address/${target.auction}" target="_blank" rel="noopener">
+          <code>${esc(truncMiddle(target.auction, 8, 6))}</code></a>
         <span class="ak-state ak-state-${snap.state}">${esc(STATE_LABELS[snap.state] ?? String(snap.state))}</span>
       </div>
     </div>
@@ -549,10 +581,10 @@ export function renderAuction(root: HTMLElement): Cleanup {
   </div>
 
   <div class="ak-grid">
-    <div class="ak-card"><span>For sale</span><strong>${fmt(c.totalSupply, c.saleDecimals, 0)}</strong><em>${esc(HOODI_DEMO.saleSymbol)}</em></div>
-    <div class="ak-card"><span>Reserve price</span><strong>${fmt(c.reservePrice, c.quoteDecimals)}</strong><em>${esc(HOODI_DEMO.quoteSymbol)}</em></div>
+    <div class="ak-card"><span>For sale</span><strong>${fmt(c.totalSupply, c.saleDecimals, 0)}</strong><em>${esc(target.saleSymbol)}</em></div>
+    <div class="ak-card"><span>Reserve price</span><strong>${fmt(c.reservePrice, c.quoteDecimals)}</strong><em>${esc(target.quoteSymbol)}</em></div>
     <div class="ak-card"><span>Bids sealed</span><strong>${trulySealed}</strong><em>of ${bids.length}${recoverable ? `, ${recoverable} salt published` : ''}</em></div>
-    <div class="ak-card"><span>Escrow locked</span><strong>${fmt(totalEscrow, c.quoteDecimals, 0)}</strong><em>${esc(HOODI_DEMO.quoteSymbol)}</em></div>
+    <div class="ak-card"><span>Escrow locked</span><strong>${fmt(totalEscrow, c.quoteDecimals, 0)}</strong><em>${esc(target.quoteSymbol)}</em></div>
     <div class="ak-card ak-card-time"><span>${snap.biddingOpen ? 'Closes in' : 'Bidding'}</span><strong>${esc(countdown(c.endTime, now))}</strong><em>${snap.biddingOpen ? '' : 'ended'}</em></div>
   </div>
 
@@ -561,13 +593,13 @@ export function renderAuction(root: HTMLElement): Cleanup {
   <div class="ak-cols">
     <div class="ak-col-main">
       <h2 class="ak-h2">The wall <span class="ak-h2-note">every bid, live from chain</span></h2>
-      <div id="ak-wall-scene" class="ak-scene">${bidWallHtml(wallBids, HOODI_DEMO.quoteSymbol, HOODI_DEMO.saleSymbol)}</div>
+      <div id="ak-wall-scene" class="ak-scene">${bidWallHtml(wallBids, target.quoteSymbol, target.saleSymbol)}</div>
 
       <h2 class="ak-h2">Demand ladder <span class="ak-h2-note">${rows ? 'revealed' : 'sealed'}</span></h2>
       <div id="ak-ladder-scene">${ladderHtml(rows, ladder.map((l) => ({ tick: l.tick, price: fmt(l.price, c.quoteDecimals) })))}</div>
       ${clearing?.cleared
-        ? `<p class="ak-clearing">Cleared at <strong>${fmt(priceAt(c.reservePrice, c.tickSize, clearing.clearingTick), c.quoteDecimals)} ${esc(HOODI_DEMO.quoteSymbol)}</strong>
-             · ${fmt(clearing.supplySold, c.saleDecimals, 0)} ${esc(HOODI_DEMO.saleSymbol)} sold.
+        ? `<p class="ak-clearing">Cleared at <strong>${fmt(priceAt(c.reservePrice, c.tickSize, clearing.clearingTick), c.quoteDecimals)} ${esc(target.quoteSymbol)}</strong>
+             · ${fmt(clearing.supplySold, c.saleDecimals, 0)} ${esc(target.saleSymbol)} sold.
              Everyone who won pays this price, not their own maximum.</p>`
         : ''}
     </div>
@@ -577,17 +609,17 @@ export function renderAuction(root: HTMLElement): Cleanup {
         <h3>Place a sealed bid</h3>
         ${account
           ? `<div class="ak-acct"><span class="ak-live-dot"></span><code>${esc(truncMiddle(account, 6, 4))}</code>
-               <b>${fmt(quoteBalance, c.quoteDecimals, 2)} ${esc(HOODI_DEMO.quoteSymbol)}</b></div>`
+               <b>${fmt(quoteBalance, c.quoteDecimals, 2)} ${esc(target.quoteSymbol)}</b></div>`
           : `<button class="ak-btn ak-primary ak-wide" id="ak-connect">Connect wallet</button>`}
 
         ${account && snap.biddingOpen ? `
         <form class="ak-form" id="ak-form">
-          <label>Quantity <span>${esc(HOODI_DEMO.saleSymbol)}</span>
+          <label>Quantity <span>${esc(target.saleSymbol)}</span>
             <input id="ak-qty" type="text" inputmode="decimal" value="100" autocomplete="off" />
           </label>
           <label>Maximum price you will pay
             <select id="ak-tick">
-              ${ladder.map((l) => `<option value="${l.tick}"${l.tick === 5 ? ' selected' : ''}>${fmt(l.price, c.quoteDecimals)} ${esc(HOODI_DEMO.quoteSymbol)}</option>`).join('')}
+              ${ladder.map((l) => `<option value="${l.tick}"${l.tick === 5 ? ' selected' : ''}>${fmt(l.price, c.quoteDecimals)} ${esc(target.quoteSymbol)}</option>`).join('')}
             </select>
           </label>
           <div class="ak-escrow-box" id="ak-escrow"></div>
@@ -597,12 +629,12 @@ export function renderAuction(root: HTMLElement): Cleanup {
         ${account && !snap.biddingOpen ? `<p class="ak-hint">Bidding is closed for this auction.</p>` : ''}
       </div>
 
-      ${account ? `
+      ${account && target.faucet ? `
       <div class="ak-panel">
         <h3>Test tokens <span class="ak-h2-note">free, no value</span></h3>
-        <p class="ak-hint">Escrow is paid in ${esc(HOODI_DEMO.quoteSymbol)}. Claim as much as you need.</p>
+        <p class="ak-hint">Escrow is paid in ${esc(target.quoteSymbol)}. Claim as much as you need.</p>
         <form class="ak-form ak-faucet" id="ak-faucet-form">
-          <label>Amount <span>${esc(HOODI_DEMO.quoteSymbol)}</span>
+          <label>Amount <span>${esc(target.quoteSymbol)}</span>
             <input id="ak-faucet-amt" type="text" inputmode="decimal" value="500000" autocomplete="off" />
           </label>
           <button class="ak-btn ak-wide" type="submit" ${faucetBusy || faucetMax === 0n ? 'disabled' : ''}>
@@ -612,7 +644,7 @@ export function renderAuction(root: HTMLElement): Cleanup {
           </button>
         </form>
         <p class="ak-hint">Up to ${fmt(faucetMax > 0n ? faucetMax : 0n, c.quoteDecimals, 0)} per claim, then a short cooldown.
-          <a href="${HOODI.explorer}/address/${HOODI_DEMO.faucet}" target="_blank" rel="noopener">Faucet contract</a></p>
+          <a href="${HOODI.explorer}/address/${target.faucet}" target="_blank" rel="noopener">Faucet contract</a></p>
       </div>` : ''}
 
       <div class="ak-panel ak-panel-warn">
@@ -682,12 +714,12 @@ export function renderAuction(root: HTMLElement): Cleanup {
       try {
         const q = parseUnits(qty.value || '0', snap.config.saleDecimals);
         const bid = prepareBid({
-          cfg: snap.config, chainId: HOODI.chainId, auction: HOODI_DEMO.auction,
+          cfg: snap.config, chainId: HOODI.chainId, auction: target.auction,
           bidder: account, quantity: q, maxPriceTick: Number(tickSel.value),
         });
         const short = bid.escrow > quoteBalance;
         escrowEl.innerHTML =
-          `<span>Escrow</span><b>${fmt(bid.escrow, snap.config.quoteDecimals, 2)} ${esc(HOODI_DEMO.quoteSymbol)}</b>` +
+          `<span>Escrow</span><b>${fmt(bid.escrow, snap.config.quoteDecimals, 2)} ${esc(target.quoteSymbol)}</b>` +
           (short ? `<em class="ak-error">more than you hold</em>` : `<em>locked until settlement</em>`);
         escrowEl.className = short ? 'ak-escrow-box ak-escrow-short' : 'ak-escrow-box';
       } catch (e) {
@@ -712,5 +744,60 @@ export function renderAuction(root: HTMLElement): Cleanup {
     stopped = true;
     detachTilt?.();
     window.clearInterval(timer);
+  };
+}
+
+/** Render any auction by address, for the shareable `#/a/0x…` link.
+ *
+ * Token symbols are read from the chain rather than assumed: a stranger's
+ * auction is not selling PEALD for DUSD, and showing the demo's symbols beside
+ * someone else's tokens would misstate what a bidder is paying with.
+ *
+ * The faucet is only offered when the payment token is the demo one. A real
+ * issuer's token has no reason to mint on request, so the panel is hidden
+ * rather than shown and then failing.
+ */
+export function renderAuctionAt(root: HTMLElement, auction: Address): Cleanup {
+  let inner: Cleanup | null = null;
+  let cancelled = false;
+
+  root.innerHTML = `<section class="ak"><div class="ak-hero"><h1>Sealed-bid auction</h1>
+    <p class="ak-sub">Reading ${esc(truncMiddle(auction, 8, 6))} from ${esc(HOODI.name)}.</p></div></section>`;
+
+  void (async () => {
+    try {
+      const cfg = (await pub.readContract({
+        address: auction, abi: SealedBidAuctionAbi, functionName: 'getConfig',
+      })) as unknown as { saleToken: Address; quoteToken: Address };
+
+      const [saleSymbol, quoteSymbol] = await Promise.all([
+        pub.readContract({ address: cfg.saleToken, abi: DemoTokenAbi, functionName: 'symbol' }).catch(() => 'TOKEN'),
+        pub.readContract({ address: cfg.quoteToken, abi: DemoTokenAbi, functionName: 'symbol' }).catch(() => 'TOKEN'),
+      ]);
+
+      if (cancelled) return;
+      inner = renderAuction(root, {
+        auction,
+        saleToken: cfg.saleToken,
+        quoteToken: cfg.quoteToken,
+        saleSymbol: String(saleSymbol),
+        quoteSymbol: String(quoteSymbol),
+        faucet:
+          cfg.quoteToken.toLowerCase() === HOODI_DEMO.quoteToken.toLowerCase()
+            ? HOODI_DEMO.faucet
+            : undefined,
+      });
+    } catch (e) {
+      if (cancelled) return;
+      root.innerHTML = `<section class="ak"><div class="ak-hero"><h1>Sealed-bid auction</h1>
+        <p class="ak-status ak-error">Could not read an auction at ${esc(truncMiddle(auction, 8, 6))}. ${esc(briefly(e))}</p>
+        <div class="ml-hero-ctas"><a class="ak-btn" href="#/auctions">see every auction</a></div>
+      </div></section>`;
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+    inner?.();
   };
 }

@@ -3,3 +3,4 @@ export * from './addresses.js';
 export * from './clearing.js';
 export * from './commitment.js';
 export * from './auction.js';
+export * from './factory.js';

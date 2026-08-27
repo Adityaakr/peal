@@ -1,8 +1,10 @@
 import './style.css';
 import { resolveSeal } from './api';
 import { renderHome } from './pages/home';
-import { renderAuction } from './pages/auction';
+import { renderAuction, renderAuctionAt } from './pages/auction';
 import { renderSealbidLanding } from './pages/sealbid-landing';
+import { renderAuctionsList } from './pages/auctions-list';
+import { renderAuctionCreate } from './pages/auction-create';
 import { renderCondition } from './pages/condition';
 import { renderExecution } from './pages/execution';
 import { renderLanding } from './pages/landing';
@@ -79,6 +81,7 @@ function route(): void {
   // Disjoint from the long form, which always has a mandatory 64-hex segment.
   const shortSeal = hash.match(/^#\/s\/([A-Za-z0-9_-]{11})(?:\/([A-Za-z0-9_-]{16,64}))?$/);
   const match = hash.match(/^#\/condition\/(.+)$/);
+  const auctionAt = hash.match(/^#\/a\/(0x[0-9a-fA-F]{40})$/);
   if (seal) {
     cleanup = renderSealView(root, decodeURIComponent(seal[1]), seal[2], seal[3]);
   } else if (shortSeal) {
@@ -89,6 +92,14 @@ function route(): void {
     // Mirrors the mempool split: #/auction is the landing, the product page
     // lives at its own route. See main.ts's #/mempool vs #/encrypted-mempool.
     cleanup = renderSealbidLanding(root);
+  } else if (hash === '#/auctions') {
+    cleanup = renderAuctionsList(root);
+  } else if (hash === '#/create') {
+    cleanup = renderAuctionCreate(root);
+  } else if (auctionAt) {
+    // The shareable link. Any auction address renders the product page, so a
+    // link handed to a stranger works without them knowing anything about us.
+    cleanup = renderAuctionAt(root, auctionAt[1] as `0x${string}`);
   } else if (hash === '#/sealed-bid-auction') {
     cleanup = renderAuction(root);
   } else if (hash === '#/execution') {
