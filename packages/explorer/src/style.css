@@ -4370,3 +4370,11 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 .sl-alist-chain:hover { color: var(--accent); text-decoration: underline; }
 .sl-duration { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .sl-duration select { min-width: 7rem; }
+
+/* timing: duration, or an explicit date and time */
+.sl-modes { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+.sl-mode { display: inline-flex; align-items: center; gap: 7px; font-family: var(--body);
+  font-size: 13px; color: var(--muted); cursor: pointer; }
+.sl-mode input { accent-color: var(--accent); margin: 0; }
+#c-mode-duration, #c-mode-exact { display: grid; gap: 12px; }
+#c-mode-duration[hidden], #c-mode-exact[hidden] { display: none; }

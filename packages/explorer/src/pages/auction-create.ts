@@ -71,6 +71,47 @@ function firstLine(s: string): string {
  * issuer should not have to do and is easy to get wrong by a factor of ten. */
 const UNIT_HOURS: Record<string, number> = { minutes: 1 / 60, hours: 1, days: 24 };
 
+/** Unix seconds from a `datetime-local` value.
+ *
+ * `datetime-local` carries no timezone, and `new Date(value)` parses it in the
+ * browser's zone, which is what an issuer meant when they picked a time on
+ * their own clock. Returns null rather than NaN on an empty field, so a
+ * half-filled form cannot reach the contract as a nonsense deadline. */
+function localToUnix(value: string): bigint | null {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? BigInt(Math.floor(ms / 1000)) : null;
+}
+
+/** `datetime-local` wants "YYYY-MM-DDTHH:mm" in local time. */
+function unixToLocalInput(sec: number): string {
+  const d = new Date(sec * 1000);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+type TimingMode = 'duration' | 'exact';
+
+function timingMode(): TimingMode {
+  const el = document.querySelector<HTMLInputElement>('input[name="c-timing"]:checked');
+  return (el?.value as TimingMode) ?? 'duration';
+}
+
+/** When bidding closes and when the reveal must be done, however the issuer
+ * chose to express it. One function, so the two modes cannot drift apart. */
+function schedule(nowSec: bigint): { endTime: bigint; revealDeadline: bigint } {
+  if (timingMode() === 'exact') {
+    const close = localToUnix((document.getElementById('c-close-at') as HTMLInputElement | null)?.value ?? '');
+    const deadline = localToUnix((document.getElementById('c-reveal-at') as HTMLInputElement | null)?.value ?? '');
+    const endTime = close ?? nowSec + 6n * 3600n;
+    return { endTime, revealDeadline: deadline ?? endTime + 4n * 3600n };
+  }
+  const bidH = durationHours('c-bid-amount', 'c-bid-unit', 6);
+  const revH = durationHours('c-reveal-amount', 'c-reveal-unit', 4);
+  const endTime = nowSec + BigInt(Math.round(bidH * 3600));
+  return { endTime, revealDeadline: endTime + BigInt(Math.round(revH * 3600)) };
+}
+
 function durationHours(amountId: string, unitId: string, fallback: number): number {
   const amount = Number(
     (document.getElementById(amountId) as HTMLInputElement | null)?.value ?? '',
@@ -173,9 +214,7 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     const useCase = g('c-usecase');
     const details = g('c-details');
     const now = BigInt(Math.floor(Date.now() / 1000));
-    const bidHours = durationHours('c-bid-amount', 'c-bid-unit', 6);
-    const revealHours = durationHours('c-reveal-amount', 'c-reveal-unit', 4);
-    const endTime = now + BigInt(Math.round(bidHours * 3600));
+    const { endTime, revealDeadline } = schedule(now);
 
     const cfg: AuctionConfig = {
       issuer: account,
@@ -189,7 +228,7 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
       numTicks: Number(g('c-ticks') || '32'),
       startTime: now,
       endTime,
-      revealDeadline: endTime + BigInt(Math.round(revealHours * 3600)),
+      revealDeadline,
       minBidQuantity: parseUnits(g('c-min') || '1', 18),
       maxQuantityPerAddress: parseUnits(g('c-cap') || '0', 18),
       maxBids: 256,
@@ -340,26 +379,44 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
 
             <div class="sl-fieldset">
               <h3>timing</h3>
-              <label>bidding stays open for
-                <div class="sl-duration">
-                  <input id="c-bid-amount" value="6" inputmode="decimal" autocomplete="off" />
-                  <select id="c-bid-unit">
-                    <option value="minutes">minutes</option>
-                    <option value="hours" selected>hours</option>
-                    <option value="days">days</option>
-                  </select>
-                </div>
-              </label>
-              <label>reveal window after that <span>at least 1 hour</span>
-                <div class="sl-duration">
-                  <input id="c-reveal-amount" value="4" inputmode="decimal" autocomplete="off" />
-                  <select id="c-reveal-unit">
-                    <option value="minutes">minutes</option>
-                    <option value="hours" selected>hours</option>
-                    <option value="days">days</option>
-                  </select>
-                </div>
-              </label>
+              <div class="sl-modes" role="radiogroup" aria-label="how to set the schedule">
+                <label class="sl-mode"><input type="radio" name="c-timing" value="duration" checked /> for a duration</label>
+                <label class="sl-mode"><input type="radio" name="c-timing" value="exact" /> until a date and time</label>
+              </div>
+
+              <div id="c-mode-duration">
+                <label>bidding stays open for
+                  <div class="sl-duration">
+                    <input id="c-bid-amount" value="6" inputmode="decimal" autocomplete="off" />
+                    <select id="c-bid-unit">
+                      <option value="minutes">minutes</option>
+                      <option value="hours" selected>hours</option>
+                      <option value="days">days</option>
+                    </select>
+                  </div>
+                </label>
+                <label>reveal window after that <span>at least 1 hour</span>
+                  <div class="sl-duration">
+                    <input id="c-reveal-amount" value="4" inputmode="decimal" autocomplete="off" />
+                    <select id="c-reveal-unit">
+                      <option value="minutes">minutes</option>
+                      <option value="hours" selected>hours</option>
+                      <option value="days">days</option>
+                    </select>
+                  </div>
+                </label>
+              </div>
+
+              <div id="c-mode-exact" hidden>
+                <label>bidding closes at
+                  <input id="c-close-at" type="datetime-local" value="${esc(unixToLocalInput(Math.floor(Date.now() / 1000) + 6 * 3600))}" />
+                </label>
+                <label>reveal deadline <span>at least an hour after close</span>
+                  <input id="c-reveal-at" type="datetime-local" value="${esc(unixToLocalInput(Math.floor(Date.now() / 1000) + 10 * 3600))}" />
+                </label>
+                <p class="ak-hint">times are on your own clock. the contract stores them as absolute instants, so a bidder in another timezone sees the same moment.</p>
+              </div>
+
               <p class="ak-hint" id="c-schedule"></p>
             </div>
 
@@ -413,30 +470,56 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     }
     ladder();
 
-    // Show the actual clock times. A duration is what an issuer types; a
-    // deadline is what they and every bidder have to live with.
-    const schedule = (): void => {
+    // Show the actual clock times, whichever way they were entered. A
+    // duration is what an issuer types; a deadline is what they and every
+    // bidder have to live with, and the reveal deadline decides whether a
+    // stalled reveal refunds everyone.
+    const showSchedule = (): void => {
       const el = root.querySelector<HTMLElement>('#c-schedule');
       if (!el) return;
-      const bidH = durationHours('c-bid-amount', 'c-bid-unit', 6);
-      const revH = durationHours('c-reveal-amount', 'c-reveal-unit', 4);
-      const now = Date.now();
-      const close = new Date(now + bidH * 3600_000);
-      const deadline = new Date(now + (bidH + revH) * 3600_000);
-      const fmtWhen = (d: Date): string =>
-        d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const now = BigInt(Math.floor(Date.now() / 1000));
+      const { endTime, revealDeadline } = schedule(now);
+      const fmtWhen = (sec: bigint): string =>
+        new Date(Number(sec) * 1000).toLocaleString(undefined, {
+          weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        });
+
+      const problems: string[] = [];
+      if (endTime <= now) problems.push('bidding would close in the past.');
+      if (revealDeadline < endTime + 3600n) {
+        problems.push('the reveal deadline has to be at least an hour after close, so a bidder whose bid is wrongly voided has time to prove it.');
+      }
+
+      if (problems.length) {
+        el.textContent = problems.join(' ');
+        el.className = 'ak-hint ak-error';
+        return;
+      }
+      const hours = Number(revealDeadline - endTime) / 3600;
       el.innerHTML =
-        revH < 1
-          ? `the reveal window has to be at least an hour, so a bidder whose bid is wrongly voided has time to prove it.`
-          : `bidding closes <b>${esc(fmtWhen(close))}</b>, and the reveal deadline is <b>${esc(fmtWhen(deadline))}</b>.`;
-      el.className = revH < 1 ? 'ak-hint ak-error' : 'ak-hint';
+        `bidding closes <b>${esc(fmtWhen(endTime))}</b>, and the reveal deadline is ` +
+        `<b>${esc(fmtWhen(revealDeadline))}</b>, ${hours.toFixed(hours < 10 ? 1 : 0)} hours later.`;
+      el.className = 'ak-hint';
     };
-    for (const id of ['c-bid-amount', 'c-bid-unit', 'c-reveal-amount', 'c-reveal-unit']) {
+
+    // Switching mode swaps which inputs are live, so the preview always
+    // reflects the fields the issuer can actually see.
+    const applyMode = (): void => {
+      const exact = timingMode() === 'exact';
+      root.querySelector<HTMLElement>('#c-mode-duration')?.toggleAttribute('hidden', exact);
+      root.querySelector<HTMLElement>('#c-mode-exact')?.toggleAttribute('hidden', !exact);
+      showSchedule();
+    };
+
+    for (const id of ['c-bid-amount', 'c-bid-unit', 'c-reveal-amount', 'c-reveal-unit', 'c-close-at', 'c-reveal-at']) {
       const el = root.querySelector(`#${id}`);
-      el?.addEventListener('input', schedule);
-      el?.addEventListener('change', schedule);
+      el?.addEventListener('input', showSchedule);
+      el?.addEventListener('change', showSchedule);
     }
-    schedule();
+    for (const el of Array.from(root.querySelectorAll('input[name="c-timing"]'))) {
+      el.addEventListener('change', applyMode);
+    }
+    applyMode();
   }
 
   const applySession = (): void => {
