@@ -4208,3 +4208,14 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 .sl-root, .sl-clearing { font-family: var(--body); font-size: 12px; padding: 9px 12px; border-radius: 9px;
   text-align: center; border: 1px solid var(--accent-border); background: var(--accent-weak); color: var(--accent); }
 .sl-clearing { border-color: #bbf7d0; background: var(--green-weak); color: var(--green); }
+
+/* research section */
+.sl-research { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 720px) { .sl-research { grid-template-columns: 1fr; } }
+.sl-research-col { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 18px 20px;
+  box-shadow: var(--shadow-hairline, 0 1px 2px rgb(0 0 0 / 0.05)); }
+.sl-research-col .sl-case-label { color: var(--accent); margin-bottom: 12px; }
+.sl-list { margin: 0; padding-left: 18px; display: grid; gap: 9px; }
+.sl-list li { font-family: var(--body); font-size: 13px; line-height: 1.6; color: var(--muted); }
+.sl-list b { color: var(--text); font-weight: 500; }
+.sl-list code { font-family: var(--mono); font-size: 12px; }

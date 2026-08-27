@@ -290,6 +290,83 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
 
   <section class="ml-section">
     <div class="ml-wrap scroll-reveal">
+      <p class="ml-sec-kicker">the research</p>
+      <h2 class="ml-h2">the cryptography is not ours</h2>
+      <p class="ml-sub sl-cases-sub">
+        batched threshold encryption is a construction by the commonware team. we did not invent it,
+        we did not reimplement it, and we do not modify it. peal is what it takes to run it in production.
+      </p>
+
+      <div class="sl-research">
+        <div class="sl-research-col">
+          <span class="sl-case-label">from commonware</span>
+          <ul class="sl-list">
+            <li>the scheme itself, from <b>"batched threshold encryption: a simple construction"</b>, guru vamsi policharla, iacr eprint 2026/760.</li>
+            <li>every pairing operation, every group fft, and the fujisaki-okamoto transform, in <code>simple-bte</code>, used unmodified as a dependency and pinned to one commit.</li>
+            <li>thresholdization, built into <code>crs::setup</code>. we planned a shamir fallback and did not need it.</li>
+          </ul>
+        </div>
+        <div class="sl-research-col">
+          <span class="sl-case-label">what peal adds</span>
+          <ul class="sl-list">
+            <li>wire formats with version tags and golden-file tests, so a byte that changes shape fails a test rather than a decryption.</li>
+            <li>payload caps, per-slot validity, and an api shaped for a coordinator, an operator node, and a browser sdk.</li>
+            <li>the rand version is re-exported from one place, so two crates can never disagree about which rng trait they are using.</li>
+            <li>a ceremony, a committee, a batching engine, and reveal plumbing. none of that is cryptography, and all of it is why the cryptography can be used by an application.</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="ml-foot">
+        one crate touches group elements. every deviation from the upstream api is written down in
+        <code>spec/DEVIATIONS.md</code> with the reason, and every call is mapped function by function in
+        <code>spec/API-MAP.md</code>. where we adapt an api we say so, and we say that it is adaptation
+        rather than a change to the scheme.
+      </p>
+    </div>
+  </section>
+
+  <section class="ml-section">
+    <div class="ml-wrap scroll-reveal">
+      <p class="ml-sec-kicker">what comes next</p>
+      <h2 class="ml-h2">a faster acknowledgement, without moving the money</h2>
+      <p class="ml-sub sl-cases-sub">
+        bidding today is two transactions on a twelve second chain, and the wait is real even though
+        nothing about the auction depends on it. vara.eth offers a way to shorten the part a person
+        actually feels.
+      </p>
+
+      <div class="sl-limits">
+        <div class="sl-limit">
+          <span class="ml-chip ml-chip-build">build</span>
+          <p><b>an injected transaction answers before the block does.</b> the wallet signs, the write goes
+          straight to vara.eth, and the app gets a promise and a reply it can render immediately. the bidder
+          sees their bid land instead of watching a spinner for a slot.</p>
+        </div>
+        <div class="sl-limit">
+          <span class="ml-chip ml-chip-live">live</span>
+          <p><b>vara.eth settles to hoodi, the chain sealbid already uses.</b> so this is something added
+          beside the auction, not a move. the contracts stay where they are.</p>
+        </div>
+        <div class="sl-limit">
+          <span class="ml-chip ml-chip-live">live</span>
+          <p><b>escrow stays in solidity.</b> that is gear's own recommended pattern for anything holding
+          value: funds stay in the ethereum contract and a callback confirms release or refund. the
+          auction's money never sits behind a different validator set.</p>
+        </div>
+        <div class="sl-limit">
+          <span class="ml-chip ml-chip-build">build</span>
+          <p><b>an early answer is not finality, and we will label it that way.</b> a promise ahead of
+          settlement is a soft commitment from vara.eth's validators, currently three of four keys operated
+          by one company. showing "committed" on a soft promise, for a transaction carrying escrow, is worse
+          than an honest wait. so a preconfirmed bid will read as preconfirmed until it settles.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="ml-section">
+    <div class="ml-wrap scroll-reveal">
       <p class="ml-sec-kicker">honest limits</p>
       <h2 class="ml-h2">what this does not do</h2>
       <div class="sl-limits">
