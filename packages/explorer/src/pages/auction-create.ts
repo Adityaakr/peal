@@ -19,6 +19,8 @@ import {
   validateCreate,
   ACTIVE,
   DemoTokenAbi,
+  claimFrom,
+  fundGas,
   type AuctionConfig,
 } from 'peal-auctionkit';
 import {
@@ -26,7 +28,7 @@ import {
   keccak256, parseUnits, stringToHex, type Address,
 } from 'viem';
 import { session, onAuthChange, type Eip1193Like } from '../auth';
-import { recordTx, recordMany, txlogHtml, onTxLogChange } from '../txlog';
+import { recordTx, txlogHtml, onTxLogChange } from '../txlog';
 import { esc } from '../util';
 
 type Cleanup = () => void;
@@ -286,32 +288,47 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     s.login();
   }
 
+  /** Make a newly signed-in issuer able to pay, from the browser.
+   *
+   * Same three steps as the bidder side and the same reason for the order: gas
+   * first, because without it nothing else can be sent. Creating an auction
+   * also needs the sale token, since the factory pulls the whole supply from
+   * the issuer at creation. */
   async function fundIfNeeded(addr: Address): Promise<void> {
     if (funded.has(addr.toLowerCase())) return;
     funded.add(addr.toLowerCase());
-    // Move the wallet before anything is funded or signed, so the first button
-    // a user presses is not the one that discovers the wrong chain.
+
     try {
       await ensureChain(ACTIVE.chainId);
-    } catch { /* reported when a write actually needs it */ }
+    } catch { /* reported by whichever step needs it */ }
+
+    const got: string[] = [];
     try {
-      const res = await fetch('/api/fund', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address: addr, chainId: ACTIVE.chainId }),
-      });
-      const body = (await res.json()) as { funded?: boolean; error?: string; hashes?: string[] };
-      recordMany(body.hashes ?? [], 'Account funded');
-      status = body.funded
-        ? 'Signed in and funded. You can create an auction.'
-        : body.error
-          ? `Signed in. Funding did not run: ${body.error}`
-          : 'Signed in.';
-      statusKind = body.funded ? 'ok' : 'info';
-    } catch {
-      status = 'Signed in. Could not reach the funding service.';
-      statusKind = 'info';
+      if (await fundGas(pub, ACTIVE, addr)) got.push('gas');
+    } catch { /* already funded, or the chain has no faucet */ }
+
+    const eth = ethereum();
+    if (eth) {
+      const wallet = createWalletClient({ account: addr, chain: activeChain, transport: custom(eth) });
+      for (const c of [
+        { faucet: ACTIVE.tokens.saleFaucet, amount: 2_000_000n * 10n ** 18n, name: ACTIVE.tokens.saleSymbol },
+        { faucet: ACTIVE.tokens.faucet, amount: 1_000n * 10n ** 18n, name: ACTIVE.tokens.quoteSymbol },
+      ]) {
+        if (!c.faucet) continue;
+        try {
+          const hash = await claimFrom({
+            publicClient: pub, walletClient: wallet, account: addr, chain: activeChain,
+            faucet: c.faucet, amount: c.amount,
+            gas: ACTIVE.chainId === 42431 ? 29_000_000n : undefined,
+          });
+          recordTx(hash, `Claimed ${c.name} from the faucet`);
+          got.push(c.name);
+        } catch { /* cooldown, or already holding enough */ }
+      }
     }
+
+    status = got.length ? `Signed in, and got ${got.join(', ')}.` : 'Signed in.';
+    statusKind = got.length ? 'ok' : 'info';
     draw();
   }
 

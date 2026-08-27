@@ -18,6 +18,8 @@
 import {
   ACTIVE,
   ACTIVE_DEMO,
+  claimFrom,
+  fundGas,
   STATE_LABELS,
   allocationFor,
   demandFromBids,
@@ -29,7 +31,6 @@ import {
   readBids,
   submitBid,
   DemoTokenAbi,
-  DemoFaucetAbi,
   SealedBidAuctionAbi,
   supportsPermit,
   activeChain,
@@ -60,7 +61,7 @@ import {
 } from 'viem';
 import { recoverSeededBid } from '../demo-bids';
 import { session, onAuthChange, type Eip1193Like } from '../auth';
-import { recordTx, recordMany, txlogHtml, onTxLogChange } from '../txlog';
+import { recordTx, txlogHtml, onTxLogChange } from '../txlog';
 import { esc, truncMiddle } from '../util';
 
 type Cleanup = () => void;
@@ -218,14 +219,6 @@ function fmt(v: bigint, decimals: number, places = 4): string {
   return f ? `${i}.${f.slice(0, places).replace(/0+$/, '') || '0'}` : i!;
 }
 
-/** "in 4m", or a clock time once it is far enough out to be worth one. */
-function fmtWhen(atSec: bigint): string {
-  const delta = Number(atSec) - Math.floor(Date.now() / 1000);
-  if (delta <= 0) return 'now';
-  if (delta < 90) return `in ${delta}s`;
-  if (delta < 3600) return `in ${Math.ceil(delta / 60)}m`;
-  return `at ${new Date(Number(atSec) * 1000).toLocaleTimeString()}`;
-}
 
 /** The link that opens straight into this auction.
  *
@@ -279,8 +272,6 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   let snap: AuctionSnapshot | null = null;
   let quoteBalance = 0n;
   let bids: CommittedBid[] = [];
-  let faucetMax = 0n;
-  let faucetAvailableAt = 0n;
   let faucetBusy = false;
   const fundedThisSession = new Set<string>();
   let detachTilt: (() => void) | null = null;
@@ -326,26 +317,9 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         failures.push(`balance (${briefly(e)})`);
       }
 
-      // Ask the faucet what it would actually give this address, rather than
-      // assuming the cap. It answers 0 while cooling down and reports its own
-      // remaining balance when that is the smaller number, so the button can
-      // say why instead of letting someone send a reverting transaction.
-      //
-      // Only the demo tokens have a faucet. A real issuer's payment token has
-      // no reason to mint on request, so there is nothing to ask.
-      const faucetAddr = target.faucet;
-      if (faucetAddr) try {
-        const [amount, availableAt] = (await pub.readContract({
-          address: faucetAddr,
-          abi: DemoFaucetAbi,
-          functionName: 'claimableBy',
-          args: [account],
-        })) as [bigint, bigint];
-        faucetMax = amount;
-        faucetAvailableAt = availableAt;
-      } catch (e) {
-        failures.push(`faucet (${briefly(e)})`);
-      }
+      // The faucet is no longer queried up front. The button attempts every
+      // step and reports what actually happened, which is both simpler and
+      // more honest than predicting a claim that might still be refused.
     }
 
     // Never overwrite a message the user is acting on, such as a wallet error
@@ -380,36 +354,75 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
     s.login();
   }
 
-  /** Ask the server to fund a newly signed-in address.
+  /** Make a newly signed-in account usable, entirely from the browser.
    *
-   * Server-side because it spends from a key that holds value, and a key in the
-   * browser is a key every visitor has. Failure is reported and not fatal: a
-   * user who already has funds does not need it, and the page stays usable. */
+   * Three steps in a fixed order, because the first gates the other two: gas,
+   * then the payment token, then the sale token. Gas comes from the chain's own
+   * RPC faucet where it has one, which is what removes the need for a funding
+   * service holding a key.
+   *
+   * Every step is allowed to fail without stopping the rest. Someone who
+   * already holds a token does not need that step, and a cooldown is a refusal
+   * rather than a fault. */
   async function fundIfNeeded(addr: Address): Promise<void> {
     if (fundedThisSession.has(addr.toLowerCase())) return;
     fundedThisSession.add(addr.toLowerCase());
-    // Move the wallet before anything is funded or signed, so the first button
-    // a user presses is not the one that discovers the wrong chain.
+    await getTestFunds(addr, { quiet: true });
+  }
+
+  async function getTestFunds(addr: Address, opts: { quiet?: boolean } = {}): Promise<void> {
+    if (faucetBusy) return;
+    faucetBusy = true;
+    if (!opts.quiet) {
+      status = 'Getting test funds.';
+      statusKind = 'info';
+      draw();
+    }
+
+    const eth = ethereum();
+    const done: string[] = [];
+    const failed: string[] = [];
+
     try {
       await ensureChain(ACTIVE.chainId);
-    } catch { /* reported when a write actually needs it */ }
+    } catch { /* reported by whichever step needs it */ }
+
+    // 1. Gas. Without it nothing else can even be sent.
     try {
-      const res = await fetch('/api/fund', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address: addr, chainId: ACTIVE.chainId }),
-      });
-      const body = (await res.json()) as { funded?: boolean; alreadyFunded?: boolean; error?: string; hashes?: string[] };
-      recordMany(body.hashes ?? [], 'Account funded');
-      if (body.funded) {
-        status = `Signed in and funded. You have test tokens and gas.`;
-        statusKind = 'ok';
-      } else if (body.error) {
-        status = `Signed in. Funding did not run: ${body.error}`;
-        statusKind = 'info';
+      if (await fundGas(pub, ACTIVE, addr)) done.push('gas');
+    } catch (e) {
+      failed.push(`gas (${briefly(e)})`);
+    }
+
+    // 2 and 3. The tokens, each from its own faucet.
+    if (eth) {
+      const wallet = createWalletClient({ account: addr, chain: CHAIN, transport: custom(eth) });
+      const claims: { faucet: Address | undefined; amount: bigint; name: string }[] = [
+        { faucet: ACTIVE.tokens.faucet, amount: 1_000n * 10n ** 18n, name: target.quoteSymbol },
+        { faucet: ACTIVE.tokens.saleFaucet, amount: 2_000_000n * 10n ** 18n, name: target.saleSymbol },
+      ];
+      for (const c of claims) {
+        if (!c.faucet) continue;
+        try {
+          const hash = await claimFrom({
+            publicClient: pub, walletClient: wallet, account: addr, chain: CHAIN,
+            faucet: c.faucet, amount: c.amount,
+            gas: ACTIVE.chainId === 42431 ? 29_000_000n : undefined,
+          });
+          recordTx(hash, `Claimed ${c.name} from the faucet`);
+          done.push(c.name);
+        } catch (e) {
+          failed.push(`${c.name} (${briefly(e)})`);
+        }
       }
-    } catch {
-      status = 'Signed in. Could not reach the funding service.';
+    }
+
+    faucetBusy = false;
+    if (done.length) {
+      status = `Got ${done.join(', ')}. You can bid now.`;
+      statusKind = 'ok';
+    } else if (failed.length && !opts.quiet) {
+      status = `Nothing to claim: ${failed.join(', ')}`;
       statusKind = 'info';
     }
     await refresh();
@@ -493,72 +506,6 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
       statusKind = 'error';
     } finally {
       busy = false;
-      await refresh();
-    }
-  }
-
-  async function claimFaucet(amountStr: string): Promise<void> {
-    if (!account || faucetBusy || !snap || !target.faucet) return;
-    const eth = ethereum();
-    if (!eth) return;
-
-    let amount: bigint;
-    try {
-      amount = parseUnits(amountStr.trim() || '0', snap.config.quoteDecimals);
-    } catch {
-      status = 'Enter an amount, for example 500000.';
-      statusKind = 'error';
-      draw();
-      return;
-    }
-
-    // Checked here so a hopeless request never costs gas. The contract enforces
-    // the same bounds; this only saves the user a failed transaction.
-    if (amount <= 0n) {
-      status = 'Enter an amount greater than zero.';
-      statusKind = 'error';
-      draw();
-      return;
-    }
-    if (faucetMax === 0n) {
-      const wait = faucetAvailableAt > 0n ? ` Try again ${fmtWhen(faucetAvailableAt)}.` : '';
-      status = `The faucet has nothing for this address right now.${wait}`;
-      statusKind = 'error';
-      draw();
-      return;
-    }
-    if (amount > faucetMax) {
-      status = `The faucet will give at most ${fmt(faucetMax, snap.config.quoteDecimals, 0)} ${target.quoteSymbol} per claim.`;
-      statusKind = 'error';
-      draw();
-      return;
-    }
-
-    faucetBusy = true;
-    status = 'Claiming.';
-    statusKind = 'info';
-    draw();
-
-    try {
-      await ensureChain(ACTIVE.chainId);
-      const wallet = createWalletClient({ account, chain: CHAIN, transport: custom(eth) });
-      const hash = await wallet.writeContract({
-        chain: CHAIN,
-        account,
-        address: target.faucet,
-        abi: DemoFaucetAbi,
-        functionName: 'claim',
-        args: [amount],
-      });
-      recordTx(hash, `Claimed ${fmt(amount, snap.config.quoteDecimals, 0)} ${target.quoteSymbol} from the faucet`);
-      await pub.waitForTransactionReceipt({ hash });
-      status = `Received ${fmt(amount, snap.config.quoteDecimals, 0)} ${target.quoteSymbol}.`;
-      statusKind = 'ok';
-    } catch (e) {
-      status = briefly(e);
-      statusKind = 'error';
-    } finally {
-      faucetBusy = false;
       await refresh();
     }
   }
@@ -729,22 +676,14 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         ${account && !snap.biddingOpen ? `<p class="ak-hint">Bidding is closed for this auction.</p>` : ''}
       </div>
 
-      ${account && target.faucet ? `
+      ${account ? `
       <div class="ak-panel">
-        <h3>Test tokens <span class="ak-h2-note">free, no value</span></h3>
-        <p class="ak-hint">Escrow is paid in ${esc(target.quoteSymbol)}. Claim as much as you need.</p>
-        <form class="ak-form ak-faucet" id="ak-faucet-form">
-          <label>Amount <span>${esc(target.quoteSymbol)}</span>
-            <input id="ak-faucet-amt" type="text" inputmode="decimal" value="500000" autocomplete="off" />
-          </label>
-          <button class="ak-btn ak-wide" type="submit" ${faucetBusy || faucetMax === 0n ? 'disabled' : ''}>
-            ${faucetBusy ? 'Claiming…' : faucetMax === 0n
-              ? (faucetAvailableAt > 0n ? `Available again ${esc(fmtWhen(faucetAvailableAt))}` : 'Faucet empty')
-              : 'Claim from faucet'}
-          </button>
-        </form>
-        <p class="ak-hint">Up to ${fmt(faucetMax > 0n ? faucetMax : 0n, c.quoteDecimals, 0)} per claim, then a short cooldown.
-          <a href="${ACTIVE.explorer}/address/${target.faucet}" target="_blank" rel="noopener">Faucet contract</a></p>
+        <h3>Test funds <span class="ak-h2-note">free, no value</span></h3>
+        <p class="ak-hint">One click gets everything an account needs here: gas, ${esc(target.quoteSymbol)} to bid with, and ${esc(target.saleSymbol)} if you want to create an auction of your own.</p>
+        <button class="ak-btn ak-primary ak-wide" id="ak-getfunds" ${faucetBusy ? 'disabled' : ''}>
+          ${faucetBusy ? 'Getting funds…' : 'Get test funds'}
+        </button>
+        <p class="ak-hint">Claimable again after a short cooldown. ${ACTIVE.tokens.faucet ? `<a href="${ACTIVE.explorer}/address/${ACTIVE.tokens.faucet}" target="_blank" rel="noopener">Faucet contract</a>` : ''}</p>
       </div>` : ''}
 
       <div class="ak-panel ak-panel-warn">
@@ -815,10 +754,8 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
       window.setTimeout(() => { btn.textContent = prev; }, 1400);
     });
     root.querySelector('#ak-download')?.addEventListener('click', downloadBids);
-    root.querySelector('#ak-faucet-form')?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const el = root.querySelector<HTMLInputElement>('#ak-faucet-amt');
-      if (el) void claimFaucet(el.value);
+    root.querySelector('#ak-getfunds')?.addEventListener('click', () => {
+      if (account) void getTestFunds(account);
     });
 
     const qty = root.querySelector<HTMLInputElement>('#ak-qty');

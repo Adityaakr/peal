@@ -33,8 +33,23 @@ export interface Deployment {
     saleSymbol: string;
     quoteToken: Address;
     quoteSymbol: string;
+    /** Hands out the payment token. */
     faucet: Address;
+    /** Hands out the sale token, so someone can create an auction and not
+     * only bid in one. */
+    saleFaucet?: Address;
   };
+  /** An RPC method that funds gas, where the chain provides one.
+   *
+   * Tempo charges gas in PathUSD, so a new wallet holds nothing and cannot
+   * send even a faucet claim. `tempo_fundAddress` breaks that circle from the
+   * browser with no key and no backend, which is what makes the whole flow
+   * self-serve rather than needing a funding service. */
+  gasFaucetRpcMethod?: string;
+  /** Where gas balance is read, on a chain that charges it as an ERC-20.
+   * `eth_getBalance` is meaningless on Tempo, so the token is the only
+   * truthful source. */
+  gasToken?: Address;
   committeeSetId: Hex;
 }
 
@@ -90,7 +105,10 @@ export const TEMPO: Deployment = {
     quoteToken: '0x94521876dbE846a1a3eccF6636c2ec8E0BE82091',
     quoteSymbol: 'DUSD',
     faucet: '0x7f49125581a3228379b01B73e19c4c9A831FE552',
+    saleFaucet: '0x64F933e0e9cfE45720CD2c0F87c7EAfB88b16513',
   },
+  gasFaucetRpcMethod: 'tempo_fundAddress',
+  gasToken: '0x20c0000000000000000000000000000000000000',
   committeeSetId: '0xd19f4dd9a205e3edb80e46666fa6a6a02497bb16411755e9355413e4dea9327f',
   current: true,
 };
