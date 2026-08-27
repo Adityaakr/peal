@@ -64,7 +64,17 @@ import { esc, truncMiddle } from '../util';
 
 type Cleanup = () => void;
 
-const RPC = 'https://rpc.hoodi.ethpandaops.io';
+/** The RPC comes from the active deployment, never from a literal.
+ *
+ * This was hardcoded to Hoodi while `CHAIN` followed ACTIVE, so the client was
+ * a Tempo chain object talking to a Hoodi endpoint. Every read hit an address
+ * with no code there and came back "0x": getConfig, committedBidCount and
+ * claimableBy all "returned no data", which reads like six broken contracts and
+ * is one wrong URL.
+ *
+ * Passing `undefined` to `http()` makes viem use the chain's own rpcUrls, so
+ * the two cannot drift apart again. */
+const RPC = undefined;
 // From the package, so the multicall3 address travels with it. A bare chain
 // literal silently disables viem's batching: 60 reads measured 3008ms without
 // the declaration and 727ms with it.
@@ -76,7 +86,7 @@ const CHAIN = activeChain;
 // has multicall3, which is most of what this page does per refresh.
 const pub = createPublicClient({
   chain: CHAIN,
-  transport: http(RPC, { timeout: 12_000, retryCount: 2, retryDelay: 400 }),
+  transport: http(RPC, { timeout: 15_000, retryCount: 2, retryDelay: 400 }),
   batch: { multicall: { wait: 16 } },
 });
 
