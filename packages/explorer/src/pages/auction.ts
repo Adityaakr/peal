@@ -60,6 +60,7 @@ import {
   type Hex,
 } from 'viem';
 import { recoverSeededBid } from '../demo-bids';
+import { session, onAuthChange, type Eip1193Like } from '../auth';
 import { esc, truncMiddle } from '../util';
 
 type Cleanup = () => void;
@@ -153,8 +154,16 @@ function completeBid(commitment: Hex, bidId: number, txHash: Hex): void {
   writeBids(loadBids().map((b) => (b.commitment === commitment ? { ...b, bidId, txHash } : b)));
 }
 
-function ethereum(): { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } | null {
-  const w = window as unknown as { ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } };
+/** The wallet this page transacts with.
+ *
+ * Privy first: a signed-in user has an embedded wallet the app created and
+ * funded, and that is the one that can pay. An injected extension is the
+ * fallback for people who arrived with one, so nothing that worked before
+ * stops working. */
+function ethereum(): Eip1193Like | null {
+  const s = session();
+  if (s.provider) return s.provider;
+  const w = window as unknown as { ethereum?: Eip1193Like };
   return w.ethereum ?? null;
 }
 
@@ -228,6 +237,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   let faucetMax = 0n;
   let faucetAvailableAt = 0n;
   let faucetBusy = false;
+  const fundedThisSession = new Set<string>();
   let detachTilt: (() => void) | null = null;
   let status = '';
   let statusKind: 'info' | 'error' | 'ok' = 'info';
@@ -306,41 +316,52 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
     if (!stopped) draw();
   }
 
+  /** Sign in, then make sure the account can actually transact.
+   *
+   * Funding is not a nicety here. On Tempo gas is paid in PathUSD, so a fresh
+   * account cannot send anything at all until it is funded, and on either chain
+   * a bidder with no payment token can look at an auction and do nothing. So
+   * sign-in is followed by a funding call rather than leaving the user to
+   * discover the problem as a failed transaction.
+   */
   async function connect(): Promise<void> {
-    const eth = ethereum();
-    if (!eth) {
-      status = 'No injected wallet found. Install MetaMask or another EIP-1193 wallet.';
-      statusKind = 'error';
+    const s = session();
+    if (!s.ready) {
+      status = 'Still starting up. One moment.';
+      statusKind = 'info';
       draw();
       return;
     }
-    try {
-      const accounts = (await eth.request({ method: 'eth_requestAccounts' })) as Address[];
-      account = accounts[0] ?? null;
+    s.login();
+  }
 
-      // Switch, or add the chain if the wallet has never seen Hoodi.
-      const hexChain = `0x${HOODI.chainId.toString(16)}`;
-      try {
-        await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hexChain }] });
-      } catch {
-        await eth.request({
-          method: 'wallet_addEthereumChain',
-          params: [{
-            chainId: hexChain,
-            chainName: HOODI.name,
-            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-            rpcUrls: [RPC],
-            blockExplorerUrls: [HOODI.explorer],
-          }],
-        });
+  /** Ask the server to fund a newly signed-in address.
+   *
+   * Server-side because it spends from a key that holds value, and a key in the
+   * browser is a key every visitor has. Failure is reported and not fatal: a
+   * user who already has funds does not need it, and the page stays usable. */
+  async function fundIfNeeded(addr: Address): Promise<void> {
+    if (fundedThisSession.has(addr.toLowerCase())) return;
+    fundedThisSession.add(addr.toLowerCase());
+    try {
+      const res = await fetch('/api/fund', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ address: addr, chainId: HOODI.chainId }),
+      });
+      const body = (await res.json()) as { funded?: boolean; alreadyFunded?: boolean; error?: string };
+      if (body.funded) {
+        status = `Signed in and funded. You have test tokens and gas.`;
+        statusKind = 'ok';
+      } else if (body.error) {
+        status = `Signed in. Funding did not run: ${body.error}`;
+        statusKind = 'info';
       }
-      status = '';
-      await refresh();
-    } catch (e) {
-      status = briefly(e);
-      statusKind = 'error';
-      draw();
+    } catch {
+      status = 'Signed in. Could not reach the funding service.';
+      statusKind = 'info';
     }
+    await refresh();
   }
 
   async function placeBid(quantityStr: string, tick: number): Promise<void> {
@@ -633,7 +654,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         ${account
           ? `<div class="ak-acct"><span class="ak-live-dot"></span><code>${esc(truncMiddle(account, 6, 4))}</code>
                <b>${fmt(quoteBalance, c.quoteDecimals, 2)} ${esc(target.quoteSymbol)}</b></div>`
-          : `<button class="ak-btn ak-primary ak-wide" id="ak-connect">Connect wallet</button>`}
+          : `<button class="ak-btn ak-primary ak-wide" id="ak-connect">Sign in to bid</button>`}
 
         ${account && snap.biddingOpen ? `
         <form class="ak-form" id="ak-form">
@@ -774,11 +795,29 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
     });
   }
 
+  // Adopt whatever the session already knows, then follow it.
+  const applySession = (): void => {
+    const s = session();
+    const next = s.address;
+    if (next && next !== account) {
+      account = next;
+      void fundIfNeeded(next);
+    } else if (!next && account) {
+      account = null;
+      void refresh();
+    } else {
+      draw();
+    }
+  };
+  applySession();
+  const stopAuth = onAuthChange(applySession);
+
   void refresh();
   const timer = window.setInterval(() => void refresh(), 15_000);
 
   return () => {
     stopped = true;
+    stopAuth();
     detachTilt?.();
     window.clearInterval(timer);
   };

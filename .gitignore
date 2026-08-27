@@ -24,3 +24,6 @@ tempo-keys.env
 
 .DS_Store
 **/.DS_Store
+
+# Privy app id can live in env; the id itself is public but the override is local
+.env.local

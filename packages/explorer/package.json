@@ -20,12 +20,13 @@
     "vite": "^6.3.5"
   },
   "dependencies": {
+    "@privy-io/react-auth": "^3.38.0",
     "bte-sdk": "workspace:*",
     "motion": "^12.23.0",
     "peal-actions": "workspace:*",
+    "peal-auctionkit": "workspace:*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "peal-auctionkit": "workspace:*",
     "viem": "^2.21.0"
   }
 }

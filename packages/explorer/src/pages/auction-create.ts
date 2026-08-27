@@ -26,6 +26,7 @@ import {
   createPublicClient, createWalletClient, custom, formatUnits, http,
   keccak256, parseUnits, stringToHex, type Address,
 } from 'viem';
+import { session, onAuthChange, type Eip1193Like } from '../auth';
 import { esc } from '../util';
 
 type Cleanup = () => void;
@@ -36,8 +37,16 @@ const pub = createPublicClient({
   batch: { multicall: { wait: 16 } },
 });
 
-function ethereum(): { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } | null {
-  const w = window as unknown as { ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } };
+/** The wallet this page transacts with.
+ *
+ * Privy first: a signed-in user has an embedded wallet the app created and
+ * funded, and that is the one that can pay. An injected extension is the
+ * fallback for people who arrived with one, so nothing that worked before
+ * stops working. */
+function ethereum(): Eip1193Like | null {
+  const s = session();
+  if (s.provider) return s.provider;
+  const w = window as unknown as { ethereum?: Eip1193Like };
   return w.ethereum ?? null;
 }
 
@@ -57,36 +66,43 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
   let statusKind: 'info' | 'error' | 'ok' = 'info';
   let created: Address | null = null;
   let problems: string[] = [];
+  const funded = new Set<string>();
 
+  /** Sign in, then fund, so an issuer can actually pay to create.
+   *
+   * Creating an auction costs gas and moves the sale supply, so the same
+   * argument applies as for bidders: on Tempo a fresh account cannot send
+   * anything until it holds PathUSD. */
   async function connect(): Promise<void> {
-    const eth = ethereum();
-    if (!eth) {
-      status = 'No wallet found. Install MetaMask or another EIP-1193 wallet.';
-      statusKind = 'error';
+    const s = session();
+    if (!s.ready) {
+      status = 'Still starting up. One moment.';
+      statusKind = 'info';
       draw();
       return;
     }
+    s.login();
+  }
+
+  async function fundIfNeeded(addr: Address): Promise<void> {
+    if (funded.has(addr.toLowerCase())) return;
+    funded.add(addr.toLowerCase());
     try {
-      const accs = (await eth.request({ method: 'eth_requestAccounts' })) as Address[];
-      account = accs[0] ?? null;
-      const hex = `0x${HOODI.chainId.toString(16)}`;
-      try {
-        await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: hex }] });
-      } catch {
-        await eth.request({
-          method: 'wallet_addEthereumChain',
-          params: [{
-            chainId: hex, chainName: HOODI.name,
-            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-            rpcUrls: ['https://rpc.hoodi.ethpandaops.io'],
-            blockExplorerUrls: [HOODI.explorer],
-          }],
-        });
-      }
-      status = '';
-    } catch (e) {
-      status = brief(e);
-      statusKind = 'error';
+      const res = await fetch('/api/fund', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ address: addr, chainId: HOODI.chainId }),
+      });
+      const body = (await res.json()) as { funded?: boolean; error?: string };
+      status = body.funded
+        ? 'Signed in and funded. You can create an auction.'
+        : body.error
+          ? `Signed in. Funding did not run: ${body.error}`
+          : 'Signed in.';
+      statusKind = body.funded ? 'ok' : 'info';
+    } catch {
+      status = 'Signed in. Could not reach the funding service.';
+      statusKind = 'info';
     }
     draw();
   }
@@ -203,7 +219,7 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
           </div>` : `
           ${account
             ? `<div class="ak-acct"><span class="ak-live-dot"></span><code>${esc(account)}</code></div>`
-            : `<div class="ml-hero-ctas"><button class="ml-btn ml-btn-dark" id="c-connect">connect wallet</button></div>`}
+            : `<div class="ml-hero-ctas"><button class="ml-btn ml-btn-dark" id="c-connect">sign in to create</button></div>`}
 
           ${problems.length ? `<div class="ak-status ak-error"><b>fix these first</b>
             <ul class="sl-problems">${problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>` : ''}
@@ -293,6 +309,23 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     ladder();
   }
 
-  draw();
-  return () => { document.title = prevTitle; };
+  const applySession = (): void => {
+    const s = session();
+    if (s.address && s.address !== account) {
+      account = s.address;
+      void fundIfNeeded(s.address);
+    } else if (!s.address && account) {
+      account = null;
+      draw();
+    } else {
+      draw();
+    }
+  };
+  applySession();
+  const stopAuth = onAuthChange(applySession);
+
+  return () => {
+    stopAuth();
+    document.title = prevTitle;
+  };
 }

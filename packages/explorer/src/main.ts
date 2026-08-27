@@ -1,4 +1,5 @@
 import './style.css';
+import { mountAuth } from './auth';
 import { resolveSeal } from './api';
 import { renderHome } from './pages/home';
 import { renderAuction, renderAuctionAt } from './pages/auction';
@@ -118,6 +119,10 @@ function route(): void {
     cleanup = renderHome(root);
   }
 }
+
+// One React root for Privy, mounted outside the router element so navigation
+// never unmounts the session.
+mountAuth();
 
 window.addEventListener('hashchange', route);
 route();

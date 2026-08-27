@@ -1,3 +1,4 @@
+import { fundPlugin } from './fund-plugin';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -11,7 +12,7 @@ const target = process.env.BTE_URL ?? 'http://localhost:8080';
 export default defineConfig({
   // The explorer stays a vanilla-TS app; React + Tailwind are only pulled in
   // by the landing route (src/pages/landing.tsx), which mounts a React island.
-  plugins: [react(), tailwindcss()],
+  plugins: [fundPlugin(), react(), tailwindcss()],
   server: {
     proxy: { '/v0': { target, changeOrigin: true } },
   },
