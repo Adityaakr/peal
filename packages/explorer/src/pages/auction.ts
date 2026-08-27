@@ -171,6 +171,16 @@ function fmtWhen(atSec: bigint): string {
   return `at ${new Date(Number(atSec) * 1000).toLocaleTimeString()}`;
 }
 
+/** The link that opens straight into this auction.
+ *
+ * Built from the current location rather than a hardcoded origin, so a link
+ * copied from a local dev server points at the dev server and a link copied
+ * from production points at production. Hardcoding one would silently hand
+ * people a URL to somewhere they are not. */
+function shareUrl(auction: Address): string {
+  return `${location.origin}${location.pathname}#/a/${auction}`;
+}
+
 function countdown(toSec: bigint, nowSec: bigint): string {
   let d = Number(toSec - nowSec);
   if (d <= 0) return 'closed';
@@ -561,6 +571,10 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         <a href="${HOODI.explorer}/address/${target.auction}" target="_blank" rel="noopener">
           <code>${esc(truncMiddle(target.auction, 8, 6))}</code></a>
         <span class="ak-state ak-state-${snap.state}">${esc(STATE_LABELS[snap.state] ?? String(snap.state))}</span>
+        <button class="ak-share-btn" id="ak-share">copy share link</button>
+      </div>
+      <div class="ak-share-row">
+        <input class="ak-share-input" id="ak-share-url" readonly value="${esc(shareUrl(target.auction))}" />
       </div>
     </div>
     <div class="ak-hero-vis" id="ak-hero-vis">
@@ -698,6 +712,20 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
     if (ladderScene) animateLadder(ladderScene);
 
     root.querySelector('#ak-connect')?.addEventListener('click', () => void connect());
+    root.querySelector('#ak-share')?.addEventListener('click', (ev) => {
+      const input = root.querySelector<HTMLInputElement>('#ak-share-url');
+      const btn = ev.currentTarget as HTMLElement;
+      if (!input) return;
+      input.select();
+      try {
+        navigator.clipboard?.writeText(input.value);
+      } catch {
+        /* clipboard blocked; the input is selected so ctrl-c still works */
+      }
+      const prev = btn.textContent;
+      btn.textContent = 'copied';
+      window.setTimeout(() => { btn.textContent = prev; }, 1400);
+    });
     root.querySelector('#ak-download')?.addEventListener('click', downloadBids);
     root.querySelector('#ak-faucet-form')?.addEventListener('submit', (e) => {
       e.preventDefault();
