@@ -12,6 +12,7 @@
 import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
+import { CHAIN_FOR, HOODI, TEMPO } from 'peal-auctionkit';
 import type { Address } from 'viem';
 
 /** Just the method the pages use.
@@ -31,16 +32,29 @@ export interface Session {
   ready: boolean;
   address: Address | null;
   provider: Eip1193Like | null;
+  /** Which chain the wallet is actually on. An embedded wallet starts on
+   * whatever `defaultChain` says, and a user's existing extension starts
+   * wherever they left it, so this is never assumed. */
+  chainId: number | null;
   login: () => void;
   logout: () => void;
+  /** Move the wallet to `chainId`. Resolves once it is there.
+   *
+   * Every write has to call this first. Privy refuses a transaction whose
+   * target chain differs from the wallet's current one, with exactly the error
+   * a user saw here: "The current chain of the wallet (id: 1) does not match
+   * the target chain for the transaction (id: 560048)". */
+  switchChain: (chainId: number) => Promise<void>;
 }
 
 let state: Session = {
   ready: false,
   address: null,
   provider: null,
+  chainId: null,
   login: () => {},
   logout: () => {},
+  switchChain: async () => {},
 };
 
 const listeners = new Set<() => void>();
@@ -81,10 +95,27 @@ function Bridge(): null {
       wallets.find((w) => w.walletClientType === 'privy') ?? wallets[0];
     if (!wallet) return;
 
+    // `chainId` on a Privy wallet is CAIP-2, "eip155:1", not a number.
+    const currentChain = (): number | null => {
+      const raw = wallet.chainId;
+      if (typeof raw === 'number') return raw;
+      const m = /(?:eip155:)?(\d+)$/.exec(String(raw ?? ''));
+      return m ? Number(m[1]) : null;
+    };
+
     let cancelled = false;
     void wallet.getEthereumProvider().then((provider) => {
       if (cancelled) return;
-      publish({ address: wallet.address as Address, provider: provider as Eip1193Like });
+      publish({
+        address: wallet.address as Address,
+        provider: provider as Eip1193Like,
+        chainId: currentChain(),
+        switchChain: async (id: number) => {
+          if (currentChain() === id) return;
+          await wallet.switchChain(id);
+          publish({ chainId: id });
+        },
+      });
     });
     return () => {
       cancelled = true;
@@ -118,6 +149,11 @@ export function mountAuth(): void {
           showWalletUIs: false,
         },
         loginMethods: ['email', 'google', 'wallet'],
+        // Without this an embedded wallet lands on Ethereum mainnet and every
+        // transaction is refused for targeting the wrong chain. Hoodi is first
+        // and therefore the default.
+        supportedChains: [CHAIN_FOR[HOODI.chainId]!, CHAIN_FOR[TEMPO.chainId]!],
+        defaultChain: CHAIN_FOR[HOODI.chainId]!,
         appearance: { theme: 'light', accentColor: '#2563eb' },
       }}
     >

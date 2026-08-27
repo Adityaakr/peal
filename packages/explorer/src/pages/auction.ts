@@ -83,6 +83,17 @@ const pub = createPublicClient({
 
 /** viem errors carry the whole request body, which is unreadable in a banner.
  * Keep the one line that tells a person what to do. */
+/** Put the wallet on the chain we are about to transact against.
+ *
+ * Privy refuses a transaction whose target chain differs from the wallet's
+ * current one, and an embedded wallet starts on whatever the provider's
+ * defaultChain says. Calling this before every write is what stops a user
+ * meeting "the current chain of the wallet (id: 1) does not match the target
+ * chain" on whichever button they happen to press first. */
+async function ensureChain(chainId: number): Promise<void> {
+  await session().switchChain(chainId);
+}
+
 function briefly(e: unknown): string {
   const err = e as { shortMessage?: string; details?: string; message?: string };
   const m = err?.shortMessage ?? err?.details ?? err?.message ?? String(e);
@@ -343,6 +354,11 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
   async function fundIfNeeded(addr: Address): Promise<void> {
     if (fundedThisSession.has(addr.toLowerCase())) return;
     fundedThisSession.add(addr.toLowerCase());
+    // Move the wallet before anything is funded or signed, so the first button
+    // a user presses is not the one that discovers the wrong chain.
+    try {
+      await ensureChain(HOODI.chainId);
+    } catch { /* reported when a write actually needs it */ }
     try {
       const res = await fetch('/api/fund', {
         method: 'POST',
@@ -391,6 +407,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         );
       }
 
+      await ensureChain(HOODI.chainId);
       const wallet = createWalletClient({ account, chain: CHAIN, transport: custom(eth) });
       // The message has to match what actually happens. A token with EIP-2612
       // needs one signature and one transaction; one without needs two
@@ -481,11 +498,12 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
     }
 
     faucetBusy = true;
-    status = 'Confirm the claim in your wallet.';
+    status = 'Claiming.';
     statusKind = 'info';
     draw();
 
     try {
+      await ensureChain(HOODI.chainId);
       const wallet = createWalletClient({ account, chain: CHAIN, transport: custom(eth) });
       const hash = await wallet.writeContract({
         chain: CHAIN,

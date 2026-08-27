@@ -50,6 +50,17 @@ function ethereum(): Eip1193Like | null {
   return w.ethereum ?? null;
 }
 
+/** Put the wallet on the chain we are about to transact against.
+ *
+ * Privy refuses a transaction whose target chain differs from the wallet's
+ * current one, and an embedded wallet starts on whatever the provider's
+ * defaultChain says. Calling this before every write is what stops the user
+ * meeting "the current chain of the wallet (id: 1) does not match the target
+ * chain" on whichever button they happen to press first. */
+async function ensureChain(chainId: number): Promise<void> {
+  await session().switchChain(chainId);
+}
+
 function brief(e: unknown): string {
   const err = e as { shortMessage?: string; details?: string; message?: string };
   const m = err?.shortMessage ?? err?.details ?? err?.message ?? String(e);
@@ -87,6 +98,11 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
   async function fundIfNeeded(addr: Address): Promise<void> {
     if (funded.has(addr.toLowerCase())) return;
     funded.add(addr.toLowerCase());
+    // Move the wallet before anything is funded or signed, so the first button
+    // a user presses is not the one that discovers the wrong chain.
+    try {
+      await ensureChain(HOODI.chainId);
+    } catch { /* reported when a write actually needs it */ }
     try {
       const res = await fetch('/api/fund', {
         method: 'POST',
@@ -168,6 +184,7 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     draw();
 
     try {
+      await ensureChain(HOODI.chainId);
       const wallet = createWalletClient({ account, chain: hoodiChain, transport: custom(eth) });
       const res = await createAuction({
         publicClient: pub, walletClient: wallet, account, chain: hoodiChain,
