@@ -334,3 +334,40 @@ describe('the description', () => {
     })).toMatch(/fewer characters/);
   });
 });
+
+describe('the seller key in the terms', () => {
+  it('accepts a real one and refuses anything else', async () => {
+    const { generateSellerKeys } = await import('../src/contact.js');
+    const keys = await generateSellerKeys();
+    expect(unpackTerms(packTerms({ ...BASE, contactKey: keys.publicKey }))?.contactKey)
+      .toBe(keys.publicKey);
+
+    // It arrives inside a link a stranger sent, and it is what bidders encrypt
+    // to. A malformed one would mean contact details nobody can ever open.
+    for (const bad of ['', 'nope', 'x'.repeat(88), 'a'.repeat(200)]) {
+      expect(() => packTerms({ ...BASE, contactKey: bad })).toThrow(TermsError);
+    }
+  });
+
+  it('is covered by the checksum, so it cannot be swapped for one of yours', async () => {
+    const { generateSellerKeys } = await import('../src/contact.js');
+    const a = await generateSellerKeys();
+    const b = await generateSellerKeys();
+    expect(await checksum({ ...BASE, contactKey: a.publicKey }))
+      .not.toBe(await checksum({ ...BASE, contactKey: b.publicKey }));
+    expect(await checksum({ ...BASE, contactKey: a.publicKey })).not.toBe(await checksum(BASE));
+  });
+
+  it('leaves room for a short link, and says so when it does not', async () => {
+    const { generateSellerKeys } = await import('../src/contact.js');
+    const keys = await generateSellerKeys();
+    expect(registryProblem({ ...BASE, contactKey: keys.publicKey })).toBeNull();
+    // A key is about ninety characters, so it and a full description together
+    // are what tips an ordinary auction over the registry's limit.
+    expect(registryProblem({
+      ...BASE,
+      contactKey: keys.publicKey,
+      description: 'x'.repeat(MAX_DESCRIPTION_CHARS),
+    })).toMatch(/fewer characters/);
+  });
+});
