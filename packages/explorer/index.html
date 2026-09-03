@@ -26,14 +26,21 @@
         <span class="site-sub">The Programmable Disclosure Network</span>
       </div>
       <nav class="site-nav" aria-label="Primary navigation">
-        <a href="#/app" hidden>network</a>
-        <a href="#/protocol" hidden>protocol</a>
-        <a href="https://github.com/Adityaakr/batched-threshold-encryption" target="_blank" rel="noopener" hidden>code</a>
-        <a href="#/execution">private actions</a>
-        <a href="#/mempool">encrypted mempool</a>
-        <a href="#/auction">sealed-bid auctions</a>
-        <a href="#/auctions">browse auctions</a>
-        <a href="#/philosophy">philosophy</a>
+        <button class="site-burger" id="site-burger" type="button"
+                aria-expanded="false" aria-controls="site-menu" aria-label="Open menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="site-menu" id="site-menu" hidden>
+          <a href="#/app" hidden>network</a>
+          <a href="#/protocol" hidden>protocol</a>
+          <a href="https://github.com/Adityaakr/batched-threshold-encryption" target="_blank" rel="noopener" hidden>code</a>
+          <a href="#/execution">private actions</a>
+          <a href="#/mempool">encrypted mempool</a>
+          <a href="#/create">create an auction</a>
+          <a href="#/auction">sealed-bid auctions</a>
+          <a href="#/auctions">browse auctions</a>
+          <a href="#/philosophy">philosophy</a>
+        </div>
       </nav>
     </header>
     <main id="app"></main>
