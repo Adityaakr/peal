@@ -265,3 +265,84 @@ The host can shill bid from a second browser and nobody can tell. One person can
 bid twice by clearing their storage. Nothing is escrowed. The close is the
 coordinator's clock and the dealer is still a single trusted setup. The page
 states each of these; none of them is a bug to be fixed at this layer.
+
+---
+
+## What was added after the first five slices
+
+Each of these came from using the thing, which is the only reason any of them
+exist. They are listed with what they cost, because several traded something.
+
+### Short links, on chain
+
+`peal.network/shoonya` instead of a hundred and sixty characters of base64.
+`PealNames` is live on Tempo Moderato at
+`0x98D1a8b4d8C5d36D5D9a357F7fccE17cB0F63D2f`.
+
+A name is claimed once and never moves, not even by the account that claimed it.
+That is the whole security argument: a name that can be repointed means the
+person who shared a link is also the person who can change where it goes. It
+costs reuse, and a name spent on a test is spent.
+
+The address IS the namespace. Redeploying does not migrate names, it starts a
+second empty registry, so every link anyone shared stops resolving.
+
+### A ceiling, and a queue instead of a winner
+
+Nothing is escrowed, so a bid is cheap talk and no in-auction mechanism fixes
+that. Vickrey does not help: its dominance proof assumes the winner must pay, so
+with no obligation the dominant strategy is still to bid infinity and decide
+later.
+
+What was built bounds the damage instead. A maximum alongside the reserve, so a
+joke bid of ninety nine million cannot take the auction. And the board is a
+queue, so a bid nobody honours costs the seller one line rather than the sale.
+The pass-over control is local to the seller's device and says so.
+
+### A description, a picture, and contact details
+
+The description and the picture address are part of the terms, so the check code
+covers them: a link with different words or a different picture has a different
+code. What is not covered is the picture's BYTES. Whoever hosts that image can
+serve something else tomorrow and nothing here would notice.
+
+Contact details are the interesting one. Everything sealed into a bid is
+published when the batch opens, so a contact field beside the name would be
+readable by every other bidder the moment the timer ran out. Hiding it in the
+interface and calling it private would be exactly the claim this cannot afford.
+So the seller gets a keypair at creation, the public half rides in the terms,
+and a bidder encrypts to it. WebCrypto's own ECDH and AES-GCM, joined by its own
+deriveKey; no key derivation is written by hand.
+
+The cost is real and cannot be engineered away: the private key is the only
+copy, and losing that browser makes every contact detail unreadable by everyone,
+including the seller. Anything that let us recover them would let us read them.
+
+### Verification that was quietly not running
+
+The two chain checks reported "no chain endpoint is configured" on every
+condition, because they read their endpoint from the mempool relayer, which is
+not running. Those are the only non-circular checks the page has.
+
+Fixing the endpoint exposed two more. "Anchored" meant any Sealed log under the
+condition id, but `commitSealed` is permissionless, so a stranger could make any
+condition look anchored and then fail it, and Peal Live's own terms record did
+exactly that. And the seal check treated every commitment as a ciphertext that
+should have opened, which a stranger with free gas could use to turn the panel
+red.
+
+A live auction went 4/6 to 4/4, and a real mempool condition 3/5 to 5/5 with the
+settled root now genuinely checked against the chain.
+
+### The build trap, recorded because it cost two deployments
+
+`forge script --broadcast` sizes the transaction from `eth_estimateGas`, which
+on Tempo does not account for the roughly 1000 gas per byte of code that
+foundry.toml already documents: 666,270 estimated against 2,680,516 actual. The
+`gas_limit` in foundry.toml governs simulation only. Use
+`forge create --gas-limit 29000000`.
+
+And the image build had been failing on `ERR_PNPM_IGNORED_BUILDS`: four
+`allowBuilds` entries were the literal string "set this to true or false". It
+was latent rather than new, because the Docker layer was cached, and a lockfile
+change busted that cache.
