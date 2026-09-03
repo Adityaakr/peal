@@ -10,8 +10,9 @@
 import { describe, expect, it } from 'vitest';
 import { BteClient } from 'bte-sdk';
 import { buildBoard, type RevealedSlot } from '../src/board.js';
+import { generateSellerKeys, openContact, sealContact } from '../src/contact.js';
 import { ctHashOf, sealedBytes } from '../src/ciphertext.js';
-import { encodeBid } from '../src/record.js';
+import { decodeBid, encodeBid } from '../src/record.js';
 import type { Terms } from '../src/terms.js';
 
 const COORDINATOR = process.env.PEAL_LIVE_URL ?? 'https://peal.network';
@@ -23,9 +24,20 @@ run('a whole auction, against the live coordinator', () => {
     const closeAt = Math.floor(Date.now() / 1000) + 75;
     const auctionId = await client.condition({ at: closeAt, tag: 'live:auction' });
 
+    // Everything the terms can carry, so the round trip covers the whole shape
+    // rather than the fields that happened to exist first.
+    const keys = await generateSellerKeys();
     const terms: Terms = {
-      auctionId, title: 'signed tour poster', unit: 'USD',
-      decimals: 2, closeAt, reserveMinor: 1000, maxMinor: 500_00, image: null, description: null, contactKey: null,
+      auctionId,
+      title: 'signed tour poster',
+      unit: 'USD',
+      decimals: 2,
+      closeAt,
+      reserveMinor: 1000,
+      maxMinor: 500_00,
+      image: 'https://images.example.com/poster.jpg',
+      description: 'Hand crocheted in Jaipur. One of a kind.',
+      contactKey: keys.publicKey,
     };
 
     const entered = [
@@ -37,7 +49,13 @@ run('a whole auction, against the live coordinator', () => {
 
     const sizes = new Set<number>();
     for (const bid of entered) {
-      const { sealedB64, ctHash } = await client.seal(encodeBid({ auctionId, ...bid }), auctionId);
+      // Half the bids carry contact details. The sealed sizes must still all
+      // match: a bid that grew when a contact was attached would say on the
+      // wire that there was one.
+      const contact = bid.amountMinor % 2 === 0
+        ? await sealContact(keys.publicKey, `reach-${bid.amountMinor}@example.com`)
+        : null;
+      const { sealedB64, ctHash } = await client.seal(encodeBid({ auctionId, ...bid, contact }), auctionId);
       sizes.add(sealedB64.length);
       // The coordinator's hash is checkable, so check it. The browser is still
       // holding the ciphertext it made.
@@ -70,6 +88,21 @@ run('a whole auction, against the live coordinator', () => {
     expect(board.winner?.name).toBe('ana');
     expect(board.winner?.amountMinor).toBe(12_500);
     expect(board.discarded).toEqual([]);
+
+    // And the contact details come back out, for the holder of the key and
+    // nobody else. The stranger's key is the assertion that matters: every
+    // other bidder holds exactly these bytes.
+    const stranger = await generateSellerKeys();
+    let opened = 0;
+    for (const slot of slots) {
+      const bytes = Uint8Array.from(atob(slot.payload_b64), (c) => c.charCodeAt(0));
+      const bid = decodeBid(bytes);
+      if (!bid?.contact) continue;
+      expect(await openContact(keys.privateKey, bid.contact)).toMatch(/^reach-\d+@example\.com$/);
+      expect(await openContact(stranger.privateKey, bid.contact)).toBeNull();
+      opened++;
+    }
+    expect(opened).toBeGreaterThan(0);
     // B is 64, so the coordinator padded the rest of the batch itself.
     expect(board.padding).toBe(slots.length - entered.length);
   }, 300_000);
