@@ -898,3 +898,165 @@ scoped only after the EVM/Tempo demo lands. Do NOT bridge; native Move or nothin
   retain/remove/clear). `cors` is outermost and short-circuits OPTIONS before `rate_limit`.
 - **P3 batch pollution.** Structurally-garbage ciphertexts pass submit and occupy real slots
   through freeze, surfacing as `valid=false` (see the validation gap above).
+
+## Decision log
+- 2026-08-30 — **Post-quantum Bitcoin ownership commitments: assessed, not built.**
+  Full write-up `docs/plans/004-post-quantum-ownership-commitments.md`.
+  Three facts worth not re-deriving: (1) BIP-361's "Phase C" ZK-proof-of-BIP-39-seed
+  recovery was DELETED by commit `ab2ebe2` three days after merge — press and
+  bip361.org still describe the superseded draft; the live asymmetry is BIP-32
+  hardened derivation. (2) Paradigm published PACTs 2026-05-01 with the exact
+  commitment+OTS+STARK construction, and Delving Bitcoin had it in Feb 2026 —
+  no novelty left in the mechanism. (3) **BLS12-381 is Shor-broken (same DLP
+  family as ECDSA), so `simple-bte` (Cargo.toml:19) is NOT reusable for any
+  post-quantum product and must never be positioned as PQ expertise.**
+  Open ground found: competing/duplicate claims on one UTXO is unanalysed in the
+  literature, and `docs/auctionkit/decisions/0004-void-and-dispute.md` already
+  contains the answer pattern.
+
+## Peal Live (built 2026-09-03, branch feat/peal-live)
+
+A sealed auction a livestream audience enters with no wallet, no sign in, no
+gas and no extension. `#/live` creates one, `#/live/<terms>` is the auction.
+Pure logic in `packages/live` (peal-live, 116 tests), pages in
+`packages/explorer/src/pages/live-create.ts` + `live.ts`, chain in
+`packages/explorer/src/live-anchor.ts`. Architecture: docs/plans/005-peal-live.md.
+
+### MEASURED, do not re-derive
+- **The FO ciphertext length tracks the payload, so an unpadded bid leaks its
+  magnitude.** Against the live coordinator: `"5"` sealed to 100 base64 chars,
+  `"250"` to 104, `"1000000000"` to 112. `ct2` is a `Vec<u8>`
+  (bte-crypto/src/lib.rs:125) and the FO body is a keystream XOR, so the blob
+  is `69 + payload`. Fixed-width 96-byte records put all of them at 228.
+  ANY future payload sealed from a form must be fixed width for the same reason.
+- **`ct_hash` is just `sha256(sealed wire bytes)`, so the browser can derive it
+  with WebCrypto and no wasm.** Verified 3/3 against the coordinator's echoed
+  value. This closes the "ct_hash is coordinator-asserted" hole recorded above
+  for the Live path; `peal-live/src/ciphertext.ts:ctHashOf`. The rest of the
+  product still takes `resp.ct_hash` on trust (sdk/src/index.ts:206).
+- `tempo_fundAddress` works from a bare curl with no key at all (returns 4 tx
+  hashes). Confirmed 2026-09-03, chain 42431.
+- `engine.rs:116` freeze pads to a MULTIPLE of B and opens `total/b` batches, so
+  more than 64 bidders already works with no change.
+
+### Design decisions that are load bearing
+- **The bidder touches no chain and holds no key.** An earlier design anchored
+  every bid from a per-bidder ephemeral key. Rejected on four counts: `Sealed`
+  indexes `from` (PealMempool.sol:42) so one eth_getLogs enumerates every
+  auction a browser bid in; `commitSealed` is permissionless and writes no
+  storage, so junk hashes under a real condition id turn set-reconciliation
+  checks (verify.ts:158-163) red for free; a key per bid drains the faucet; and
+  it anchors `resp.ct_hash`, which is the coordinator's word anyway.
+- **One host-side transaction anchors `sha256(terms)`.** The lookup is an EXACT
+  match on `(conditionId, termsHash)`, never a set reconciliation, which is
+  precisely why junk commitments cannot produce a false answer either way.
+  Anchored live in block 33615250 on Moderato.
+- **The auction id is sealed INSIDE the bid record**, because a ciphertext is
+  not bound to a condition (SECURITY.md:38-42) and can be replayed into another.
+  `buildBoard` discards a bid naming a different auction.
+- **Padding is detected by the `BTE_DUMMY_V0:` marker, never by the API's
+  `is_dummy` flag.** A test seals a real bid with `is_dummy: true` beside it and
+  expects it to count.
+- **The spoken checksum is the only defence against a swapped link.** A forger
+  can create their own condition and anchor their own terms, and the result is
+  internally consistent. A livestream supplies the out-of-band channel that
+  makes the comparison possible; an emailed link would not.
+
+### Bugs found by attacking it, now pinned by tests
+- `parseAmount` stripped every comma, so `"12,50"` became 125000, a **100x
+  overbid**, sealed and unrecallable. Commas are now accepted only in valid
+  thousands positions.
+- `canonicalTerms` hashed the TRIMMED title while `unpackTerms` returned the
+  untrimmed one, so padding a title with newlines produced a different link with
+  an **identical checksum and identical terms hash**. `unpackTerms` now returns
+  canonical values and refuses any link that does not re-pack to itself.
+- A bid clicked in the up-to-2s window after the close was **silently dropped**:
+  the error wrote into a panel the poll had already replaced. Errors now survive
+  a repaint (`noticeHtml`) and the close is checked before sealing.
+- A link naming a nonexistent condition polled 404s forever (31 in 60s per tab)
+  and showed a working bid form. Now stops after 3 misses.
+- Lone surrogates collapse to U+FFFD in TextEncoder, so a bid was discarded as a
+  replay of itself. `encodeBid` refuses text that is not well formed.
+- `rememberMyBid` ran after the mounted check, so navigating mid-seal landed the
+  bid and lost the receipt, letting the same person bid twice.
+
+### Known and disclosed, NOT fixed
+- The host can shill bid from a second browser and it is undetectable. The page
+  claims sealing and ordering, never distinctness of bidders.
+- One browser can bid twice by clearing localStorage. The one-bid affordance is
+  cosmetic and the copy does not claim otherwise.
+- No escrow. A verifiable winner, not a collected payment.
+- The close is the coordinator's clock; the dealer is still single-trusted. Both
+  are stated on the page in those words.
+
+### One creation page, one chain (2026-09-03)
+- `#/create` is now the ONLY creation surface. It opens with a kind picker:
+  `live` (Peal Live, nothing escrowed, no sign in for anyone) and `sale` (the
+  existing escrowed on-chain auction, which still needs a signed-in issuer).
+  `pages/live-create.ts` was deleted; `#/live` is kept as an alias that lands on
+  the same page with `live` chosen, and `#/live/<terms>` is still the auction.
+- The `sale` branch still requires sign in ON PURPOSE. The factory pulls the
+  whole supply out of the issuer's wallet and the proceeds land back there, so
+  an ephemeral browser key as issuer would put real balances behind a key with
+  no recovery path. Making that one-click needs a custody decision first.
+- **Hoodi is gone.** `HOODI`, `HOODI_DEMO`, `hoodiChain`, `HOODI_PERMIT_TOKENS`
+  and `CHAINS` are removed from auctionkit; `DEPLOYMENTS` and `CHAIN_FOR` hold
+  Tempo only; Privy `supportedChains` is Tempo only; the Hoodi entry is out of
+  `fund-plugin.ts`. None of the removed exports had a call site. `SUPERSEDED`
+  still explains retired addresses, and a test now asserts that.
+- Remaining "hoodi" hits are historical comments explaining past bugs
+  (`auctionkit/src/auction.ts:344`, `explorer/src/pages/auction.ts:71`) and the
+  dev-only key path `.secrets/hoodi-deployer.json` in `fund-plugin.ts`, whose
+  `/api/fund` middleware has had no caller since e1d8927.
+
+### Short links and the incentive problem (2026-09-03)
+
+**PealNames is live on Tempo Moderato at
+`0x98D1a8b4d8C5d36D5D9a357F7fccE17cB0F63D2f`** (tx
+`0x9d55a964032573e1bf6714b1f63860ebed26227d504edcf5553ff9894337c1d7`, 2125 bytes,
+gasUsed 2,680,516). `contracts/src/PealNames.sol`, 11 Foundry tests.
+- THE ADDRESS IS THE NAMESPACE. Redeploying does not migrate names, it starts a
+  second empty registry, so every link anyone shared stops resolving. It lives in
+  `packages/explorer/src/live-chain.ts` for that reason, not in an env var.
+- A name is claimed once and NEVER moves, not even by the claimer
+  (`test_aNameNeverMoves`). That is what makes a shared link safe, and it costs
+  reuse: a name spent on a test is spent.
+- Links are PATHS, not fragments: `peal.network/shoonya`. This needed no server
+  change because `docker/Caddyfile:14` already does `try_files {path} /index.html`.
+  In `main.ts`, a hash always wins over the path and the path is then normalised
+  away, so navigating off a short link does not leave `/shoonya#/create`.
+- GAS TRAP, which cost two failed attempts: `forge script --broadcast` sizes the
+  transaction from `eth_estimateGas`, which on Tempo does not account for the
+  ~1000 gas per byte of code that foundry.toml already documents. 666,270
+  estimated against 2,680,516 actual. `gas_limit` in foundry.toml governs
+  SIMULATION only. Use `forge create --gas-limit 29000000`, the repo's own TX_GAS
+  value.
+
+**Terms are wire version 2.** The tuple gained `maxMinor`, so it is 8 elements.
+A v1 link now fails to unpack rather than being read as uncapped, because a
+positional tuple cannot distinguish "no ceiling" from "an older format".
+
+**The incentive answer, since it will come up again.** Nothing escrowed means a
+bid is cheap talk, and no in-auction mechanism fixes that. Vickrey does NOT help:
+its dominance proof assumes the winner must pay, so with no obligation the
+dominant strategy is still to bid infinity and decide later. What was built
+instead bounds the damage rather than pretending to solve it:
+- a MAXIMUM alongside the reserve, so a joke bid of 99,999,999 cannot take the
+  auction. It does not stop somebody bidding exactly the cap, but the cap is a
+  number the seller already believes.
+- the board is a QUEUE, not a winner. `buildBoard` returns `queue` (inside both
+  limits) and `winner` is just `queue[0]`. A bid nobody honours costs the seller
+  one line, not the auction.
+- the pass-over control is LOCAL to the seller's device
+  (`peal-live-passed:<auctionId>`) and says so on screen. Whether somebody paid
+  happens off this page entirely; writing it into the shared record would be the
+  page claiming to know something it cannot.
+Still unbuilt, in order of strength: a rotating stream code committed as
+`sha256(seed)` in the terms (proves the bidder was watching, blocks bots), and
+optional escrow for bidders who do have a wallet (the only real stake).
+
+**Nav and header.** All links live behind one burger at every width
+(`src/nav.ts`, `.site-menu`), opening sideways as a glass pill; the identity
+fades while it is out above 900px. Open/closed is a CLASS, never the `hidden`
+attribute, because `display: none` cannot transition. The tagline renders only on
+`#/` and `#/app` (`body.no-tagline`).
