@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_DESCRIPTION_CHARS, MAX_IMAGE_CHARS, TermsError, canonicalTerms, checksum, imageProblem, liveLink, packTerms,
+  MAX_DESCRIPTION_CHARS, MAX_IMAGE_CHARS, MAX_TITLE_CHARS, TermsError, canonicalTerms, checksum, imageProblem, liveLink, packTerms,
   registryProblem, unpackTerms, type Terms,
 } from '../src/terms.js';
 
@@ -318,17 +318,23 @@ describe('the description', () => {
       .toThrow(TermsError);
   });
 
-  it('leaves just enough room for a short link on its own', () => {
-    // Measured: a bare set of terms is 127 bytes and a full length description
-    // takes it to 498, against the registry's 512. The cap is set where it is
-    // so that writing a paragraph does not by itself cost you a short link.
-    expect(registryProblem({ ...BASE, description: 'x'.repeat(MAX_DESCRIPTION_CHARS) })).toBeNull();
-    expect(registryProblem({ ...BASE, description: WORDS })).toBeNull();
-  });
-
-  it('says so when a description AND a picture link together do not fit', () => {
+  it('leaves room for a real auction: a paragraph, a picture and a title', () => {
+    // The case that was being refused. Measured at 464 canonical bytes against
+    // the registry's 512, so it always fitted; the check was measuring the
+    // base64 of it, which is 619.
     expect(registryProblem({
       ...BASE,
+      title: 'Put Your Logo on PolyBaskets — Nepal Relief',
+      description: 'x'.repeat(272),
+      image: 'https://pbs.twimg.com/media/HRSgPmSakAIlIEW?format=jpg&name=medium',
+    })).toBeNull();
+    expect(registryProblem({ ...BASE, description: 'x'.repeat(MAX_DESCRIPTION_CHARS) })).toBeNull();
+  });
+
+  it('still refuses what genuinely does not fit', () => {
+    expect(registryProblem({
+      ...BASE,
+      title: 'x'.repeat(MAX_TITLE_CHARS),
       description: 'x'.repeat(MAX_DESCRIPTION_CHARS),
       image: `https://e.com/${'a'.repeat(186)}`,
     })).toMatch(/fewer characters/);
@@ -362,12 +368,14 @@ describe('the seller key in the terms', () => {
     const { generateSellerKeys } = await import('../src/contact.js');
     const keys = await generateSellerKeys();
     expect(registryProblem({ ...BASE, contactKey: keys.publicKey })).toBeNull();
-    // A key is about ninety characters, so it and a full description together
-    // are what tips an ordinary auction over the registry's limit.
+    // A key is about ninety bytes. On its own it costs nothing that matters;
+    // with a full description AND a long picture link it is what tips an
+    // auction over.
     expect(registryProblem({
       ...BASE,
       contactKey: keys.publicKey,
       description: 'x'.repeat(MAX_DESCRIPTION_CHARS),
+      image: `https://e.com/${'a'.repeat(MAX_IMAGE_CHARS - 14)}`,
     })).toMatch(/fewer characters/);
   });
 });
@@ -375,6 +383,7 @@ describe('the seller key in the terms', () => {
 describe('what the short-link message asks for', () => {
   const tooBig: Terms = {
     ...BASE,
+    title: 'x'.repeat(MAX_TITLE_CHARS),
     description: 'x'.repeat(MAX_DESCRIPTION_CHARS),
     image: `https://cdn.example.com/${'a'.repeat(170)}`,
   };
@@ -402,7 +411,8 @@ describe('what the short-link message asks for', () => {
     // Still over the cap, but now the picture link is the longer of the two.
     const pictureHeavy: Terms = {
       ...BASE,
-      description: 'x'.repeat(150),
+      title: 'x'.repeat(MAX_TITLE_CHARS),
+      description: 'x'.repeat(190),
       image: `https://cdn.example.com/${'a'.repeat(MAX_IMAGE_CHARS - 24)}`,
     };
     expect(registryProblem(pictureHeavy)).toContain('the picture link is the longest');

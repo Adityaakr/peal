@@ -210,7 +210,12 @@ function b64urlDecode(text: string): Uint8Array {
 
 /** What `PealNames.claim` accepts, mirrored from the deployed contract's
  * MAX_TERMS_BYTES. It is immutable, so this is a fact to design around rather
- * than a limit that can be raised. */
+ * than a limit that can be raised.
+ *
+ * It is a limit on BYTES, and the registry stores the canonical terms as bytes.
+ * Storing the base64 of them instead spent a third of the budget on the
+ * encoding, which is what made an ordinary auction with a picture and a
+ * paragraph refuse to take a short link. */
 export const MAX_REGISTRY_TERMS_BYTES = 512;
 
 /** Why these terms cannot have a short link, or null when they can.
@@ -221,14 +226,14 @@ export const MAX_REGISTRY_TERMS_BYTES = 512;
  * seller is told before the auction exists, rather than watching a claim revert
  * on an auction that is already running and cannot be edited. */
 export function registryProblem(t: Terms): string | null {
-  const size = new TextEncoder().encode(packTerms(t)).length;
+  // The canonical bytes, which is what the registry actually stores. It used to
+  // measure the base64 of them, which is four thirds the size, so an auction
+  // that fitted in 464 bytes was refused for being 619. A third of the space
+  // was being thrown away by measuring the wrong thing.
+  const size = canonicalTerms(t).length;
   if (size <= MAX_REGISTRY_TERMS_BYTES) return null;
 
-  // Scaled back into the units the message claims. The packed form is base64url
-  // over the canonical bytes, so it is four thirds of what it encodes, and
-  // reporting the packed overshoot told somebody to cut a third more than they
-  // actually had to: 248 characters when 186 would have done it.
-  const cut = Math.ceil(((size - MAX_REGISTRY_TERMS_BYTES) * 3) / 4);
+  const cut = size - MAX_REGISTRY_TERMS_BYTES;
 
   // Naming the longest field turns "shorten something" into an instruction. It
   // is almost always the description or the picture link, and a seller looking

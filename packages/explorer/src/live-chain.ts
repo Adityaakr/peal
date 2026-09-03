@@ -20,11 +20,13 @@
 // cannot: a forger can create their own condition and anchor their own terms.
 // The defence against that is the spoken checksum, not this.
 import { conditionIdToBytes32 } from 'bte-sdk';
-import { isValidName, packTerms, termsHash, unpackTerms, type Terms } from 'peal-live';
+import {
+  canonicalTerms, isValidName, termsHash, unpackTerms, type Terms,
+} from 'peal-live';
 import { TEMPO, fundGas } from 'peal-auctionkit';
 import {
   createPublicClient, createWalletClient, decodeFunctionResult, encodeEventTopics,
-  encodeFunctionData, http, stringToHex, type Hex, type WalletClient,
+  encodeFunctionData, http, type Hex, type WalletClient,
 } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
@@ -113,6 +115,18 @@ const TX_GAS = 29_000_000n;
 const LOG_WINDOW = 90_000n;
 
 const publicClient = createPublicClient({ transport: http(TEMPO.rpcUrl) });
+
+function bytesToHex(bytes: Uint8Array): Hex {
+  let out = '';
+  for (const b of bytes) out += b.toString(16).padStart(2, '0');
+  return `0x${out}`;
+}
+
+function b64url(bytes: Uint8Array): string {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
 export interface TermsAnchor {
   txHash: Hex;
@@ -246,7 +260,10 @@ export async function claimName(
       data: encodeFunctionData({
         abi: NAMES_ABI,
         functionName: 'claim',
-        args: [name, stringToHex(packTerms(terms))],
+        // The canonical bytes, not the base64 of them. The contract's field is
+        // bytes and its limit is in bytes, so storing the encoding spent a
+        // third of the budget on nothing.
+        args: [name, bytesToHex(canonicalTerms(terms))],
       }),
     });
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
@@ -275,12 +292,19 @@ export async function resolveName(name: string): Promise<Terms | null> {
     if (!raw.data) return null;
     const packed = decodeFunctionResult({ abi: NAMES_ABI, functionName: 'resolve', data: raw.data });
     if (!packed || packed === '0x') return null;
-    // Hex bytes back to the base64url the terms codec speaks.
-    const bytes = packed.slice(2).match(/.{2}/g) ?? [];
-    const text = bytes.map((h) => String.fromCharCode(parseInt(h, 16))).join('');
-    // unpackTerms refuses anything that is not a link packTerms could have
-    // written, so a registry entry carrying junk resolves to nothing rather
-    // than to a half-formed auction.
+    const bytes = Uint8Array.from(packed.slice(2).match(/.{2}/g) ?? [], (h) => parseInt(h, 16));
+
+    // unpackTerms speaks base64url and refuses anything that is not a link
+    // packTerms could have written, so everything it validates applies here
+    // too: a registry entry carrying junk resolves to nothing rather than to a
+    // half-formed auction.
+    const asBytes = unpackTerms(b64url(bytes));
+    if (asBytes) return asBytes;
+
+    // Names claimed before the format was corrected hold the base64 TEXT rather
+    // than the bytes. They still resolve.
+    let text = '';
+    for (const b of bytes) text += String.fromCharCode(b);
     return unpackTerms(text);
   } catch {
     return null;
