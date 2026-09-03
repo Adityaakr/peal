@@ -12,13 +12,16 @@ comment.
 
 | module | what it decides |
 |---|---|
-| `record.ts` | the exact 96 bytes that get sealed for one bid |
-| `terms.ts` | the auction's terms, how they ride in a link, and the checksum a host reads out |
-| `board.ts` | revealed slots in, a ranked board out |
+| `record.ts` | the exact 288 bytes that get sealed for one bid |
+| `terms.ts` | the auction's terms, how they ride in a link, and the checksum a seller reads out |
+| `board.ts` | revealed slots in, a ranked queue out |
 | `amount.ts` | a typed amount to an integer and back |
-| `ciphertext.ts` | deriving a ciphertext's own hash in the browser |
+| `ciphertext.ts` | a ciphertext's own hash, derived in the browser, and the short receipt from it |
+| `contact.ts` | contact details a bidder gives the seller and nobody else |
+| `currency.ts` | 56 currencies, with the minor units they actually have |
+| `name.ts` | the rules a short link name has to satisfy |
 
-## Three decisions worth knowing
+## Four decisions worth knowing
 
 **Every bid record is exactly the same length.** The FO ciphertext body is a
 keystream XOR over the plaintext, so a sealed blob is `69 + payload` bytes.
@@ -38,6 +41,13 @@ Padded to a fixed record, all three seal to 228. That property is a test
 condition, so a blob posted to one auction can be replayed into another and will
 decrypt cleanly. `buildBoard` reads the auction id out of the sealed bytes and
 discards anything naming a different auction.
+
+**A contact is encrypted before it reaches the record.** Everything sealed into
+a bid is published when the batch opens: that is what the reveal is. So contact
+details sit in the record already encrypted to a key the seller alone holds, and
+every other bidder gets bytes that say nothing. The record is a fixed 288 bytes
+whether or not one is attached, because a record that grew would announce that
+there was one.
 
 **Padding is identified by its marker, not by the flag next to it.** The reveal
 API serves an `is_dummy` field, which is the coordinator's assertion.
@@ -65,9 +75,10 @@ fingerprint for a human channel, not a commitment.
 node_modules/.bin/vitest run --root packages/live
 ```
 
-86 of them, no network. One more runs the whole thing against the live
-coordinator, sealing real bids and waiting out a real cue, and is skipped unless
-you ask for it:
+217 of them, no network. One more runs the whole thing against the live
+coordinator: it seals real bids with real contact details, waits out a real cue,
+checks the winner, and then fails to open those details with a stranger's key.
+Skipped unless you ask for it, because it takes about eighty seconds:
 
 ```bash
 PEAL_LIVE_E2E=1 node_modules/.bin/vitest run --root packages/live
