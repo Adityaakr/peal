@@ -31,7 +31,7 @@ import { BteClient } from 'bte-sdk';
 import {
   AmountError, MAX_DESCRIPTION_CHARS, checksum, currencyLabel, findCurrency, generateSellerKeys,
   imageProblem,
-  liveLink, nameLink, nameProblem, normalizeName, packTerms, parseAmount, registryProblem,
+  liveLink, nameLink, nameProblem, normalizeName, packTerms, parseAmount, shortLinkProblem,
   searchCurrencies, type Terms,
 } from 'peal-live';
 import { API_BASE } from '../api';
@@ -230,6 +230,20 @@ function durationHours(amountId: string, unitId: string, fallback: number): numb
   const unit = (document.getElementById(unitId) as HTMLSelectElement | null)?.value ?? 'hours';
   if (!Number.isFinite(amount) || amount <= 0) return fallback;
   return amount * (UNIT_HOURS[unit] ?? 1);
+}
+
+/** An auction id of the shape the coordinator mints, for sizing a short link
+ * before the real one exists: `cond_` and twenty four hex characters.
+ *
+ * Random rather than a repeated character, because the registry entry is
+ * deflated and a run of identical letters costs almost nothing to store. A
+ * stand-in of 'ccc...' would size the terms smaller than the ones about to be
+ * written, which is how a check passes and the claim then reverts. */
+function standInId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  let hex = '';
+  for (const b of bytes) hex += b.toString(16).padStart(2, '0');
+  return `cond_${hex}`;
 }
 
 function brief(e: unknown): string {
@@ -1145,19 +1159,24 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
     }
 
     // The name registry caps the terms it will store, and the contract cannot be
-    // changed. Check it here, against a stand-in id of the length the
+    // changed. Check it here, against a stand-in id of the shape the
     // coordinator always mints, so a seller is told to shorten something BEFORE
     // an auction exists rather than watching the claim revert on one that is
     // already running and can never be edited.
     if (wantedName) {
-      const tooBig = registryProblem({
-        auctionId: 'c'.repeat(29),
+      const tooBig = await shortLinkProblem({
+        // Random hex, not a repeated character. The entry is deflated before it
+        // is stored, and 29 identical letters compress to nothing while a real
+        // id compresses to almost its own length, so a stand-in of 'ccc...'
+        // would measure an auction smaller than the one about to exist.
+        auctionId: standInId(),
         title, unit: unit.code, decimals: unit.decimals, closeAt, reserveMinor, maxMinor,
         image: image || null, description: liveDraft.about.trim() || null,
         contactKey: keys?.publicKey ?? null,
       });
       if (tooBig) {
-        liveErr = `${tooBig}.`;
+        // Already a complete sentence. Adding a full stop gave it two.
+        liveErr = tooBig;
         draw();
         return;
       }

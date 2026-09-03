@@ -21,7 +21,7 @@
 // The defence against that is the spoken checksum, not this.
 import { conditionIdToBytes32 } from 'bte-sdk';
 import {
-  canonicalTerms, isValidName, termsHash, unpackTerms, type Terms,
+  fromRegistryBytes, isValidName, termsHash, toRegistryBytes, type Terms,
 } from 'peal-live';
 import { TEMPO, fundGas } from 'peal-auctionkit';
 import {
@@ -120,12 +120,6 @@ function bytesToHex(bytes: Uint8Array): Hex {
   let out = '';
   for (const b of bytes) out += b.toString(16).padStart(2, '0');
   return `0x${out}`;
-}
-
-function b64url(bytes: Uint8Array): string {
-  let bin = '';
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 export interface TermsAnchor {
@@ -260,10 +254,11 @@ export async function claimName(
       data: encodeFunctionData({
         abi: NAMES_ABI,
         functionName: 'claim',
-        // The canonical bytes, not the base64 of them. The contract's field is
-        // bytes and its limit is in bytes, so storing the encoding spent a
-        // third of the budget on nothing.
-        args: [name, bytesToHex(canonicalTerms(terms))],
+        // Deflated canonical bytes. The contract's field is bytes and its
+        // limit is in bytes, so storing base64 spent a third of the budget on
+        // the encoding, and deflating the rest is what turns a tight budget
+        // into a comfortable one for terms that are mostly English.
+        args: [name, bytesToHex(await toRegistryBytes(terms))],
       }),
     });
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
@@ -294,18 +289,11 @@ export async function resolveName(name: string): Promise<Terms | null> {
     if (!packed || packed === '0x') return null;
     const bytes = Uint8Array.from(packed.slice(2).match(/.{2}/g) ?? [], (h) => parseInt(h, 16));
 
-    // unpackTerms speaks base64url and refuses anything that is not a link
-    // packTerms could have written, so everything it validates applies here
-    // too: a registry entry carrying junk resolves to nothing rather than to a
-    // half-formed auction.
-    const asBytes = unpackTerms(b64url(bytes));
-    if (asBytes) return asBytes;
-
-    // Names claimed before the format was corrected hold the base64 TEXT rather
-    // than the bytes. They still resolve.
-    let text = '';
-    for (const b of bytes) text += String.fromCharCode(b);
-    return unpackTerms(text);
+    // Reads every shape the registry has ever held, and ends at unpackTerms,
+    // which refuses anything that is not a link packTerms could have written.
+    // A name carrying junk resolves to nothing rather than to a half-formed
+    // auction.
+    return await fromRegistryBytes(bytes);
   } catch {
     return null;
   }
