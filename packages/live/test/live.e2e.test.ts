@@ -1,0 +1,76 @@
+/** The library against the real network.
+ *
+ * Skipped unless PEAL_LIVE_E2E is set, because it seals to the live
+ * coordinator, waits out a real cue, and takes about two minutes. The unit
+ * tests prove the codecs; this proves the codecs are the ones the network
+ * actually round trips, which is a different claim.
+ *
+ *   PEAL_LIVE_E2E=1 packages/live/node_modules/.bin/vitest run --root packages/live
+ */
+import { describe, expect, it } from 'vitest';
+import { BteClient } from 'bte-sdk';
+import { buildBoard, type RevealedSlot } from '../src/board.js';
+import { ctHashOf, sealedBytes } from '../src/ciphertext.js';
+import { encodeBid } from '../src/record.js';
+import type { Terms } from '../src/terms.js';
+
+const COORDINATOR = process.env.PEAL_LIVE_URL ?? 'https://peal.network';
+const run = process.env.PEAL_LIVE_E2E ? describe : describe.skip;
+
+run('a whole auction, against the live coordinator', () => {
+  it('seals every bid to the same number of bytes, then opens to the right winner', async () => {
+    const client = new BteClient({ url: COORDINATOR });
+    const closeAt = Math.floor(Date.now() / 1000) + 75;
+    const auctionId = await client.condition({ at: closeAt, tag: 'live:auction' });
+
+    const terms: Terms = {
+      auctionId, title: 'signed tour poster', unit: 'USD',
+      decimals: 2, closeAt, reserveMinor: 1000, maxMinor: 500_00, image: null,
+    };
+
+    const entered = [
+      { amountMinor: 500, name: 'under the reserve' },
+      { amountMinor: 125_00, name: 'ana' },
+      { amountMinor: 90_00, name: 'bo 🎈' },
+      { amountMinor: 999_00, name: 'over the cap' },
+    ];
+
+    const sizes = new Set<number>();
+    for (const bid of entered) {
+      const { sealedB64, ctHash } = await client.seal(encodeBid({ auctionId, ...bid }), auctionId);
+      sizes.add(sealedB64.length);
+      // The coordinator's hash is checkable, so check it. The browser is still
+      // holding the ciphertext it made.
+      expect(await ctHashOf(sealedBytes(sealedB64)!)).toBe(ctHash);
+    }
+    // The property the record format exists for: a ciphertext's length says
+    // nothing about the amount inside it.
+    expect([...sizes]).toHaveLength(1);
+
+    // Nothing is readable while the auction is open.
+    expect(await client.reveal(auctionId)).toBeNull();
+
+    const reveal = await client.waitForReveal(auctionId, { timeoutMs: 240_000 });
+    // The board takes the API's own slot shape, which is what the explorer
+    // holds. The SDK has already decoded the payload, so re-encode it here.
+    const slots = reveal.slots.map(
+      (s): RevealedSlot => ({
+        position: s.position,
+        ct_hash: s.ctHash,
+        payload_b64: btoa(String.fromCharCode(...s.payload)),
+        is_dummy: s.isDummy,
+      }),
+    );
+
+    const board = buildBoard(slots, terms);
+    expect(board.bids.map((b) => b.name))
+      .toEqual(['over the cap', 'ana', 'bo 🎈', 'under the reserve']);
+    // The queue is only the bids the terms allow to win.
+    expect(board.queue.map((b) => b.name)).toEqual(['ana', 'bo 🎈']);
+    expect(board.winner?.name).toBe('ana');
+    expect(board.winner?.amountMinor).toBe(12_500);
+    expect(board.discarded).toEqual([]);
+    // B is 64, so the coordinator padded the rest of the batch itself.
+    expect(board.padding).toBe(slots.length - entered.length);
+  }, 300_000);
+});
