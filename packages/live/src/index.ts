@@ -7,3 +7,4 @@ export * from './name.js';
 export * from './currency.js';
 export * from './contact.js';
 export * from './registry.js';
+export * from "./rates.js";

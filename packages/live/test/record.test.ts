@@ -9,7 +9,7 @@ const AUCTION = 'cond_220d820315fb9ef12f73c8fb';
 describe('the sealed bid record', () => {
   it('round trips a bid', () => {
     const bid = { auctionId: AUCTION, amountMinor: 125_00, name: 'ana' };
-    expect(decodeBid(encodeBid(bid))).toEqual({ ...bid, contact: null });
+    expect(decodeBid(encodeBid(bid))).toEqual({ ...bid, contact: null, origin: null });
   });
 
   it('is the same length for every bid it can hold', () => {
@@ -128,10 +128,66 @@ describe('the sealed contact a record can carry', () => {
   });
 
   it('rejects a record whose contact runs past the end', () => {
-    const bytes = encodeBid({ auctionId: AUCTION, amountMinor: 1, name: 'ana' });
-    bytes[11 + AUCTION.length + 3] = 255;
-    // 255 bytes of contact cannot fit after everything else in 288.
+    // A full length name, so that 255 bytes of contact genuinely cannot fit
+    // before the origin block. With a short name they now would.
+    const name = 'n'.repeat(48);
+    const bytes = encodeBid({ auctionId: AUCTION, amountMinor: 1, name });
+    bytes[11 + AUCTION.length + name.length] = 255;
     expect(decodeBid(bytes)).toBeNull();
+  });
+
+  it('still reads a bid sealed before the format grew', () => {
+    // Auctions are permanent links and one may be open right now, its bids
+    // already sealed at 288 bytes with no origin block. Refusing them would
+    // empty a live board at the moment it mattered.
+    const v2 = new Uint8Array(288);
+    const view = new DataView(v2.buffer);
+    v2[0] = 2;
+    view.setBigUint64(1, 125_00n, false);
+    const id = new TextEncoder().encode(AUCTION);
+    v2[9] = id.length;
+    v2.set(id, 10);
+    const name = new TextEncoder().encode('ana');
+    v2[10 + id.length] = name.length;
+    v2.set(name, 11 + id.length);
+    v2[11 + id.length + name.length] = 0;
+
+    expect(decodeBid(v2)).toEqual({
+      auctionId: AUCTION, amountMinor: 125_00, name: 'ana', contact: null, origin: null,
+    });
+
+    // The old length is only accepted with the old version byte, and the new
+    // length only with the new one. A record must not be readable two ways.
+    const mislabelled = v2.slice();
+    mislabelled[0] = 3;
+    expect(decodeBid(mislabelled)).toBeNull();
+    const short = encodeBid({ auctionId: AUCTION, amountMinor: 1, name: 'ana' }).slice(0, 288);
+    expect(decodeBid(short)).toBeNull();
+  });
+
+  it('refuses a record whose origin block is not one this encoder would write', () => {
+    const bytes = encodeBid({ auctionId: AUCTION, amountMinor: 1, name: 'ana' });
+    // An amount with no currency: two encodings of the same bid otherwise.
+    const orphan = bytes.slice();
+    new DataView(orphan.buffer).setBigUint64(RECORD_BYTES - 9, 100n, false);
+    expect(decodeBid(orphan)).toBeNull();
+
+    // A currency code that is not three uppercase letters.
+    const lower = encodeBid({
+      auctionId: AUCTION, amountMinor: 1, name: 'ana',
+      origin: { code: 'EUR', amountMinor: 100, decimals: 2 },
+    });
+    expect(decodeBid(lower)).not.toBeNull();
+    lower[RECORD_BYTES - 12] = 'e'.charCodeAt(0);
+    expect(decodeBid(lower)).toBeNull();
+
+    // Decimals no currency has.
+    const wild = encodeBid({
+      auctionId: AUCTION, amountMinor: 1, name: 'ana',
+      origin: { code: 'EUR', amountMinor: 100, decimals: 2 },
+    });
+    wild[RECORD_BYTES - 1] = 9;
+    expect(decodeBid(wild)).toBeNull();
   });
 
   it('still refuses bytes hidden in the padding after a contact', () => {

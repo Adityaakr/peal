@@ -19,7 +19,7 @@
  * who is eligible means a bid nobody intends to honour costs the seller the
  * time it takes to read the next line.
  */
-import { decodeBid } from './record.js';
+import { decodeBid, type BidOrigin } from './record.js';
 import type { Terms } from './terms.js';
 
 /** The marker every dummy payload starts with. */
@@ -38,6 +38,9 @@ export interface BoardEntry {
   ctHash: string;
   name: string;
   amountMinor: number;
+  /** What the bidder typed, when they typed it in another currency. Display
+   * only: `amountMinor` above is what this bid is ranked on. */
+  origin: BidOrigin | null;
   /** False when a reserve was set and this bid is under it. Still shown: it
    * was a real bid, it just cannot win. */
   meetsReserve: boolean;
@@ -120,6 +123,7 @@ export function buildBoard(slots: readonly RevealedSlot[], terms: Terms): Board 
       ctHash: slot.ct_hash,
       name: bid.name,
       amountMinor: bid.amountMinor,
+      origin: bid.origin ?? null,
       meetsReserve: terms.reserveMinor === null || bid.amountMinor >= terms.reserveMinor,
       withinCap: terms.maxMinor === null || bid.amountMinor <= terms.maxMinor,
     });

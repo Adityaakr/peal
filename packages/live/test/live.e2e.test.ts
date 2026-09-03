@@ -12,7 +12,8 @@ import { BteClient } from 'bte-sdk';
 import { buildBoard, type RevealedSlot } from '../src/board.js';
 import { generateSellerKeys, openContact, sealContact } from '../src/contact.js';
 import { ctHashOf, sealedBytes } from '../src/ciphertext.js';
-import { decodeBid, encodeBid } from '../src/record.js';
+import { decodeBid, encodeBid, type BidOrigin } from '../src/record.js';
+import { convertMinor, crossRate, type RateTable } from '../src/rates.js';
 import type { Terms } from '../src/terms.js';
 
 const COORDINATOR = process.env.PEAL_LIVE_URL ?? 'https://peal.network';
@@ -40,12 +41,27 @@ run('a whole auction, against the live coordinator', () => {
       contactKey: keys.publicKey,
     };
 
-    const entered = [
+    // A bidder in Kathmandu typing rupees into a dollar auction. What travels
+    // is the converted figure; the rupees ride along for the board to show.
+    const table: RateTable = {
+      base: 'USD',
+      rates: { USD: 1, NPR: 151.837523 },
+      asOf: new Date().toISOString(),
+    };
+    const nprTyped = 20_000_00;
+    const nprCommitted = convertMinor(nprTyped, 2, 2, crossRate(table, 'NPR', 'USD')!);
+    const nprOrigin: BidOrigin = { code: 'NPR', amountMinor: nprTyped, decimals: 2 };
+
+    const entered: { amountMinor: number; name: string; origin?: BidOrigin }[] = [
       { amountMinor: 500, name: 'under the reserve' },
       { amountMinor: 125_00, name: 'ana' },
       { amountMinor: 90_00, name: 'bo 🎈' },
       { amountMinor: 999_00, name: 'over the cap' },
+      { amountMinor: nprCommitted, name: 'kiran', origin: nprOrigin },
     ];
+    // 20,000 rupees is about 131 dollars, so this bid should take the auction
+    // from ana. If that stops being true the assertions below say so.
+    expect(nprCommitted).toBeGreaterThan(125_00);
 
     const sizes = new Set<number>();
     for (const bid of entered) {
@@ -82,11 +98,16 @@ run('a whole auction, against the live coordinator', () => {
 
     const board = buildBoard(slots, terms);
     expect(board.bids.map((b) => b.name))
-      .toEqual(['over the cap', 'ana', 'bo 🎈', 'under the reserve']);
+      .toEqual(['over the cap', 'kiran', 'ana', 'bo 🎈', 'under the reserve']);
     // The queue is only the bids the terms allow to win.
-    expect(board.queue.map((b) => b.name)).toEqual(['ana', 'bo 🎈']);
-    expect(board.winner?.name).toBe('ana');
-    expect(board.winner?.amountMinor).toBe(12_500);
+    expect(board.queue.map((b) => b.name)).toEqual(['kiran', 'ana', 'bo 🎈']);
+    // Ranked on the converted figure, which is what was committed.
+    expect(board.winner?.name).toBe('kiran');
+    expect(board.winner?.amountMinor).toBe(nprCommitted);
+    // And the board can still say what that bidder actually typed.
+    expect(board.winner?.origin).toEqual(nprOrigin);
+    // Everyone else bid in the auction's own currency and carries nothing.
+    expect(board.bids.filter((b) => b.origin !== null)).toHaveLength(1);
     expect(board.discarded).toEqual([]);
 
     // And the contact details come back out, for the holder of the key and
