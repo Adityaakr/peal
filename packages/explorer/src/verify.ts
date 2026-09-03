@@ -33,6 +33,7 @@ const TOPIC_BATCH_EXECUTED = '0xe24d0a2c61ac81c2a105d160b44f0d4854b5e899809bed5d
 const LOG_WINDOW = 90_000n;
 
 const ZERO32 = `0x${'0'.repeat(64)}`;
+const ZERO_ADDRESS = `0x${'0'.repeat(40)}`;
 
 export type CheckStatus = 'pass' | 'fail' | 'skip';
 
@@ -52,6 +53,10 @@ export interface Check {
 export interface SealedCommit {
   txHash: string;
   blockNumber: number;
+  /** Who emitted it. `Sealed` indexes all three arguments, and this one decides
+   * whether a commitment is evidence or noise: `commitSealed` is permissionless
+   * and writes no storage, so anyone can emit a log under any condition id. */
+  from: string;
 }
 
 export interface VerifyReport {
@@ -133,34 +138,47 @@ function checkSealedOnChain(
   cfg: MempoolConfig,
   commits: Map<string, SealedCommit>,
 ): Check {
-  if (commits.size === 0) {
-    return {
-      id: 'sealed-onchain',
-      label: 'each sealed order was committed on-chain before the reveal',
-      status: 'skip',
-      anchor: 'none',
-      detail:
-        'no Sealed log for this condition. it was never committed on-chain, so there is nothing to hold the reveal against. only conditions from the mempool demo are anchored.',
-    };
-  }
   const revealed = new Set(slots.map((s) => normalizeHex(s.ct_hash)));
-  const missing = [...commits.keys()].filter((h) => !revealed.has(h));
-  const reclassified = [...commits.keys()].filter((h) => {
-    const slot = slots.find((s) => normalizeHex(s.ct_hash) === h);
-    return slot?.is_dummy === true;
-  });
-  const bad = missing.length + reclassified.length;
   const link = `${cfg.explorerBase.replace(/\/$/, '')}/address/${cfg.pealMempool}`;
-  const n = commits.size;
+
+  // A commitment is evidence about THIS reveal only if its hash is one of the
+  // ciphertexts that opened. `commitSealed` is permissionless and writes no
+  // storage, so anyone can emit a Sealed log under any condition id, and Peal
+  // Live emits one itself to record an auction's terms. Counting every log as a
+  // ciphertext that should have appeared made both of those look like
+  // censorship: a stranger with free gas could turn this panel red, and our own
+  // terms record did.
+  const matched = [...commits.keys()].filter((h) => revealed.has(h));
+  const unattributed = commits.size - matched.length;
+
+  // The exception, and the reason this check still means something: a hash the
+  // trusted committer put on chain that is now marked padding. Nobody else can
+  // produce that, because it takes a real ciphertext of this batch AND the
+  // coordinator relabelling it.
+  const trusted = normalizeHex(cfg.relayer ?? '');
+  const authoritative =
+    trusted && trusted !== ZERO_ADDRESS
+      ? [...commits.entries()].filter(([, c]) => normalizeHex(c.from) === trusted).map(([h]) => h)
+      : [];
+  const dropped = authoritative.filter((h) => !revealed.has(h));
+  const reclassified = matched.filter(
+    (h) => slots.find((s) => normalizeHex(s.ct_hash) === h)?.is_dummy === true,
+  );
+
+  const bad = dropped.length + reclassified.length;
+  const noise = unattributed
+    ? ` ${unattributed} other commitment${unattributed === 1 ? '' : 's'} under this condition did not open here; anyone can emit one, so ${unattributed === 1 ? 'it is' : 'they are'} not counted either way.`
+    : '';
+
   return {
     id: 'sealed-onchain',
-    label: 'every order was committed on-chain before it was opened',
+    label: 'nothing committed on-chain was dropped or relabelled as padding',
     status: bad === 0 ? 'pass' : 'fail',
     anchor: 'chain',
     detail:
       bad === 0
-        ? `read ${n} commitment${n === 1 ? '' : 's'} from <a class="link" href="${link}" target="_blank" rel="noopener">PealMempool</a> on chain ${cfg.chainId}, each timestamped by its block. every hash committed before the cue is accounted for as an order below: none was dropped, and none was reclassified as padding. each hash in the sealed column links to the transaction that committed it.`
-        : `${missing.length} commitment(s) recorded on-chain are absent from this reveal, and ${reclassified.length} were reclassified as padding. an order was sealed and then never opened.`,
+        ? `${matched.length} of the ${revealed.size} ciphertexts below ${matched.length === 1 ? 'was' : 'were'} committed to <a class="link" href="${link}" target="_blank" rel="noopener">PealMempool</a> on chain ${cfg.chainId} before the cue, each timestamped by its block, and every one of them opened here as a real seal rather than as padding.${noise}`
+        : `${dropped.length} commitment(s) from the committing account are absent from this reveal, and ${reclassified.length} opened as padding. something that was sealed was then not opened.`,
   };
 }
 
@@ -325,10 +343,12 @@ async function readChain(
 
   onchainRoot = root;
   for (const log of sealedLogs) {
-    // Sealed(conditionId, ctHash, from): all three indexed, so ctHash is topic2.
+    // Sealed(conditionId, ctHash, from): all three indexed, so ctHash is topic2
+    // and the sender is topic3, left-padded to a word.
     commits.set(normalizeHex(log.topics[2]), {
       txHash: log.transactionHash,
       blockNumber: Number(BigInt(log.blockNumber)),
+      from: `0x${(log.topics[3] ?? '').slice(-40).toLowerCase()}`,
     });
   }
   if (batchLogs.length > 0) settleTx = batchLogs[0].transactionHash;
@@ -377,7 +397,15 @@ export async function verifyReveal(
   // which stays visible below: a check that should have run and did not is
   // exactly what must never be quietly dropped.
   const settled = !!onchainRoot && onchainRoot !== ZERO32;
-  const anchored = settled || commits.size > 0;
+  // "Anchored" has to mean a ciphertext FROM THIS REVEAL is on chain, not that
+  // some Sealed log exists under this condition id. Those are different things,
+  // because `commitSealed` is permissionless: a stranger could make any
+  // condition look anchored, and Peal Live's own terms record did exactly that,
+  // which is what pushed an ordinary auction into offering two chain checks it
+  // was never going to satisfy.
+  const revealedHashes = new Set(r.slots.map((s) => normalizeHex(s.ct_hash)));
+  const ctAnchored = [...commits.keys()].some((h) => revealedHashes.has(h));
+  const anchored = settled || ctAnchored;
 
   if (chainError) {
     const detail = `could not reach the chain (${chainError}), so the on-chain anchors could not be read. no coordinator claim is being substituted for them.`;
@@ -385,9 +413,16 @@ export async function verifyReveal(
       { id: 'onchain-root', label: 'the chain settled these exact plaintexts', status: 'skip', anchor: 'none', detail },
       { id: 'sealed-onchain', label: 'every order was committed on-chain before it was opened', status: 'skip', anchor: 'none', detail },
     );
-  } else if (anchored) {
-    checks.push(checkOnchainRoot(recomputedRoot, onchainRoot, cfg!));
-    checks.push(checkSealedOnChain(r.slots, cfg!, commits));
+  } else {
+    // Each chain check is offered only when it is applicable. A settled root
+    // exists only for a lane that calls executeBatch, and a ciphertext
+    // commitment only for one that anchors its ciphertexts. Listing either as
+    // skipped on a condition that was never going to have it makes an ordinary
+    // auction look deficient; the code below already says that is the thing to
+    // avoid, and the fix is to be honest about which are applicable rather than
+    // to show them greyed out forever.
+    if (settled) checks.push(checkOnchainRoot(recomputedRoot, onchainRoot, cfg!));
+    if (ctAnchored) checks.push(checkSealedOnChain(r.slots, cfg!, commits));
   }
 
   checks.push(await checkCtHashes(r.slots));

@@ -9,7 +9,7 @@ import {
 } from '../api';
 import { wireCopy } from '../playground';
 import { isPrivatePayload } from '../privacy';
-import { getConfig, type MempoolConfig } from '../mempool/chain';
+import { getReadConfig, type MempoolConfig } from '../mempool/chain';
 import { normalizeHex } from '../merkle';
 import { verifyReveal, type Check, type VerifyReport } from '../verify';
 import {
@@ -67,7 +67,9 @@ export function renderCondition(root: HTMLElement, id: string): () => void {
   // The chain endpoint and the PealMempool address come from the relayer, but
   // nothing is TAKEN from it: the browser reads the chain itself, and both the
   // address and the RPC are printed in the panel so they can be checked.
-  const configReady: Promise<MempoolConfig | null> = getConfig().catch(() => null);
+  // Reading the chain does not need the relayer: it needs an RPC and an
+  // address, and the browser can do that itself.
+  const configReady: Promise<MempoolConfig | null> = getReadConfig().catch(() => null);
 
   /** Countdown or live share progress, depending on status. */
   const renderStage = () => {

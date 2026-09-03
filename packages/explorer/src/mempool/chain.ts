@@ -42,8 +42,45 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** The chain, when no relayer is running.
+ *
+ * The relayer serves this so the mempool demo can be pointed anywhere, but the
+ * verification checks only need an RPC and two addresses, and those are public
+ * facts about a public chain. Falling back to them means a condition page can
+ * read the chain on any deployment, rather than reporting "no chain endpoint is
+ * configured" and skipping the two checks that are the only non-circular ones
+ * it has. Those are exactly the checks that must never be quietly dropped.
+ *
+ * Deliberately not merged with the relayer's answer: if a relayer IS running it
+ * knows which pools this build is pointed at, and guessing over the top of it
+ * would be worse than asking. */
+const CHAIN_ONLY: MempoolConfig = {
+  chainId: 42431,
+  explorerBase: 'https://explore.testnet.tempo.xyz',
+  rpcUrl: 'https://rpc.moderato.tempo.xyz',
+  // Only the two the checks read are real. The trading addresses belong to the
+  // mempool demo, which is not running if we are here.
+  relayer: '0x0000000000000000000000000000000000000000',
+  usdc: '0x0000000000000000000000000000000000000000',
+  eth: '0x0000000000000000000000000000000000000000',
+  publicPool: '0x0000000000000000000000000000000000000000',
+  publicBuilder: '0x0000000000000000000000000000000000000000',
+  pealPool: '0x0000000000000000000000000000000000000000',
+  pealMempool: '0x387b9b50950ded996776a96f20af9d2106c96bf9',
+};
+
 export function getConfig(): Promise<MempoolConfig> {
   return j<MempoolConfig>('/config');
+}
+
+/** Config for a page that only needs to READ the chain. Prefers the relayer,
+ * falls back to the chain itself, and never returns null. */
+export async function getReadConfig(): Promise<MempoolConfig> {
+  try {
+    return await getConfig();
+  } catch {
+    return CHAIN_ONLY;
+  }
 }
 
 export interface MempoolState {
