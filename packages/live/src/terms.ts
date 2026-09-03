@@ -223,8 +223,26 @@ export const MAX_REGISTRY_TERMS_BYTES = 512;
 export function registryProblem(t: Terms): string | null {
   const size = new TextEncoder().encode(packTerms(t)).length;
   if (size <= MAX_REGISTRY_TERMS_BYTES) return null;
-  const over = size - MAX_REGISTRY_TERMS_BYTES;
-  return `a short link needs about ${over} fewer characters in the item name, the description or the picture link`;
+
+  // Scaled back into the units the message claims. The packed form is base64url
+  // over the canonical bytes, so it is four thirds of what it encodes, and
+  // reporting the packed overshoot told somebody to cut a third more than they
+  // actually had to: 248 characters when 186 would have done it.
+  const cut = Math.ceil(((size - MAX_REGISTRY_TERMS_BYTES) * 3) / 4);
+
+  // Naming the longest field turns "shorten something" into an instruction. It
+  // is almost always the description or the picture link, and a seller looking
+  // at three inputs should not have to guess which one is the problem.
+  const longest = [
+    { what: 'the description', length: (t.description ?? '').length },
+    { what: 'the picture link', length: (t.image ?? '').length },
+    { what: 'the item name', length: t.title.trim().length },
+  ].sort((a, b) => b.length - a.length)[0]!;
+
+  const contact = t.contactKey
+    ? ' turning off contact details would free about 90 of them.'
+    : '';
+  return `a short link needs about ${cut} fewer characters. ${longest.what} is the longest, at ${longest.length}.${contact}`;
 }
 
 /** Terms as the fragment segment of a share link. */

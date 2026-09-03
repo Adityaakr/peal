@@ -371,3 +371,48 @@ describe('the seller key in the terms', () => {
     })).toMatch(/fewer characters/);
   });
 });
+
+describe('what the short-link message asks for', () => {
+  const tooBig: Terms = {
+    ...BASE,
+    description: 'x'.repeat(MAX_DESCRIPTION_CHARS),
+    image: `https://cdn.example.com/${'a'.repeat(170)}`,
+  };
+
+  it('counts characters, not the base64 they turn into', () => {
+    // The packed form is four thirds of what it encodes. Reporting the packed
+    // overshoot said 248 when 186 characters would have done it, so a seller
+    // was told to cut a third more than they had to.
+    const said = Number(/about (\d+) fewer/.exec(registryProblem(tooBig)!)![1]);
+
+    let cut = 0;
+    let t = tooBig;
+    while (registryProblem(t) !== null && cut < 500) {
+      cut++;
+      t = { ...tooBig, description: 'x'.repeat(Math.max(0, MAX_DESCRIPTION_CHARS - cut)) };
+    }
+    // Within a few characters of the truth, and never asking for more than it
+    // needs by a wide margin.
+    expect(said).toBeGreaterThanOrEqual(cut - 8);
+    expect(said).toBeLessThanOrEqual(cut + 8);
+  });
+
+  it('names the longest field, so it is an instruction rather than a hint', () => {
+    expect(registryProblem(tooBig)).toContain('the description is the longest');
+    // Still over the cap, but now the picture link is the longer of the two.
+    const pictureHeavy: Terms = {
+      ...BASE,
+      description: 'x'.repeat(150),
+      image: `https://cdn.example.com/${'a'.repeat(MAX_IMAGE_CHARS - 24)}`,
+    };
+    expect(registryProblem(pictureHeavy)).toContain('the picture link is the longest');
+  });
+
+  it('mentions the contact key only when one is costing you the room', async () => {
+    const { generateSellerKeys } = await import('../src/contact.js');
+    const keys = await generateSellerKeys();
+    expect(registryProblem(tooBig)).not.toContain('contact details');
+    expect(registryProblem({ ...tooBig, contactKey: keys.publicKey }))
+      .toContain('turning off contact details');
+  });
+});
