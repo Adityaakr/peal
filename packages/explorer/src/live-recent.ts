@@ -89,3 +89,18 @@ export function forgetAuctions(): void {
     // Nothing to clear if storage was never available.
   }
 }
+
+/** Did this browser create that auction?
+ *
+ * The only signal the page has for "you are the seller", and it is device local
+ * by nature: an auction is a link, and nothing in it identifies who made it.
+ *
+ * It gates an affordance, not a permission. Everything it unlocks is a note
+ * this browser keeps to itself, so somebody who edited their own storage to
+ * pass this check would gain the ability to mislead nobody but themselves.
+ * What it actually prevents is the opposite failure: a BIDDER being shown a
+ * seller's control, pressing it, and being told their own bid is now top.
+ */
+export function isHostOf(packed: string): boolean {
+  return read().some((a) => a.packed === packed && a.role === 'host');
+}
