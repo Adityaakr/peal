@@ -1198,8 +1198,9 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
               <span>for a stream or a room. bidders need no wallet, no sign in and no gas, and
               neither do you. opens on a timer.</span>
             </button>
-            <button type="button" class="sl-kind${kind === 'sale' ? ' is-on' : ''}" data-kind="sale">
-              <b>token sale</b>
+            <button type="button" class="sl-kind is-soon" data-kind="sale" disabled
+                    aria-disabled="true">
+              <b>token sale <span class="sl-soon">coming soon</span></b>
               <span>escrowed on chain and settled at one clearing price. bidders bring a wallet
               and real balances.</span>
             </button>
@@ -1239,7 +1240,9 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
       const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>('[data-kind]');
       if (!btn) return;
       const next = btn.dataset.kind as CreateKind;
-      if (next === kind) return;
+      // A disabled button can still be reached by a click on a child element in
+      // some browsers, so the guard is here rather than only in the markup.
+      if (btn.disabled || next === kind) return;
       kind = next;
       liveErr = '';
       status = '';

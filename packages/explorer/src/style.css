@@ -5249,3 +5249,30 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
     animation-duration: 1ms;
   }
 }
+
+/* A kind that is not offered yet. Left on screen rather than removed, because
+   what a product is going to do is worth knowing while you decide whether to
+   start with what it does now. */
+.sl-kind.is-soon {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.sl-kind.is-soon:hover {
+  border-color: var(--border);
+}
+
+.sl-soon {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
