@@ -104,29 +104,237 @@ body {
   }
 }
 
-.site-nav {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  font-size: 13px;
-}
-
-.site-nav[hidden],
-.site-nav a[hidden] {
+/* Only #/ and #/app introduce the network; see route() in main.ts. */
+body.no-tagline .site-sub {
   display: none;
 }
 
-.site-nav a {
-  color: var(--muted);
-  text-decoration: none;
-  min-height: 40px;
-  display: inline-flex;
+/* The whole site behind one control.
+   Seven links across the header made every page look like a directory, and on
+   a page whose job is one decision that is noise competing with the decision.
+   The menu is closed by default at every width: the header carries identity,
+   the page carries the task, and everything else is one tap away.
+
+   It opens sideways rather than downwards. The control sits at the right edge,
+   so unfurling leftward along the header keeps the links on the line they came
+   from and never covers the page. */
+.site-nav {
+  position: relative;
+  display: flex;
   align-items: center;
-  transition: color 100ms cubic-bezier(0, 0, 0.2, 1);
+  font-size: 13px;
 }
 
-.site-nav a:hover {
+.site-nav[hidden] {
+  display: none;
+}
+
+.site-burger {
+  appearance: none;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 40px;
+  height: 40px;
+  padding: 0 9px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.site-burger span {
+  display: block;
+  height: 1.5px;
+  border-radius: 2px;
+  background: var(--text);
+  transition: transform 220ms cubic-bezier(0.2, 0, 0, 1), opacity 140ms ease;
+}
+
+.site-burger:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.site-burger[aria-expanded='true'] {
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 4px 16px rgba(17, 24, 39, 0.08);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+}
+
+/* Closed, three bars. Open, the outer two cross and the middle one goes, so the
+   control says what pressing it again will do. */
+.site-burger[aria-expanded='true'] span:nth-child(1) {
+  transform: translateY(5.5px) rotate(45deg);
+}
+
+.site-burger[aria-expanded='true'] span:nth-child(2) {
+  opacity: 0;
+}
+
+.site-burger[aria-expanded='true'] span:nth-child(3) {
+  transform: translateY(-5.5px) rotate(-45deg);
+}
+
+/* Glass, so the page keeps showing through and the menu reads as a layer over
+   the page rather than a second page. */
+.site-menu {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 10px);
+  z-index: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  padding: 5px;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 999px;
+  box-shadow:
+    0 10px 32px rgba(17, 24, 39, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+
+  /* Closed: clipped away to the right, so it appears to come out of the
+     button rather than fade in on top of it. `visibility` is what keeps the
+     links out of the tab order while closed; `hidden` would kill the
+     transition. */
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(-50%) translateX(10px);
+  clip-path: inset(0 0 0 100% round 999px);
+  transition:
+    opacity 200ms ease,
+    transform 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    clip-path 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 380ms;
+}
+
+.site-menu.is-open {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+  clip-path: inset(0 0 0 0 round 999px);
+  transition-delay: 0s;
+}
+
+.site-menu a[hidden] {
+  display: none;
+}
+
+.site-menu a {
+  color: var(--muted);
+  text-decoration: none;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  transition:
+    color 120ms cubic-bezier(0, 0, 0.2, 1),
+    background 120ms ease,
+    opacity 260ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Each link arrives just after the panel that carries it, right to left, so
+     the reveal has a direction instead of everything appearing at once. */
+  opacity: 0;
+  transform: translateX(6px);
+}
+
+.site-menu.is-open a {
+  opacity: 1;
+  transform: none;
+}
+
+.site-menu.is-open a:nth-last-child(1) { transition-delay: 60ms; }
+.site-menu.is-open a:nth-last-child(2) { transition-delay: 95ms; }
+.site-menu.is-open a:nth-last-child(3) { transition-delay: 130ms; }
+.site-menu.is-open a:nth-last-child(4) { transition-delay: 165ms; }
+.site-menu.is-open a:nth-last-child(5) { transition-delay: 200ms; }
+.site-menu.is-open a:nth-last-child(6) { transition-delay: 235ms; }
+
+.site-menu a:hover {
   color: var(--text);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+/* Where you already are, so the menu answers "where am I" as well as
+   "where can I go". */
+.site-menu a[aria-current='page'] {
+  color: var(--accent);
+  background: rgba(37, 99, 235, 0.1);
+}
+
+/* The panel opens along the header line, which is the line the identity is
+   already on. Rather than shrink the menu until it never collides at any width,
+   the identity steps back while the menu is out: the header has one job at a
+   time, and navigating closes the menu and brings the brand straight back.
+   Only above the breakpoint where the panel is actually on that line. */
+@media (min-width: 901px) {
+  .site-identity {
+    transition:
+      opacity 200ms ease,
+      transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .site-header.nav-open .site-identity {
+    opacity: 0;
+    transform: translateX(-10px);
+    pointer-events: none;
+  }
+}
+
+/* Below this the row cannot fit beside the button, so it drops under it and
+   wraps. Same glass, same motion, and it still never becomes a full-height
+   sheet over the page. */
+@media (max-width: 900px) {
+  .site-menu {
+    top: calc(100% + 10px);
+    right: 0;
+    /* A definite width, not a max: an absolutely positioned wrapping flex row
+       shrink-to-fits, so `max-width` alone wrapped it to one link per line. */
+    width: min(80vw, 340px);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    white-space: normal;
+    border-radius: 20px;
+    transform: translateY(-6px) translateX(0);
+    clip-path: inset(0 0 100% 0 round 20px);
+  }
+
+  .site-menu.is-open {
+    transform: translateY(0) translateX(0);
+    clip-path: inset(0 0 0 0 round 20px);
+  }
+}
+
+/* Motion is the affordance, not the message: without it the menu still opens,
+   it just stops travelling. */
+@media (prefers-reduced-motion: reduce) {
+  .site-menu,
+  .site-menu a,
+  .site-burger span {
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+
+  .site-menu {
+    clip-path: none;
+    transform: translateY(-50%);
+  }
+
+  .site-menu.is-open {
+    transform: translateY(-50%);
+  }
 }
 
 main {
@@ -4378,3 +4586,579 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 .sl-mode input { accent-color: var(--accent); margin: 0; }
 #c-mode-duration, #c-mode-exact { display: grid; gap: 12px; }
 #c-mode-duration[hidden], #c-mode-exact[hidden] { display: none; }
+
+/* ---------- peal live ----------
+   A sealed auction anyone can enter with nothing: no wallet, no gas, no sign
+   in. The page is read on a phone, mid stream, so everything is one column and
+   the two numbers that matter (time left, bids in) are set large enough to be
+   legible from a couch. */
+
+.live-create,
+.live-page {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 8px 0 64px;
+}
+
+.live-kicker {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.live-title {
+  margin: 0 0 8px;
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.live-sub {
+  margin: 0 0 22px;
+  color: var(--muted);
+}
+
+.live-reserve {
+  margin: -2px 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.live-card {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.live-label {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.live-input {
+  appearance: none;
+  font: inherit;
+  width: 100%;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 11px 13px;
+  min-height: 44px;
+}
+
+.live-input:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+/* The bid field is the one number on the page a stranger types under time
+   pressure, so it is set at the size of the thing it represents. */
+.live-amountrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-amount {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+  padding: 10px 13px;
+  min-height: 56px;
+}
+
+.live-unit {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.live-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.live-chip {
+  appearance: none;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 15px;
+}
+
+.live-chip:hover {
+  border-color: #d1d5db;
+}
+
+.live-chip.is-on {
+  color: var(--accent);
+  background: var(--accent-weak);
+  border-color: var(--accent-border);
+}
+
+.live-more {
+  margin: 4px 0 2px;
+  font-size: 14px;
+}
+
+.live-more > summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.live-more-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding-top: 10px;
+}
+
+.live-go {
+  margin-top: 12px;
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+}
+
+.live-error {
+  margin: 0;
+  color: var(--red-text);
+  background: var(--red-weak);
+  border: 1px solid var(--red-border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+}
+
+.live-copyrow {
+  display: flex;
+  gap: 8px;
+}
+
+.live-copyrow .live-input {
+  font-size: 13px;
+}
+
+/* The spoken checksum. Wide tracking because its whole job is to be read out
+   loud off a stream and compared by ear. */
+.live-code {
+  margin: 2px 0 0;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+}
+
+.live-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  margin-bottom: 18px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.live-meta-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.live-meta-label {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+
+.live-meta-value {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-in-head {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.live-in {
+  border-color: var(--accent-border);
+  background: var(--accent-weak);
+}
+
+.live-hash {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.live-won {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.live-board {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.live-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.live-row:first-child {
+  border-top: 0;
+}
+
+.live-row.is-won {
+  background: var(--green-weak);
+  border-radius: 8px;
+}
+
+.live-row.is-mine {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.live-rank {
+  color: var(--muted-soft);
+}
+
+.live-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.live-tag {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.live-bidamt {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-under {
+  grid-column: 2 / -1;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.live-foot {
+  margin: 20px 2px 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--muted-soft);
+}
+
+@media (max-width: 520px) {
+  .live-title {
+    font-size: 25px;
+  }
+
+  .live-meta-value {
+    font-size: 16px;
+  }
+
+  .live-code {
+    font-size: 24px;
+  }
+
+  .live-more-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.live-anchor {
+  margin: 14px 2px 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.live-anchor.is-on {
+  color: var(--green);
+}
+
+.live-anchor.is-off {
+  color: var(--muted);
+}
+
+/* A notice raised while one panel was on screen and shown on whichever panel
+   replaced it. See noticeHtml in pages/live.ts. */
+.live-notice {
+  margin-bottom: 12px;
+}
+
+/* The choice at the top of #/create: what kind of auction is being made. Both
+   are sealed-bid auctions on the same chain; they differ in what a bidder has
+   to bring, which is the only thing a creator actually has to decide first. */
+.sl-kinds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 4px 0 20px;
+}
+
+.sl-kind {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: left;
+  padding: 15px 16px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.sl-kind:hover {
+  border-color: #d1d5db;
+}
+
+.sl-kind.is-on {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.sl-kind b {
+  font-weight: 500;
+}
+
+.sl-kind span {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+@media (max-width: 620px) {
+  .sl-kinds {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A row the seller has worked past. Dimmed rather than removed: the board is
+   the record of what was bid, and hiding a row would edit it. */
+.live-row.is-passed {
+  opacity: 0.45;
+}
+
+.live-pass {
+  margin-top: 12px;
+  width: 100%;
+  justify-content: center;
+}
+
+/* The currency field. A menu of four was a menu; a menu of fifty is a scroll,
+   so this is a text input that searches. */
+.live-combo {
+  position: relative;
+}
+
+.live-combo-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.12);
+}
+
+.live-combo-list[hidden] {
+  display: none;
+}
+
+.live-combo-list li {
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.live-combo-list li.is-active,
+.live-combo-list li:hover {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+/* Auctions this browser has been part of. A live auction is its link and
+   nothing else, so without this, closing the tab loses the way back to it. */
+.live-recent-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.live-recent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+}
+
+.live-recent-row:first-child {
+  border-top: 0;
+}
+
+.live-recent-link {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-recent-link:hover {
+  color: var(--accent);
+}
+
+.live-recent-role {
+  font-size: 12px;
+  color: var(--muted-soft);
+}
+
+.live-recent-clear {
+  appearance: none;
+  font: inherit;
+  font-size: inherit;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.live-recent-clear:hover {
+  color: var(--text);
+}
+
+/* Names the link a field holds. There is more than one once a short link has
+   been claimed, and both keep working. */
+.live-linklabel {
+  display: block;
+  margin: 10px 0 -2px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+
+.sl-share input:disabled {
+  color: var(--muted-soft);
+  background: var(--surface);
+}
+
+/* The item. A bidder is otherwise deciding a number from a name alone.
+   Whatever shape it is, it is shown WHOLE. `cover` cropped a portrait photo to
+   a band across the middle, which on an auction is not a styling preference:
+   the picture is the thing being sold, and a cropped one shows a bidder
+   something other than what they are bidding on. The box takes the picture's
+   shape rather than the picture taking the box's. */
+.live-photo {
+  margin: 4px 0 16px;
+  display: flex;
+  justify-content: center;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.live-photo[hidden] {
+  display: none;
+}
+
+.live-photo img {
+  display: block;
+  /* Never wider than the column, never taller than most of the viewport, and
+     always its own aspect ratio in between. A tall photo ends up limited by
+     the height and a wide one by the width, with no crop either way.
+
+     56vh rather than more, so a portrait photo does not push the countdown and
+     the bid field off a phone screen. Somebody watching a stream should not
+     have to scroll to find out how long is left. */
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 56vh;
+}
+
+/* The same picture on the create form, so a seller sees exactly what a bidder
+   will: same rule, smaller ceiling. A preview that crops differently from the
+   real thing is worse than no preview. */
+.live-preview {
+  margin: 4px 0 2px;
+  display: flex;
+  justify-content: center;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.live-preview[hidden] {
+  display: none;
+}
+
+.live-preview img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 320px;
+}
