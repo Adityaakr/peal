@@ -30,7 +30,6 @@ via_ir = true
 gas_limit = 400000000
 
 [rpc_endpoints]
-hoodi = "https://rpc.hoodi.ethpandaops.io"
 # Tempo Moderato. ~0.5s deterministic BFT finality, EIP-2537 present, and
 # gas is paid in pathUSD rather than a native token.
 tempo = "https://rpc.moderato.tempo.xyz"
