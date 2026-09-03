@@ -23,3 +23,28 @@ describe('deriving a ciphertext hash', () => {
     expect(sealedBytes('!!!!')).toBeNull();
   });
 });
+
+describe('the receipt code', () => {
+  it('is the first six characters, upper cased', async () => {
+    const { receiptCode } = await import('../src/ciphertext.js');
+    expect(receiptCode('3893e8be0c91aa11bb22cc33dd44ee55ff66007711882299aabbccdd4e507ee1'))
+      .toBe('3893E8');
+  });
+
+  it('has no letters that can be confused, because hex has no O or I', async () => {
+    const { receiptCode } = await import('../src/ciphertext.js');
+    for (const h of ['0123456789abcdef'.repeat(4), 'ffffff' + 'a'.repeat(58)]) {
+      expect(receiptCode(h)).toMatch(/^[0-9A-F]{6}$/);
+    }
+  });
+
+  it('distinguishes the bids in one batch', async () => {
+    const { ctHashOf, receiptCode } = await import('../src/ciphertext.js');
+    // Sixty four is the batch size, so that is the number it has to separate.
+    const codes = new Set<string>();
+    for (let i = 0; i < 64; i++) {
+      codes.add(receiptCode(await ctHashOf(new Uint8Array([i, i + 1, i + 2]))));
+    }
+    expect(codes.size).toBe(64);
+  });
+});

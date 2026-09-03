@@ -28,3 +28,19 @@ export function sealedBytes(sealedB64: string): Uint8Array | null {
     return null;
   }
 }
+
+/** A short, human-readable stand-in for a ciphertext hash.
+ *
+ * The full hash is sixty four hex characters. Handing that to a bidder with a
+ * copy button gives them something they cannot do anything with: there is
+ * nowhere to paste it, and comparing it by eye is not a thing anybody does.
+ *
+ * Six characters is enough to pick one bid out of a batch of sixty four by
+ * looking, which is the only check a person actually performs. It is not a
+ * commitment and it is not collision resistant at this length; it is a label
+ * that lets somebody match the receipt on their own screen against the row that
+ * opened, without trusting the page's own claim about which row is theirs.
+ */
+export function receiptCode(ctHash: string): string {
+  return ctHash.trim().slice(0, 6).toUpperCase();
+}
