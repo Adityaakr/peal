@@ -89,14 +89,18 @@ impl PreviewCache {
 /// Every failure path serves the ordinary shell. A preview is a nicety; the
 /// auction opening is not, so nothing here may turn a slow RPC or a bad name
 /// into a page that does not load.
-pub async fn named_shell(State(app): State<App>, Path(name): Path<String>) -> Response {
+pub async fn named_shell(
+    State(app): State<App>,
+    Path(name): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Response {
     let shell = match read_shell() {
         Some(s) => s,
         None => return (StatusCode::NOT_FOUND, "explorer shell not found").into_response(),
     };
 
     let html = match preview_for(&app, &name).await {
-        Some(p) => inject(&shell, &p),
+        Some(p) => inject(&shell, &p, canonical_url(&headers, &name).as_deref()),
         None => shell,
     };
 
@@ -126,6 +130,39 @@ pub fn plain_shell() -> Response {
             .into_response(),
         None => (StatusCode::NOT_FOUND, "explorer shell not found").into_response(),
     }
+}
+
+/// The address a person would type, not the one the rewrite produced.
+///
+/// Caddy proxies `/{name}` to `/link/{name}` internally, so the path this
+/// handler sees is not the one anyone shares. Without og:url a crawler treats
+/// whatever it fetched as canonical, and clients that key their preview cache
+/// on it can end up holding the card under the wrong address.
+fn canonical_url(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
+    let host = headers.get(header::HOST).and_then(|v| v.to_str().ok())?;
+    // Rejected rather than escaped: a Host header is client controlled, and the
+    // only safe thing to build a canonical URL from is one that looks like a
+    // hostname.
+    if host.is_empty()
+        || host.len() > 255
+        || !host
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'-' | b':'))
+    {
+        return None;
+    }
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .filter(|s| *s == "http" || *s == "https")
+        .unwrap_or(
+            if host.starts_with("localhost") || host.starts_with("127.0.0.1") {
+                "http"
+            } else {
+                "https"
+            },
+        );
+    Some(format!("{scheme}://{host}/{name}"))
 }
 
 fn read_shell() -> Option<String> {
@@ -304,7 +341,7 @@ fn from_canonical(bytes: &[u8]) -> Option<Preview> {
 /// is escaped before it goes anywhere near an attribute. The picture is also
 /// held to https, the same rule the auction page applies, so a claim cannot
 /// point a preview at an http or javascript URL.
-fn inject(shell: &str, p: &Preview) -> String {
+fn inject(shell: &str, p: &Preview, canonical: Option<&str>) -> String {
     let title = esc(&p.title);
     let description = p
         .description
@@ -318,10 +355,25 @@ fn inject(shell: &str, p: &Preview) -> String {
     html = replace_meta(&html, "og:description", &description);
     html = replace_meta(&html, "description", &description);
 
+    let mut extra = String::new();
+    if let Some(url) = canonical {
+        extra.push_str(&format!(
+            "<meta property=\"og:url\" content=\"{}\" />\n    ",
+            esc(url)
+        ));
+    }
+    if !extra.is_empty() {
+        html = match html.find("</head>") {
+            Some(at) => format!("{}{extra}{}", &html[..at], &html[at..]),
+            None => html,
+        };
+    }
+
     if let Some(image) = &p.image {
         let image = esc(image);
         let tags = format!(
             "<meta property=\"og:image\" content=\"{image}\" />\n    \
+             <meta property=\"og:image:alt\" content=\"{title}\" />\n    \
              <meta name=\"twitter:image\" content=\"{image}\" />\n    "
         );
         // summary_large_image only when there IS an image; the card degrades
@@ -377,6 +429,10 @@ fn esc(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn inject_for_test(shell: &str, p: &Preview) -> String {
+        inject(shell, p, Some("https://peal.network/nepal"))
+    }
 
     const SHELL: &str = r#"<!doctype html><html><head>
     <title>Peal Network. Sealed now, opened at the time you set.</title>
@@ -455,7 +511,7 @@ mod tests {
     /// and opens a script must come out as text.
     #[test]
     fn escapes_what_a_stranger_wrote() {
-        let html = inject(
+        let html = inject_for_test(
             SHELL,
             &Preview {
                 title: r#""><script>alert(1)</script>"#.into(),
@@ -474,7 +530,7 @@ mod tests {
 
     #[test]
     fn writes_the_auction_into_the_shell() {
-        let html = inject(
+        let html = inject_for_test(
             SHELL,
             &Preview {
                 title: "Nepal Relief".into(),
@@ -498,7 +554,7 @@ mod tests {
     /// and delivering none is a worse preview than not promising one.
     #[test]
     fn no_picture_means_no_image_card() {
-        let html = inject(
+        let html = inject_for_test(
             SHELL,
             &Preview {
                 title: "t".into(),
@@ -532,6 +588,52 @@ mod tests {
             "café",
         ] {
             assert!(!is_valid_name(bad), "accepted {bad}");
+        }
+    }
+
+    /// The address a person shares, not the internal one the rewrite produced.
+    #[test]
+    fn names_the_url_a_person_would_type() {
+        let head = |pairs: &[(&str, &str)]| {
+            let mut h = axum::http::HeaderMap::new();
+            for (k, v) in pairs {
+                h.insert(
+                    axum::http::HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                    v.parse().unwrap(),
+                );
+            }
+            h
+        };
+
+        assert_eq!(
+            canonical_url(&head(&[("host", "peal.network")]), "nepal").as_deref(),
+            Some("https://peal.network/nepal"),
+        );
+        // Local development is http, and says so.
+        assert_eq!(
+            canonical_url(&head(&[("host", "localhost:9911")]), "nepal").as_deref(),
+            Some("http://localhost:9911/nepal"),
+        );
+        // The edge's own answer wins over the guess.
+        assert_eq!(
+            canonical_url(
+                &head(&[("host", "peal.network"), ("x-forwarded-proto", "http")]),
+                "n"
+            )
+            .as_deref(),
+            Some("http://peal.network/n"),
+        );
+
+        // A Host header is written by whoever made the request. Anything that
+        // is not shaped like a hostname produces no canonical URL at all,
+        // rather than one with someone else's markup in it.
+        assert_eq!(canonical_url(&head(&[]), "nepal"), None);
+        for hostile in ["a\"><script>", "peal.network/evil", "peal network"] {
+            let mut h = axum::http::HeaderMap::new();
+            if let Ok(v) = hostile.parse() {
+                h.insert(header::HOST, v);
+                assert_eq!(canonical_url(&h, "nepal"), None, "accepted {hostile}");
+            }
         }
     }
 
