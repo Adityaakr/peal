@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_IMAGE_CHARS, TermsError, canonicalTerms, checksum, imageProblem, liveLink, packTerms,
+  MAX_DESCRIPTION_CHARS, MAX_IMAGE_CHARS, TermsError, canonicalTerms, checksum, imageProblem, liveLink, packTerms,
   registryProblem, unpackTerms, type Terms,
 } from '../src/terms.js';
 
@@ -13,6 +13,8 @@ const BASE: Terms = {
   reserveMinor: 2500,
   maxMinor: null,
   image: null,
+  description: null,
+  contactKey: null,
 };
 
 describe('auction terms', () => {
@@ -32,7 +34,9 @@ describe('auction terms', () => {
 
   it('serialises the same bytes however the object was built', () => {
     const reordered: Terms = {
-      image: BASE.image, maxMinor: BASE.maxMinor, reserveMinor: BASE.reserveMinor,
+      contactKey: BASE.contactKey, description: BASE.description, image: BASE.image,
+      maxMinor: BASE.maxMinor,
+      reserveMinor: BASE.reserveMinor,
       closeAt: BASE.closeAt, decimals: BASE.decimals, unit: BASE.unit, title: BASE.title,
       auctionId: BASE.auctionId,
     };
@@ -59,9 +63,9 @@ describe('auction terms', () => {
     ['not base64', '!!!!'],
     ['not json', packTerms(BASE).slice(0, 8)],
     ['an object rather than the tuple', btoa('{"a":1}').replace(/=+$/, '')],
-    ['a tuple of the wrong length', btoa('[3,1,2,3]').replace(/=+$/, '')],
-    ['a future version', btoa(JSON.stringify([4, 'c', 't', 'USD', 2, 1, null, null, null])).replace(/=+$/, '')],
-    ['terms that fail validation', btoa(JSON.stringify([3, 'c', '', 'USD', 2, 1, null, null, null])).replace(/=+$/, '')],
+    ['a tuple of the wrong length', btoa('[5,1,2,3]').replace(/=+$/, '')],
+    ['a future version', btoa(JSON.stringify([6, 'c', 't', 'USD', 2, 1, null, null, null, null, null])).replace(/=+$/, '')],
+    ['terms that fail validation', btoa(JSON.stringify([5, 'c', '', 'USD', 2, 1, null, null, null, null, null])).replace(/=+$/, '')],
   ])('returns null for %s rather than throwing', (_label, packed) => {
     expect(unpackTerms(packed)).toBeNull();
   });
@@ -142,14 +146,15 @@ describe('one link, one checksum', () => {
     ['a byte order mark', '﻿'],
     ['an ideographic space', '　'],
   ])('refuses a link whose title is padded with %s', (_label, pad) => {
-    const forged = packRaw([3, BASE.auctionId, `${pad}${BASE.title}${pad}`, BASE.unit,
-      BASE.decimals, BASE.closeAt, BASE.reserveMinor, BASE.maxMinor, BASE.image]);
+    const forged = packRaw([5, BASE.auctionId, `${pad}${BASE.title}${pad}`, BASE.unit,
+      BASE.decimals, BASE.closeAt, BASE.reserveMinor, BASE.maxMinor, BASE.image,
+      BASE.description, BASE.contactKey]);
     expect(forged).not.toBe(packTerms(BASE));
     expect(unpackTerms(forged)).toBeNull();
   });
 
   it('refuses a link whose unit is padded', () => {
-    const forged = packRaw([3, BASE.auctionId, BASE.title, ' USD ', BASE.decimals,
+    const forged = packRaw([5, BASE.auctionId, BASE.title, ' USD ', BASE.decimals,
       BASE.closeAt, BASE.reserveMinor, BASE.maxMinor, BASE.image]);
     expect(unpackTerms(forged)).toBeNull();
   });
@@ -162,9 +167,9 @@ describe('one link, one checksum', () => {
   it('refuses a link that re-serialises to different bytes', () => {
     // 1e3 is a number JSON.parse accepts and JSON.stringify writes back as 1000,
     // so the link is not one packTerms could have produced.
-    expect(unpackTerms(packRaw([3, BASE.auctionId, BASE.title, BASE.unit, 2, 1e3, null, null, null])))
+    expect(unpackTerms(packRaw([5, BASE.auctionId, BASE.title, BASE.unit, 2, 1e3, null, null, null, null, null])))
       .not.toBeNull();
-    expect(unpackTerms(btoa('[3,"cond_x","t","USD",2,1e3,null,null,null]').replace(/=+$/, ''))).toBeNull();
+    expect(unpackTerms(btoa('[5,"cond_x","t","USD",2,1e3,null,null,null,null,null]').replace(/=+$/, ''))).toBeNull();
   });
 });
 
@@ -221,7 +226,7 @@ describe('the wire version', () => {
     // The tuple is positional, so links of different lengths cannot be told
     // apart by shape. Reading an older one with a default filled in would be
     // honouring terms nobody agreed to.
-    const older = btoa(JSON.stringify([2, BASE.auctionId, BASE.title, BASE.unit, 2, BASE.closeAt, null, null]))
+    const older = btoa(JSON.stringify([4, BASE.auctionId, BASE.title, BASE.unit, 2, BASE.closeAt, null, null, null, null]))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     expect(unpackTerms(older)).toBeNull();
   });
@@ -276,6 +281,8 @@ describe('the picture', () => {
       reserveMinor: 1_000_000_000_000,
       maxMinor: 1_000_000_000_000,
       image: `https://e.com/${'a'.repeat(MAX_IMAGE_CHARS - 15)}`,
+      description: 'x'.repeat(MAX_DESCRIPTION_CHARS),
+      contactKey: null,
     };
     // The auction itself is fine: the fragment has no such limit.
     expect(() => packTerms(huge)).not.toThrow();
@@ -285,5 +292,45 @@ describe('the picture', () => {
   it('treats an empty string as no picture rather than a broken one', () => {
     expect(imageProblem('')).toBeNull();
     expect(imageProblem('   ')).toBeNull();
+  });
+});
+
+
+describe('the description', () => {
+  const WORDS = 'Hand crocheted in Jaipur, one of a kind, ships worldwide.';
+
+  it('round trips', () => {
+    expect(unpackTerms(packTerms({ ...BASE, description: WORDS }))?.description).toBe(WORDS);
+  });
+
+  it('is part of the checksum, so the words cannot be edited quietly', async () => {
+    expect(await checksum({ ...BASE, description: WORDS })).not.toBe(await checksum(BASE));
+  });
+
+  it('treats blank as none rather than as an empty paragraph', () => {
+    expect(unpackTerms(packTerms({ ...BASE, description: '   ' }))?.description).toBeNull();
+    expect(packTerms({ ...BASE, description: '' })).toBe(packTerms(BASE));
+  });
+
+  it('refuses one longer than the cap, counted in characters people count', () => {
+    expect(() => packTerms({ ...BASE, description: '🎈'.repeat(MAX_DESCRIPTION_CHARS) })).not.toThrow();
+    expect(() => packTerms({ ...BASE, description: 'x'.repeat(MAX_DESCRIPTION_CHARS + 1) }))
+      .toThrow(TermsError);
+  });
+
+  it('leaves just enough room for a short link on its own', () => {
+    // Measured: a bare set of terms is 127 bytes and a full length description
+    // takes it to 498, against the registry's 512. The cap is set where it is
+    // so that writing a paragraph does not by itself cost you a short link.
+    expect(registryProblem({ ...BASE, description: 'x'.repeat(MAX_DESCRIPTION_CHARS) })).toBeNull();
+    expect(registryProblem({ ...BASE, description: WORDS })).toBeNull();
+  });
+
+  it('says so when a description AND a picture link together do not fit', () => {
+    expect(registryProblem({
+      ...BASE,
+      description: 'x'.repeat(MAX_DESCRIPTION_CHARS),
+      image: `https://e.com/${'a'.repeat(186)}`,
+    })).toMatch(/fewer characters/);
   });
 });

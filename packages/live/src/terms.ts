@@ -11,6 +11,7 @@
  * exists and why it is built to be read out loud: on a livestream the host's
  * screen is exactly that second channel.
  */
+import { isSellerKey } from './contact.js';
 import { MAX_AMOUNT_MINOR } from './record.js';
 
 
@@ -28,6 +29,8 @@ type Wire = [
   reserveMinor: number | null,
   maxMinor: number | null,
   image: string | null,
+  description: string | null,
+  contactKey: string | null,
 ];
 
 /** Bumped whenever the tuple gains a field: 2 for the bid ceiling, 3 for the
@@ -37,7 +40,7 @@ type Wire = [
  * missing. The tuple is positional, so links of different lengths cannot be
  * told apart by shape alone, and quietly filling in a default would be
  * honouring terms nobody agreed to. */
-export const TERMS_VERSION = 3;
+export const TERMS_VERSION = 5;
 export const MAX_TITLE_CHARS = 80;
 export const MAX_UNIT_CHARS = 12;
 export const MAX_AUCTION_ID_CHARS = 64;
@@ -45,6 +48,11 @@ export const MAX_AUCTION_ID_CHARS = 64;
 /** Long enough for a real image host, short enough that the whole terms tuple
  * stays inside the 512 bytes the name registry accepts. */
 export const MAX_IMAGE_CHARS = 200;
+
+/** Enough for a paragraph about what is being sold. Longer than this and it
+ * stops being a description and starts being a page, and it eats the budget a
+ * short link has to fit inside. */
+export const MAX_DESCRIPTION_CHARS = 280;
 
 /** Why a picture address cannot be used, or null when it can.
  *
@@ -108,6 +116,20 @@ export interface Terms {
    * tomorrow, and nothing here would notice. It shows what is being sold; it
    * does not attest to it. */
   image: string | null;
+  /** What is being sold, in more than a title's worth of words. Null when the
+   * seller did not write one.
+   *
+   * Part of the terms, so it is covered by the checksum and by the record on
+   * chain: a link with different words has a different check code. That is the
+   * point of putting it here rather than anywhere else. */
+  description: string | null;
+  /** The seller's public key, when they asked bidders for contact details.
+   *
+   * Null when they did not, and the bid form then has no contact field at all.
+   * Public on purpose: every bidder needs it to encrypt to, and it being in the
+   * terms means the check code covers it, so nobody can hand out a link that
+   * quietly points contact details at a key of their own. */
+  contactKey: string | null;
 }
 
 export class TermsError extends Error {}
@@ -154,9 +176,20 @@ export function canonicalTerms(t: Terms): Uint8Array {
     const problem = imageProblem(t.image);
     if (problem) fail(problem);
   }
+  if (t.contactKey !== null && !isSellerKey(t.contactKey)) {
+    fail('that is not a seller key');
+  }
+  if (t.description !== null) {
+    const description = t.description.trim();
+    if ([...description].length > MAX_DESCRIPTION_CHARS) {
+      fail(`the description exceeds ${MAX_DESCRIPTION_CHARS} characters`);
+    }
+  }
   const wire: Wire = [
     TERMS_VERSION, t.auctionId, title, unit, t.decimals, t.closeAt, t.reserveMinor, t.maxMinor,
     t.image === null ? null : t.image.trim(),
+    t.description === null || !t.description.trim() ? null : t.description.trim(),
+    t.contactKey,
   ];
   return new TextEncoder().encode(JSON.stringify(wire));
 }
@@ -191,7 +224,7 @@ export function registryProblem(t: Terms): string | null {
   const size = new TextEncoder().encode(packTerms(t)).length;
   if (size <= MAX_REGISTRY_TERMS_BYTES) return null;
   const over = size - MAX_REGISTRY_TERMS_BYTES;
-  return `a short link needs about ${over} fewer characters in the item name or the picture link`;
+  return `a short link needs about ${over} fewer characters in the item name, the description or the picture link`;
 }
 
 /** Terms as the fragment segment of a share link. */
@@ -208,9 +241,9 @@ export function unpackTerms(packed: string): Terms | null {
   } catch {
     return null;
   }
-  if (!Array.isArray(wire) || wire.length !== 9) return null;
-  const [version, auctionId, title, unit, decimals, closeAt, reserveMinor, maxMinor, image] =
-    wire as Wire;
+  if (!Array.isArray(wire) || wire.length !== 11) return null;
+  const [version, auctionId, title, unit, decimals, closeAt, reserveMinor, maxMinor, image,
+    description, contactKey] = wire as Wire;
   if (version !== TERMS_VERSION) return null;
   if (typeof auctionId !== 'string' || typeof title !== 'string' || typeof unit !== 'string') {
     return null;
@@ -219,6 +252,8 @@ export function unpackTerms(packed: string): Terms | null {
   if (reserveMinor !== null && typeof reserveMinor !== 'number') return null;
   if (maxMinor !== null && typeof maxMinor !== 'number') return null;
   if (image !== null && typeof image !== 'string') return null;
+  if (description !== null && typeof description !== 'string') return null;
+  if (contactKey !== null && typeof contactKey !== 'string') return null;
   // Hand back what was HASHED, not what was typed into the link.
   //
   // canonicalTerms trims before hashing. Returning the untrimmed strings meant
@@ -228,6 +263,8 @@ export function unpackTerms(packed: string): Terms | null {
   const terms: Terms = {
     auctionId, title: title.trim(), unit: unit.trim(), decimals, closeAt, reserveMinor, maxMinor,
     image: image === null ? null : image.trim(),
+    description: description === null || !description.trim() ? null : description.trim(),
+    contactKey,
   };
   try {
     canonicalTerms(terms);
