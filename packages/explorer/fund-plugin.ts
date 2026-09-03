@@ -1,7 +1,8 @@
 /** Dev-only auto-funding.
  *
  * A new user on Tempo has no PathUSD, and PathUSD is the gas token, so they
- * cannot send a single transaction until someone gives them some. On Hoodi the
+ * cannot send a single transaction until someone gives them some. On a chain
+ * with a native gas token the
  * same is true of ETH. Sign-in therefore has to be followed by funding or the
  * account is decorative.
  *
@@ -30,7 +31,7 @@ import { dirname, join, resolve } from 'node:path';
 interface ChainCfg {
   chainId: number;
   rpcUrl: string;
-  /** Gas token. On Tempo this is an ERC-20; on Hoodi it is native. */
+  /** Gas token. On Tempo this is an ERC-20 rather than a native balance. */
   gas: { kind: 'native'; amount: bigint } | { kind: 'erc20'; token: Address; amount: bigint };
   /** The auction payment token, so a funded user can actually bid. */
   quoteToken: Address;
@@ -46,15 +47,6 @@ interface ChainCfg {
 }
 
 const CHAINS: Record<number, ChainCfg> = {
-  560048: {
-    chainId: 560048,
-    rpcUrl: 'https://rpc.hoodi.ethpandaops.io',
-    gas: { kind: 'native', amount: parseUnits('0.02', 18) },
-    quoteToken: '0xc246151117190833d671004bFB16c91b69b10356',
-    quoteAmount: parseUnits('1000', 18),
-    saleToken: '0x25526E55ABcED385BE642Fb7A00506D6Fa28dcbF',
-    saleAmount: parseUnits('2000000', 18),
-  },
   42431: {
     chainId: 42431,
     rpcUrl: 'https://rpc.moderato.tempo.xyz',

@@ -12,7 +12,7 @@
 import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ACTIVE, CHAIN_FOR, HOODI, TEMPO } from 'peal-auctionkit';
+import { ACTIVE, CHAIN_FOR, TEMPO } from 'peal-auctionkit';
 import type { Address } from 'viem';
 
 /** Just the method the pages use.
@@ -156,7 +156,7 @@ export function mountAuth(): void {
         // the app between chains cannot leave new wallets provisioned on the
         // old one. Both stay supported, so a link to an auction on the other
         // chain still works.
-        supportedChains: [CHAIN_FOR[TEMPO.chainId]!, CHAIN_FOR[HOODI.chainId]!],
+        supportedChains: [CHAIN_FOR[TEMPO.chainId]!],
         defaultChain: CHAIN_FOR[ACTIVE.chainId]!,
         appearance: { theme: 'light', accentColor: '#2563eb' },
       }}

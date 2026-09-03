@@ -386,8 +386,8 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
         </div>
         <div class="sl-limit">
           <span class="ml-chip ml-chip-live">live</span>
-          <p><b>vara.eth settles to hoodi, the chain sealbid already uses.</b> so this is something added
-          beside the auction, not a move. the contracts stay where they are.</p>
+          <p><b>vara.eth settles to ethereum, not to tempo.</b> so this would be something added
+          beside the auction rather than a move, and the contracts stay where they are.</p>
         </div>
         <div class="sl-limit">
           <span class="ml-chip ml-chip-live">live</span>

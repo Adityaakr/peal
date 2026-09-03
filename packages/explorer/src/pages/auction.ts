@@ -1,4 +1,4 @@
-// AuctionKit: the /auction section — a live sealed-bid auction on Ethereum Hoodi.
+// AuctionKit: the /auction section — a live sealed-bid auction on Tempo.
 //
 // This page places a real bid on a real chain. Everything it shows is read from
 // the auction contract; nothing is mocked, and there is no simulated mode to
