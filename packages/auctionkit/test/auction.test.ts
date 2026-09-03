@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BidValidationError, prepareBid, priceLadder, type AuctionConfig } from '../src/auction.js';
 import { bidCommitment } from '../src/commitment.js';
-import { DEPLOYMENTS, deploymentFor, HOODI } from '../src/addresses.js';
+import { DEPLOYMENTS, SUPERSEDED, TEMPO, deploymentFor } from '../src/addresses.js';
 import { escrowFor } from '../src/clearing.js';
 
 const ONE = 10n ** 18n;
@@ -93,9 +93,16 @@ describe('priceLadder', () => {
 });
 
 describe('deploymentFor', () => {
-  it('returns the current Hoodi deployment', () => {
-    expect(HOODI.current).toBe(true);
-    expect(deploymentFor(560048).auctionImplementation).toBe(HOODI.auctionImplementation);
+  it('returns the current Tempo deployment', () => {
+    expect(TEMPO.current).toBe(true);
+    expect(deploymentFor(TEMPO.chainId).auctionImplementation).toBe(TEMPO.auctionImplementation);
+  });
+
+  it('knows only Tempo, so no page can send a transaction to a second chain', () => {
+    expect(Object.keys(DEPLOYMENTS)).toEqual([String(TEMPO.chainId)]);
+    // Hoodi was the other one. A link to it should fail loudly rather than
+    // quietly resolve to a deployment nothing in the app can reach.
+    expect(() => deploymentFor(560048)).toThrow();
   });
 
   it('still refuses any deployment marked stale', () => {
@@ -103,10 +110,18 @@ describe('deploymentFor', () => {
   });
 
   it('names the chains it does know when asked for one it does not', () => {
-    expect(() => deploymentFor(1)).toThrow(/Ethereum Hoodi \(560048\)/);
+    expect(() => deploymentFor(1)).toThrow(/Tempo Moderato \(42431\)/);
   });
 
-  it('still exposes stale entries for tooling that needs the address', () => {
-    expect(DEPLOYMENTS[560048]?.auctionImplementation).toMatch(/^0x[0-9a-fA-F]{40}$/);
+  it('still explains an address it no longer serves', () => {
+    // This used to check that a stale DEPLOYMENTS entry stayed readable. There
+    // are none now that the app is Tempo only, so the thing that has to keep
+    // working is the other half: someone holding a retired address should learn
+    // why it stopped rather than debug a contract we already replaced.
+    for (const [addr, why] of Object.entries(SUPERSEDED)) {
+      expect(addr).toMatch(/^0x[0-9a-fA-F]{40}$/);
+      expect(why).toMatch(/Replaced by 0x[0-9a-fA-F]{40}/);
+    }
+    expect(Object.keys(SUPERSEDED).length).toBeGreaterThan(0);
   });
 });

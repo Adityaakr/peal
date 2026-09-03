@@ -53,30 +53,6 @@ export interface Deployment {
   committeeSetId: Hex;
 }
 
-export const HOODI: Deployment = {
-  chainId: 560048,
-  name: 'Ethereum Hoodi',
-  committeeRegistry: '0xDDDbE56276cCfA46144934D89A6c0cf06f208Ac7',
-  auctionImplementation: '0x5CA49EC0e0dF31beD979290239769862cd99524B',
-  factory: '0x8bc14a5F8910E827AaFf61722522EeC795F32CeF',
-  /** The block the factory was deployed in. Reading AuctionCreated from here
-   * rather than from zero is the difference between a listing that loads and
-   * one no public RPC will finish. */
-  factoryBlock: 3502790n,
-  explorer: 'https://hoodi.etherscan.io',
-  rpcUrl: 'https://rpc.hoodi.ethpandaops.io',
-  gasSymbol: 'ETH',
-  tokens: {
-    saleToken: '0x25526E55ABcED385BE642Fb7A00506D6Fa28dcbF',
-    saleSymbol: 'PEALD',
-    quoteToken: '0xc246151117190833d671004bFB16c91b69b10356',
-    quoteSymbol: 'DUSD',
-    faucet: '0xbB80D8c0546E99Db85cEbf7DC99C521ceC41fB07',
-  },
-  committeeSetId: '0x919713e6844c14557b3da10b2deea33d9c00d70229bedadbb93d81f596d4af85',
-  current: true,
-};
-
 /** Tempo Moderato.
  *
  * Chosen over adding a Vara.eth layer for speed. Tempo settles with ~0.5s
@@ -123,55 +99,23 @@ export const SUPERSEDED: Record<Address, string> = {
   '0x05CB737305f2D4226011b3B50dD43D7a2e2de32b':
     'AuctionKit implementation deployed before fund() dropped its onlyIssuer guard. ' +
     'A factory cannot fund an auction it creates against this one, so createAuction ' +
-    'reverts NotIssuer. Replaced by ' + HOODI.auctionImplementation,
+    'reverts NotIssuer. Replaced by 0x5CA49EC0e0dF31beD979290239769862cd99524B',
   '0x3Ce04CA7a6de3D0603202d8693DB7EC4543B794E':
-    'AuctionFactory pointing at that stale implementation. Replaced by ' + HOODI.factory,
+    'AuctionFactory pointing at that stale implementation. Replaced by 0x8bc14a5F8910E827AaFf61722522EeC795F32CeF',
   '0x3C918e75eb7037e50D5A319fDAa907CCe6048785':
     'AuctionKit implementation deployed before decisions/0004. bidCommitment bound bidId, ' +
     'and one mismatched reveal permanently prevented settlement. Replaced by ' +
-    HOODI.auctionImplementation,
+    '0x5CA49EC0e0dF31beD979290239769862cd99524B',
 };
 
-/** A demo auction, open for bidding on Hoodi.
- *
- * The committee behind it is a prop with publicly derivable keys - see
- * DeployDemoAuction.s.sol. Testnet only, and nobody should be misled about
- * custody. */
-export interface DemoAuction {
-  chainId: number;
-  auction: Address;
-  saleToken: Address;
-  saleSymbol: string;
-  quoteToken: Address;
-  quoteSymbol: string;
-  /** The registered committee set new auctions snapshot. On this testnet its
-   * signing keys are derived from a published string, so it is a prop rather
-   * than custody. See DeployDemoAuction.s.sol. */
-  committeeSetId: Hex;
-  /** Hands out the quote token so anyone can try the auction. No owner, no
-   * admin: it holds a balance and dispenses it under a per-call cap and a
-   * per-address cooldown. */
-  faucet: Address;
-}
-
-export const HOODI_DEMO: DemoAuction = {
-  chainId: 560048,
-  auction: '0x94521876dbE846a1a3eccF6636c2ec8E0BE82091',
-  saleToken: '0xA9228c1ceA27C86f700782e46Bb237e965f23b47',
-  saleSymbol: 'PEALD',
-  quoteToken: '0xfE4315435fC84c30b84D9316a3EE37b48FFBc40E',
-  quoteSymbol: 'DUSD',
-  committeeSetId: '0x919713e6844c14557b3da10b2deea33d9c00d70229bedadbb93d81f596d4af85',
-  faucet: '0xa727B494D1Aae7Ec34C4891D0dcf1426f8eD6C93',
-};
-
+/** One chain. Tempo settles in about half a second and charges gas in a
+ * stablecoin a browser can claim with no key, which is what lets a creator make
+ * an auction without signing in and a bidder enter one holding nothing. A
+ * second chain would mean a chain picker on every page and a wallet that can be
+ * on the wrong one, for no capability this product uses. */
 export const DEPLOYMENTS: Record<number, Deployment> = {
-  [HOODI.chainId]: HOODI,
   [TEMPO.chainId]: TEMPO,
 };
-
-/** Chains a user can pick between, in the order they should be offered. */
-export const CHAINS: Deployment[] = [HOODI, TEMPO];
 
 /** Throws on a stale deployment. Callers that genuinely want the address
  * anyway — a redeploy script, an explorer link — should read `DEPLOYMENTS`
@@ -191,7 +135,7 @@ export function deploymentFor(chainId: number): Deployment {
 }
 
 /** Canonical Multicall3, deployed at the same address on most EVM chains.
- * Verified present on Hoodi (7,619 bytes of code) before being declared here. */
+ * Verified present on Tempo before being declared here. */
 const MULTICALL3: Address = '0xcA11bde05977b3631167028862bE2a173976CA11';
 
 /**
@@ -220,47 +164,21 @@ function chainFor(d: Deployment) {
   });
 }
 
-/** Chain definitions, keyed by id. Multicall3 is verified present on both. */
+/** Chain definitions, keyed by id. */
 export const CHAIN_FOR: Record<number, ReturnType<typeof chainFor>> = {
-  [HOODI.chainId]: chainFor(HOODI),
   [TEMPO.chainId]: chainFor(TEMPO),
 };
 
 export const tempoChain = CHAIN_FOR[TEMPO.chainId]!;
-
-export const hoodiChain = defineChain({
-  id: HOODI.chainId,
-  name: HOODI.name,
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: { default: { http: ['https://rpc.hoodi.ethpandaops.io'] } },
-  blockExplorers: { default: { name: 'Etherscan', url: HOODI.explorer } },
-  contracts: { multicall3: { address: MULTICALL3 } },
-  testnet: true,
-});
-
-/** Permit-capable demo tokens, the defaults for new auctions.
- *
- * The original DUSD is a hand-rolled token with no EIP-2612, so a bid against
- * it will always cost two transactions and two wallet prompts. These are the
- * same demo money with permit, which makes bidding one signature and one
- * transaction. The old tokens still work; auctions quoted in them simply take
- * the approve path.
- */
-export const HOODI_PERMIT_TOKENS = {
-  saleToken: '0x25526E55ABcED385BE642Fb7A00506D6Fa28dcbF' as Address,
-  saleSymbol: 'PEALD',
-  quoteToken: '0xc246151117190833d671004bFB16c91b69b10356' as Address,
-  quoteSymbol: 'DUSD',
-  faucet: '0xbB80D8c0546E99Db85cEbf7DC99C521ceC41fB07' as Address,
-} as const;
 
 /**
  * The chain the app runs on.
  *
  * Tempo, for its ~0.5s deterministic BFT finality: a bid confirms about as fast
  * as the click, which is what the preconfirmation conversation was actually
- * after. Hoodi stays deployed and reachable by address, so nothing that was
- * shared stops working.
+ * after. It is also the only chain this app knows: gas is claimable from the
+ * browser with no key, which is what lets a creator make an auction and a
+ * bidder enter one without signing in.
  *
  * One export rather than a constant repeated across pages, because the failure
  * mode of getting it wrong in one place is a transaction sent to a chain the
