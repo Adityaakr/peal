@@ -289,9 +289,12 @@ EIP-2537 on-chain verification, staking) in [spec/ROADMAP.md](spec/ROADMAP.md).
 | `crates/bte-node` | operator binary (encrypted keystore, outbound-only) |
 | `crates/bte-cli` | ceremony, committee init, e2e driver |
 | `packages/sdk` | `bte-sdk` on npm: TS + inlined wasm, zero bundler config |
-| `packages/explorer` | the disclosure explorer and the encrypted-mempool demo |
+| `packages/live` | `peal-live`: the pure half of Peal Live, no DOM and no network |
+| `packages/explorer` | the disclosure explorer, Peal Live, and the encrypted-mempool demo |
+| `packages/auctionkit` | client for the escrowed, on-chain sealed-bid auctions |
 | `packages/mempool-agents` | relayer, searcher, settler for the mempool demo |
-| `contracts/` | `BteAnchor.sol` plus the mempool contracts (DemoToken, SwapPool, PublicBuilder, PealMempool) |
+| `contracts/` | `BteAnchor.sol`, `PealNames.sol`, and the mempool contracts (DemoToken, SwapPool, PublicBuilder, PealMempool) |
+| `solana/` | a native Solana program that checks a Peal inclusion proof on chain; self-contained, not deployed |
 | `demos/` | sealed-bid auction, byzantine run, anchored variant |
 | `docs/deploy-mempool-railway.md` | deploying the mempool demo to Railway |
 
