@@ -1,0 +1,13 @@
+{
+  "name": "peal-anchor-localnet",
+  "private": true,
+  "type": "module",
+  "description": "Localnet harnesses for the peal-anchor Solana program",
+  "scripts": {
+    "guards": "node guards.mjs",
+    "measure": "node measure.mjs"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0"
+  }
+}
