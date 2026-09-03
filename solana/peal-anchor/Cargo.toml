@@ -1,0 +1,31 @@
+[package]
+name = "peal-anchor"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Solana program anchoring Peal reveal roots, with onchain inclusion verification"
+
+# Its own workspace. The root Cargo.toml builds native binaries for the
+# coordinator and nodes; this builds an SBF object for a different target with a
+# dependency tree that shares nothing with them. Keeping it out of the root
+# workspace means `cargo build` at the repo root is unchanged by this directory
+# existing, which is the same arrangement vara/reveal-engine uses.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+# Set when linking this crate as a library (tests, the CU harness) so two
+# entrypoints do not collide.
+no-entrypoint = []
+
+[dependencies]
+solana-program = "4.1"
+solana-system-interface = { version = "3.3.0", features = ["bincode"] }
+
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
