@@ -7,5 +7,6 @@
   "publicPool": "0x74b6b51f25fdfaab28f7813b3fb93dacdf75bdd3",
   "publicBuilder": "0xe3a704f4b2d3d9010ad6e83bc4a9a0829d107af5",
   "pealPool": "0x0a6ec3fb845c6de4fd7c0379581947844c655445",
-  "pealMempool": "0x387b9b50950ded996776a96f20af9d2106c96bf9"
+  "pealMempool": "0x387b9b50950ded996776a96f20af9d2106c96bf9",
+  "pealNames": "0x98D1a8b4d8C5d36D5D9a357F7fccE17cB0F63D2f"
 }
