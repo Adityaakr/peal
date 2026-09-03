@@ -11,13 +11,13 @@
 import { BteClient } from 'bte-sdk';
 import {
   AmountError, buildBoard, checksum, ctHashOf, encodeBid, formatAmount, parseAmount,
-  sealedBytes, unpackTerms, type Board, type Terms,
+  receiptCode, sealedBytes, unpackTerms, type Board, type Terms,
 } from 'peal-live';
 import { API_BASE, getCondition, getReveal, type ConditionDetail, type Reveal } from '../api';
-import { rememberAuction } from '../live-recent';
+import { isHostOf, rememberAuction } from '../live-recent';
 import { findTermsAnchor } from '../live-chain';
 import { wireCopy } from '../playground';
-import { esc, fmtCountdown, truncMiddle } from '../util';
+import { esc, fmtCountdown } from '../util';
 
 type Cleanup = () => void;
 
@@ -168,11 +168,9 @@ function shell(terms: Terms, code: string): string {
       </div>
       <div id="live-panel"></div>
       <p class="live-anchor" id="live-anchor">${verificationLink(terms)}</p>
-      <p class="live-foot">Bids are encrypted in the browser that makes them, so the seller cannot
-      read one before the close and neither can the other bidders. Opening the batch early would
-      take 3 of the 5 committee operators. The close is kept by our coordinator's clock rather than
-      enforced by the operators, and the committee's keys came from a single setup we ran, so this
-      is a fair reveal, not a trustless one. Nothing is escrowed: a bid is not a payment.</p>
+      <p class="live-foot">Every bid is scrambled on the device that made it, so the seller cannot
+      read one before the close and neither can anyone else bidding. Opening them early takes three
+      of the five keys at once.</p>
     </section>`;
 }
 
@@ -182,15 +180,15 @@ function bidForm(terms: Terms, mine: MyBid | null): string {
       <div class="card live-card live-in">
         <p class="live-in-head">your bid is sealed</p>
         <p class="muted">The seller cannot read it before the close, and neither can the other
-        bidders. Opening it early would take 3 of the 5 committee operators. It opens with
-        everyone else's at the same moment.</p>
-        <p class="live-hash mono">${esc(truncMiddle(mine.ctHash, 12, 10))}
-          <button class="btn live-copy" data-copy="${esc(mine.ctHash)}">copy</button></p>
-        <p class="field-hint">${
+        bidders. Opening it early takes three of the five keys at once. It opens with everyone
+        else's at the same moment.</p>
+        <p class="live-receipt-label">your receipt</p>
+        <p class="live-receipt mono">${esc(receiptCode(mine.ctHash))}</p>
+        <p class="field-hint">When the timer ends, look for this next to your name. ${
           mine.derived
-            ? 'This browser derived that hash from your own ciphertext, so it is not the coordinator&rsquo;s word for it.'
-            : 'That hash is the coordinator&rsquo;s: this browser could not re-read the ciphertext it made.'
-        } It is how you will find your row on the board.</p>
+            ? 'It comes from your own bid, worked out on this device, so it is not us telling you which row is yours: you can see it.'
+            : 'This one came back from the network, because this device could not re-read the bid it made.'
+        }</p>
       </div>`;
   }
   return `
@@ -205,10 +203,11 @@ function bidForm(terms: Terms, mine: MyBid | null): string {
       <input class="live-input" id="live-name" maxlength="24" autocomplete="off" placeholder="anon" />
       <button class="btn btn-primary live-go" id="live-bid">seal my bid</button>
       <p class="live-error" id="live-bid-err" hidden></p>
-      <p class="field-hint">The seller cannot see your bid, and neither can anyone bidding against
-      you. Every bid opens at once when the timer hits zero, so nobody can beat yours by a fraction
-      at the last second.<br />
-      Bid what it is really worth to you. No wallet, no sign up, nothing to install.</p>
+      <p class="field-hint">The seller cannot read your bid, and neither can the person bidding
+      against you. Everything opens at once when the timer hits zero, so no one can sit on your
+      number and top it at the last second.<br />
+      <strong>Bid what it is really worth to you.</strong> No wallet, no sign up, nothing to
+      install.</p>
     </div>`;
 }
 
@@ -248,7 +247,13 @@ function waiting(): string {
     </div>`;
 }
 
-function boardPanel(board: Board, terms: Terms, mine: MyBid | null, passed: ReadonlySet<string>): string {
+function boardPanel(
+  board: Board,
+  terms: Terms,
+  mine: MyBid | null,
+  passed: ReadonlySet<string>,
+  seller: boolean,
+): string {
   if (board.bids.length === 0) {
     return `<div class="card live-card"><p class="live-in-head">no bids</p>
       <p class="muted">The auction closed with nothing sealed to it.</p></div>`;
@@ -257,27 +262,34 @@ function boardPanel(board: Board, terms: Terms, mine: MyBid | null, passed: Read
   // not occupy a place in the line. Passing over the top one is local to this
   // device: nothing here can know whether somebody paid.
   const place = new Map(board.queue.map((b, i) => [b.ctHash, i]));
-  const standing = board.queue.filter((b) => !passed.has(b.ctHash));
+  // Only the seller's own device has worked down the list, so only it applies
+  // that. A bidder always sees the real order: showing them a queue somebody
+  // else had already stepped past would be showing them a result that is not
+  // the auction's.
+  const skipped = seller ? passed : new Set<string>();
+  const standing = board.queue.filter((b) => !skipped.has(b.ctHash));
   const next = standing[0] ?? null;
 
   const rows = board.bids
     .map((b) => {
       const yours = mine !== null && b.ctHash === mine.ctHash;
       const isNext = next?.ctHash === b.ctHash;
-      const skipped = passed.has(b.ctHash);
+      const isSkipped = skipped.has(b.ctHash);
       const rank = place.get(b.ctHash);
-      const cls = ['live-row', isNext ? 'is-won' : '', yours ? 'is-mine' : '', skipped ? 'is-passed' : '']
+      const cls = ['live-row', isNext ? 'is-won' : '', yours ? 'is-mine' : '', isSkipped ? 'is-passed' : '']
         .filter(Boolean).join(' ');
       const why = !b.withinCap
         ? '<span class="live-under">over the maximum</span>'
         : !b.meetsReserve
           ? '<span class="live-under">under the reserve</span>'
-          : skipped
-            ? '<span class="live-under">passed over on this device</span>'
+          : isSkipped
+            ? '<span class="live-under">you marked this one unpaid</span>'
             : '';
       return `<li class="${cls}" data-ct="${esc(b.ctHash)}">
         <span class="live-rank mono">${rank === undefined ? '—' : rank + 1}</span>
-        <span class="live-who">${esc(b.name || 'anon')}${yours ? '<span class="live-tag">you</span>' : ''}</span>
+        <span class="live-who">${esc(b.name || 'anon')}
+          <span class="live-code mono" title="the receipt this bid was sealed under">${esc(receiptCode(b.ctHash))}</span>
+          ${yours ? '<span class="live-tag">you</span>' : ''}</span>
         <span class="live-bidamt mono">${esc(formatAmount(b.amountMinor, terms.decimals))}</span>
         ${why}
       </li>`;
@@ -285,24 +297,27 @@ function boardPanel(board: Board, terms: Terms, mine: MyBid | null, passed: Read
     .join('');
 
   const head = next
-    ? `<p class="live-won">${esc(next.name || 'anon')} is first in line at
+    ? `<p class="live-won">${esc(next.name || 'anon')} ${seller && skipped.size ? 'is next in line at' : 'is first in line at'}
        ${esc(formatAmount(next.amountMinor, terms.decimals))} ${esc(terms.unit)}</p>`
     : board.queue.length
       ? `<p class="live-won">everybody in the queue has been passed over</p>`
       : `<p class="live-won">no winner: no bid landed inside the reserve and the maximum</p>`;
 
-  // The seller works down the list out loud. Nothing about payment can live in
-  // the auction, so this control is explicitly this browser's note to itself
-  // rather than a change to the result everyone else sees.
-  const control = next
-    ? `<button class="btn live-pass" id="live-pass" data-ct="${esc(next.ctHash)}">
-         they did not pay, go to the next
-       </button>
-       <p class="field-hint">only on this device. the batch and its order are the record; who
-       actually paid is not something this page can know.</p>`
-    : passed.size
-      ? `<button class="btn live-pass" id="live-unpass">start the list again</button>`
-      : '';
+  // Seller only, and it used to be shown to everybody. A bidder could press it,
+  // watch their own name move to the top, and be told they had won. It changes
+  // nothing anyone else sees, which made it worse rather than harmless: the page
+  // was telling one person a result that was not real.
+  const control = !seller
+    ? ''
+    : next
+      ? `<button class="btn live-pass" id="live-pass" data-ct="${esc(next.ctHash)}">
+           ${esc(next.name || 'anon')} did not pay, go to the next
+         </button>
+         <p class="field-hint">Your list, on this device only. Nobody else's page changes, because
+         whether someone paid happens somewhere this page cannot see.</p>`
+      : skipped.size
+        ? `<button class="btn live-pass" id="live-unpass">start the list again</button>`
+        : '';
 
   const replayed = board.discarded.filter((d) => d.reason === 'other-auction').length;
   const outside = board.bids.length - board.queue.length;
@@ -343,6 +358,9 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
   let reveal: Reveal | null = null;
   let mine: MyBid | null = readMyBid(terms.auctionId);
   let passed: Set<string> = readPassed(terms.auctionId);
+  /** Whether this browser created the auction. Decides whether the seller's
+   * controls are offered at all. */
+  const seller = isHostOf(packed);
   let phase: 'open' | 'waiting' | 'done' | null = null;
   let sealing = false;
   /** Survives a repaint. See noticeHtml. */
@@ -428,7 +446,7 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
     panel.innerHTML =
       noticeHtml(notice) +
       (next === 'done' && reveal
-        ? boardPanel(buildBoard(reveal.slots, terms), terms, mine, passed)
+        ? boardPanel(buildBoard(reveal.slots, terms), terms, mine, passed, seller)
         : next === 'waiting'
           ? waiting()
           : bidForm(terms, mine));

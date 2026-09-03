@@ -5162,3 +5162,47 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
   max-width: 100%;
   max-height: 320px;
 }
+
+/* The one instruction in the hint, which is the only line a bidder has to act
+   on. Muted grey at bold weight reads as emphasis without shouting; the darker
+   colour is what actually makes it land. */
+.field-hint strong {
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* The receipt.
+   A sixty four character hash with a copy button gave a bidder something with
+   nowhere to go. Six characters they can read off their own screen and find on
+   the board is the check a person actually performs, and it does not rely on
+   this page's word about which row is theirs. */
+.live-receipt-label {
+  margin: 8px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+
+.live-receipt {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+}
+
+/* The same code beside a row, so the two can be matched by eye. */
+.live-code {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted-soft);
+  background: var(--surface);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+
+.live-row.is-mine .live-code {
+  color: var(--accent);
+  background: var(--accent-weak);
+}
