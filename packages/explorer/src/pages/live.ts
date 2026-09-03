@@ -10,11 +10,12 @@
 // server which auction was opened.
 import { BteClient } from 'bte-sdk';
 import {
-  AmountError, buildBoard, checksum, ctHashOf, encodeBid, formatAmount, parseAmount,
-  receiptCode, sealedBytes, unpackTerms, type Board, type Terms,
+  AmountError, MAX_CONTACT_BYTES, buildBoard, checksum, ctHashOf, decodeBid, encodeBid,
+  formatAmount, openContact, parseAmount, receiptCode, sealContact, sealedBytes, unpackTerms,
+  type Board, type Terms,
 } from 'peal-live';
 import { API_BASE, getCondition, getReveal, type ConditionDetail, type Reveal } from '../api';
-import { isHostOf, rememberAuction } from '../live-recent';
+import { isHostOf, readSellerKey, rememberAuction } from '../live-recent';
 import { findTermsAnchor } from '../live-chain';
 import { wireCopy } from '../playground';
 import { esc, fmtCountdown } from '../util';
@@ -151,6 +152,7 @@ function shell(terms: Terms, code: string): string {
       <p class="live-kicker">peal live</p>
       <h1 class="live-title">${esc(terms.title)}</h1>
       ${reserve}
+      ${terms.description ? `<p class="live-about">${esc(terms.description)}</p>` : ''}
       ${picture}
       <div class="live-meta">
         <div class="live-meta-cell">
@@ -201,6 +203,13 @@ function bidForm(terms: Terms, mine: MyBid | null): string {
       </div>
       <label class="live-label" for="live-name">name on the board</label>
       <input class="live-input" id="live-name" maxlength="24" autocomplete="off" placeholder="anon" />
+      ${terms.contactKey ? `
+      <label class="live-label" for="live-contact">how the seller can reach you</label>
+      <input class="live-input" id="live-contact" maxlength="${MAX_CONTACT_BYTES - 1}"
+             autocomplete="off" placeholder="a number, a handle, an email" />
+      <p class="field-hint">Optional, and only the seller can read it. It is locked to their key
+      on this device before it is sent, so when every bid opens the other bidders see nothing here
+      but scrambled bytes.</p>` : ''}
       <button class="btn btn-primary live-go" id="live-bid">seal my bid</button>
       <p class="live-error" id="live-bid-err" hidden></p>
       <p class="field-hint">The seller cannot read your bid, and neither can the person bidding
@@ -253,6 +262,7 @@ function boardPanel(
   mine: MyBid | null,
   passed: ReadonlySet<string>,
   seller: boolean,
+  contacts: ReadonlyMap<string, string>,
 ): string {
   if (board.bids.length === 0) {
     return `<div class="card live-card"><p class="live-in-head">no bids</p>
@@ -278,6 +288,9 @@ function boardPanel(
       const rank = place.get(b.ctHash);
       const cls = ['live-row', isNext ? 'is-won' : '', yours ? 'is-mine' : '', isSkipped ? 'is-passed' : '']
         .filter(Boolean).join(' ');
+      // Only ever populated on the seller's device: opening one needs the key
+      // that never left it.
+      const reach = contacts.get(b.ctHash);
       const why = !b.withinCap
         ? '<span class="live-under">over the maximum</span>'
         : !b.meetsReserve
@@ -292,6 +305,7 @@ function boardPanel(
           ${yours ? '<span class="live-tag">you</span>' : ''}</span>
         <span class="live-bidamt mono">${esc(formatAmount(b.amountMinor, terms.decimals))}</span>
         ${why}
+        ${reach ? `<span class="live-reach">${esc(reach)}</span>` : ''}
       </li>`;
     })
     .join('');
@@ -358,6 +372,10 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
   let reveal: Reveal | null = null;
   let mine: MyBid | null = readMyBid(terms.auctionId);
   let passed: Set<string> = readPassed(terms.auctionId);
+  /** Contact details, opened with the seller's own key. Empty on every other
+   * device, because opening one needs a key that only exists on theirs. */
+  const contacts = new Map<string, string>();
+  let contactsFor: string | null = null;
   /** Whether this browser created the auction. Decides whether the seller's
    * controls are offered at all. */
   const seller = isHostOf(packed);
@@ -446,7 +464,7 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
     panel.innerHTML =
       noticeHtml(notice) +
       (next === 'done' && reveal
-        ? boardPanel(buildBoard(reveal.slots, terms), terms, mine, passed, seller)
+        ? boardPanel(buildBoard(reveal.slots, terms), terms, mine, passed, seller, contacts)
         : next === 'waiting'
           ? waiting()
           : bidForm(terms, mine));
@@ -504,8 +522,18 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
       go.disabled = true;
       go.textContent = 'sealing…';
       try {
+        const typedContact = panel.querySelector<HTMLInputElement>('#live-contact')?.value.trim() ?? '';
+        let contact: Uint8Array | null = null;
+        if (terms.contactKey && typedContact) {
+          try {
+            contact = await sealContact(terms.contactKey, typedContact);
+          } catch (e) {
+            show(e instanceof Error ? e.message : 'those contact details could not be locked.');
+            return;
+          }
+        }
         const bytes = encodeBid({
-          auctionId: terms.auctionId, amountMinor, name: nameEl.value.trim().slice(0, 24),
+          auctionId: terms.auctionId, amountMinor, name: nameEl.value.trim().slice(0, 24), contact,
         });
         const { ctHash, sealedB64 } = await client.seal(bytes, terms.auctionId);
         // Clear the typed amount as soon as it has been sealed. It is not
@@ -558,6 +586,31 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
     });
   }
 
+  /** Open every contact this device holds the key for.
+   *
+   * Runs once per reveal, on the seller's device only. Every other browser has
+   * the same bytes and no way through them, which is the whole arrangement. */
+  async function openContacts(r: Reveal): Promise<void> {
+    if (!seller || !terms.contactKey || contactsFor === r.condition_id) return;
+    contactsFor = r.condition_id;
+    const key = readSellerKey(terms.auctionId);
+    if (!key) return;
+
+    const board = buildBoard(r.slots, terms);
+    for (const entry of board.bids) {
+      const slot = r.slots.find((s) => s.ct_hash === entry.ctHash);
+      if (!slot) continue;
+      // The same base64 the board already decoded, opened once more here for
+      // the one field the board cannot show without a key.
+      const bytes = sealedBytes(slot.payload_b64);
+      const bid = bytes ? decodeBid(bytes) : null;
+      if (!bid?.contact) continue;
+      const opened = await openContact(key, bid.contact);
+      if (opened) contacts.set(entry.ctHash, opened);
+    }
+    if (!stale && contacts.size) paintPanel(true);
+  }
+
   async function poll(): Promise<void> {
     if (missing) return;
     try {
@@ -566,6 +619,7 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
       if (stale) return;
       if (!reveal && condition.status === 'revealed') {
         reveal = await getReveal(terms.auctionId);
+        if (reveal) void openContacts(reveal);
       }
     } catch {
       if (stale) return;

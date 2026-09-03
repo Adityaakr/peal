@@ -104,3 +104,34 @@ export function forgetAuctions(): void {
 export function isHostOf(packed: string): boolean {
   return read().some((a) => a.packed === packed && a.role === 'host');
 }
+
+/** The seller's private key for one auction.
+ *
+ * Kept beside the list of auctions this browser made, because it is the same
+ * kind of thing: state that only means anything on this device. It is the only
+ * copy. Nothing can read a bidder's contact details without it, which is the
+ * point, and which is also why losing this browser loses them for good.
+ */
+function keyStore(auctionId: string): string {
+  return `peal-live-key:${auctionId}`;
+}
+
+export function rememberSellerKey(auctionId: string, privateKey: JsonWebKey): void {
+  try {
+    localStorage.setItem(keyStore(auctionId), JSON.stringify(privateKey));
+  } catch {
+    // Private windows refuse storage. The auction still runs; its contact
+    // details simply become unreadable, which the create page warns about.
+  }
+}
+
+export function readSellerKey(auctionId: string): JsonWebKey | null {
+  try {
+    const raw = localStorage.getItem(keyStore(auctionId));
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null ? (parsed as JsonWebKey) : null;
+  } catch {
+    return null;
+  }
+}

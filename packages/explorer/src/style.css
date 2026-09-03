@@ -5276,3 +5276,54 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
   border: 1px solid var(--border);
   border-radius: 999px;
 }
+
+/* What the seller wrote about the item, above the picture and below the title.
+   A title says what a thing is; this is where they say why anyone should want
+   it. Part of the terms, so the check code covers these words too. */
+.live-about {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The same words on the create form, as a box that can actually hold a
+   paragraph rather than a single line input. */
+.live-about,
+textarea.live-input {
+  font: inherit;
+}
+
+textarea.live-input {
+  min-height: 84px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+/* Contact details, on the seller's screen only. Every other browser has the
+   same bytes and no key, so this row simply is not there for them. */
+.live-reach {
+  grid-column: 2 / -1;
+  font-size: 12.5px;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+/* Asking bidders for a way to be reached. */
+.live-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 10px 0 0;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.live-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}

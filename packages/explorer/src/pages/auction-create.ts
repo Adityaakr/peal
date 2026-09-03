@@ -29,13 +29,16 @@ import {
 } from 'viem';
 import { BteClient } from 'bte-sdk';
 import {
-  AmountError, checksum, currencyLabel, findCurrency, imageProblem, liveLink, nameLink,
-  nameProblem, normalizeName, packTerms, parseAmount, registryProblem, searchCurrencies,
-  type Terms,
+  AmountError, MAX_DESCRIPTION_CHARS, checksum, currencyLabel, findCurrency, generateSellerKeys,
+  imageProblem,
+  liveLink, nameLink, nameProblem, normalizeName, packTerms, parseAmount, registryProblem,
+  searchCurrencies, type Terms,
 } from 'peal-live';
 import { API_BASE } from '../api';
 import { anchorTerms, claimName, fundedWallet, namesAvailable } from '../live-chain';
-import { forgetAuctions, recentAuctions, rememberAuction } from '../live-recent';
+import {
+  forgetAuctions, recentAuctions, rememberAuction, rememberSellerKey,
+} from '../live-recent';
 import { session, onAuthChange, type Eip1193Like } from '../auth';
 import { recordTx, txlogHtml, onTxLogChange } from '../txlog';
 import { esc } from '../util';
@@ -301,11 +304,13 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
    * read, so a custom duration was silently replaced by the field's default. */
   const liveDraft = {
     item: '',
+    about: '',
     image: '',
     name: '',
     reserve: '',
     max: '',
     unit: 'USD',
+    contact: false,
     amount: '30',
     unitTime: 'minutes',
     closeAtLocal: unixToLocalInput(Math.floor(Date.now() / 1000) + 1800),
@@ -322,6 +327,10 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
     if (name !== null) liveDraft.name = name;
     const image = read('c-live-image');
     if (image !== null) liveDraft.image = image;
+    const about = read('c-live-about');
+    if (about !== null) liveDraft.about = about;
+    const contact = root.querySelector<HTMLInputElement>('#c-live-contact');
+    if (contact) liveDraft.contact = contact.checked;
     const reserve = read('c-live-reserve');
     if (reserve !== null) liveDraft.reserve = reserve;
     const max = read('c-live-max');
@@ -755,6 +764,13 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
         <div class="sl-fieldset">
           <h3>what you are selling</h3>
           ${field('c-live-item', 'item', liveDraft.item, 'shown to everyone who opens your link')}
+          <label>details <span>optional, up to ${MAX_DESCRIPTION_CHARS} characters</span>
+            <textarea id="c-live-about" class="live-input live-about" rows="3" maxlength="${MAX_DESCRIPTION_CHARS}"
+                      placeholder="condition, size, what is included, how you will hand it over">${esc(liveDraft.about)}</textarea>
+          </label>
+          <p class="ak-hint">a title says what it is. this says why somebody should want it, and it
+          is part of what the check code covers, so nobody can change the words after you share the
+          link.</p>
           ${field('c-live-image', 'picture', liveDraft.image, 'optional, an https link to an image', 'url')}
           <div class="live-preview" id="c-live-preview" hidden>
             <img alt="" referrerpolicy="no-referrer" />
@@ -829,6 +845,14 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
           and a dinar has three.</p>
           ${field('c-live-reserve', 'reserve', liveDraft.reserve, 'optional, nothing below it can win', 'decimal')}
           ${field('c-live-max', 'most you would believe', liveDraft.max, 'optional, nothing above it can win', 'decimal')}
+          <label class="live-check">
+            <input type="checkbox" id="c-live-contact"${liveDraft.contact ? ' checked' : ''} />
+            <span>ask bidders how to reach them</span>
+          </label>
+          <p class="ak-hint">a bidder can leave a number or a handle with their bid. it is
+          encrypted to a key made here, on this device, and it is the only copy: every other bidder
+          sees an unreadable blob when the batch opens, and so would we. lose this browser and you
+          lose the details with it.</p>
           <p class="ak-hint">nothing is escrowed here, so a bid costs nothing to make and somebody
           can type a number they have no intention of paying. a ceiling bounds that: a joke bid of
           ninety nine million cannot take your auction, and the result moves down the list to the
@@ -1106,6 +1130,20 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
     const closeAt = liveCloseAt();
     if (closeAt === null) return;
 
+    // The keypair, when contact details were asked for. Made before anything
+    // else so the size check below measures the real terms, and so a failure
+    // here costs nothing that already exists.
+    let keys: Awaited<ReturnType<typeof generateSellerKeys>> | null = null;
+    if (liveDraft.contact) {
+      try {
+        keys = await generateSellerKeys();
+      } catch {
+        liveErr = 'this browser cannot make the key that keeps contact details private.';
+        draw();
+        return;
+      }
+    }
+
     // The name registry caps the terms it will store, and the contract cannot be
     // changed. Check it here, against a stand-in id of the length the
     // coordinator always mints, so a seller is told to shorten something BEFORE
@@ -1115,7 +1153,8 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
       const tooBig = registryProblem({
         auctionId: 'c'.repeat(29),
         title, unit: unit.code, decimals: unit.decimals, closeAt, reserveMinor, maxMinor,
-        image: image || null,
+        image: image || null, description: liveDraft.about.trim() || null,
+        contactKey: keys?.publicKey ?? null,
       });
       if (tooBig) {
         liveErr = `${tooBig}.`;
@@ -1131,9 +1170,12 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
       // instant so a bidder can count down without a round trip, but the
       // coordinator acts on its copy rather than on the one in the link.
       const auctionId = await live.condition({ at: closeAt, tag: 'live:auction' });
+      if (keys) rememberSellerKey(auctionId, keys.privateKey);
       const terms: Terms = {
         auctionId, title, unit: unit.code, decimals: unit.decimals, closeAt, reserveMinor, maxMinor,
         image: image || null,
+        description: liveDraft.about.trim() || null,
+        contactKey: keys?.publicKey ?? null,
       };
       liveTerms = terms;
       liveUrl = liveLink(location, terms);
@@ -1297,6 +1339,7 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
       // The item and the short link are the two that must not carry over: one
       // is a different thing being sold, and the other can never be reused.
       liveDraft.item = '';
+      liveDraft.about = '';
       liveDraft.image = '';
       liveDraft.name = '';
       draw();
