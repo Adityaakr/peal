@@ -3,9 +3,24 @@ packages:
   - demos/*
   - examples
   - examples/vite-page
+
+# Which dependencies may run a build script on install.
+#
+# pnpm 11 refuses to install while any of these is undecided, and these four sat
+# as the literal string "set this to true or false" until a lockfile change
+# busted the Docker layer cache and the image build started failing on it. The
+# placeholder was never doing anything: an unanswered entry behaves as ignored,
+# so `false` is what has been happening all along and changes nothing about what
+# gets installed. It just says so out loud, where pnpm will accept it.
+#
+# All four are optional native addons with working JavaScript fallbacks, and
+# nothing here needs a compiler in the image to build a static site:
+#   bufferutil, utf-8-validate  speed up ws; it works without them
+#   keccak                      native hashing; the JS path is what the bundle uses
+#   @reown/appkit               a postinstall the web build does not need
 allowBuilds:
-  '@reown/appkit': set this to true or false
-  bufferutil: set this to true or false
+  '@reown/appkit': false
+  bufferutil: false
   esbuild: true
-  keccak: set this to true or false
-  utf-8-validate: set this to true or false
+  keccak: false
+  utf-8-validate: false
