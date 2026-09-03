@@ -4685,6 +4685,34 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
   font-size: 15px;
 }
 
+/* The currency the bidder is typing in. Styled as the unit it replaces rather
+   than as a form control, so the row still reads "0.00 USD" and the choice is
+   discovered by anyone who looks for it. */
+.live-unit-pick {
+  font: inherit;
+  font-size: 15px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  max-width: 7.5em;
+}
+
+.live-unit-pick:hover,
+.live-unit-pick:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* What will actually be committed, shown before it is. */
+.live-convert {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .live-chips {
   display: flex;
   flex-wrap: wrap;
@@ -4878,6 +4906,31 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 .live-bidamt {
   font-size: 17px;
   font-variant-numeric: tabular-nums;
+}
+
+/* What the bidder typed, under what it converted to. Secondary on purpose: the
+   figure above it is the one the auction ranks on. */
+.live-origin {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.live-totals {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.live-total-main {
+  margin: 0;
+  font-size: 16px;
+}
+
+.live-total-alt {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .live-under {

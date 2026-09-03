@@ -10,12 +10,15 @@
 // server which auction was opened.
 import { BteClient } from 'bte-sdk';
 import {
-  AmountError, MAX_CONTACT_BYTES, buildBoard, checksum, ctHashOf, decodeBid, encodeBid,
+  AmountError, CURRENCIES, MAX_CONTACT_BYTES, buildBoard, canConvert, checksum, convertMinor,
+  crossRate, ctHashOf, decodeBid, encodeBid, findCurrency, isStale,
+  type BidOrigin, type RateTable,
   formatAmount, openContact, parseAmount, receiptCode, sealContact, sealedBytes, unpackTerms,
   type Board, type Terms,
 } from 'peal-live';
 import { API_BASE, getCondition, getReveal, type ConditionDetail, type Reveal } from '../api';
 import { isHostOf, readSellerKey, rememberAuction } from '../live-recent';
+import { cachedRates, rates } from '../live-rates';
 import { findTermsAnchor } from '../live-chain';
 import { wireCopy } from '../playground';
 import { esc, fmtCountdown } from '../util';
@@ -176,7 +179,12 @@ function shell(terms: Terms, code: string): string {
     </section>`;
 }
 
-function bidForm(terms: Terms, mine: MyBid | null): string {
+function bidForm(
+  terms: Terms,
+  mine: MyBid | null,
+  table: RateTable | null,
+  bidCurrency: string,
+): string {
   if (mine) {
     return `
       <div class="card live-card live-in">
@@ -193,14 +201,29 @@ function bidForm(terms: Terms, mine: MyBid | null): string {
         }</p>
       </div>`;
   }
+  // The currency picker only appears once rates are in hand. Without them
+  // there is nothing honest to convert with, so the form is exactly what it
+  // was: one currency, the auction's own.
+  const chosen = findCurrency(bidCurrency) ?? findCurrency(terms.unit);
+  const decimals = chosen?.decimals ?? terms.decimals;
+  const options = table
+    ? CURRENCIES.filter((c) => canConvert(table, c.code, terms.unit))
+    : [];
   return `
     <div class="card live-card">
       <label class="live-label" for="live-amount">your bid</label>
       <div class="live-amountrow">
         <input class="live-input live-amount" id="live-amount" inputmode="decimal"
-               autocomplete="off" placeholder="0${terms.decimals ? '.00' : ''}" />
-        <span class="live-unit">${esc(terms.unit)}</span>
+               autocomplete="off" placeholder="0${decimals ? '.00' : ''}" />
+        ${options.length > 1
+          ? `<select class="live-unit live-unit-pick" id="live-currency"
+                     aria-label="the currency you are bidding in">
+              ${options.map((c) => `<option value="${esc(c.code)}"${
+                c.code === bidCurrency ? ' selected' : ''}>${esc(c.code)}</option>`).join('')}
+            </select>`
+          : `<span class="live-unit">${esc(terms.unit)}</span>`}
       </div>
+      <p class="live-convert" id="live-convert" hidden></p>
       <label class="live-label" for="live-name">name on the board</label>
       <input class="live-input" id="live-name" maxlength="24" autocomplete="off" placeholder="anon" />
       ${terms.contactKey ? `
@@ -256,6 +279,58 @@ function waiting(): string {
     </div>`;
 }
 
+/** What the auction raised, in the auction's currency and in the ones its
+ * bidders used.
+ *
+ * The first figure is the real one: every bid was committed in the auction's
+ * currency and this is their sum, exact and reproducible from the reveal alone.
+ * The rest are that same total priced in other currencies at today's daily
+ * rate, which is a different kind of number and is labelled as one. It moves
+ * tomorrow; the total does not.
+ *
+ * Which currencies are shown is decided by the bidders: the ones people
+ * actually bid in, plus the auction's own. A fixed list would show a Nepali
+ * seller a column of yen.
+ */
+function totalsPanel(board: Board, terms: Terms, table: RateTable | null): string {
+  if (board.queue.length === 0) return '';
+
+  // The queue, not every bid: a bid over the maximum or under the reserve was
+  // never money the seller could take.
+  const totalMinor = board.queue.reduce((sum, b) => sum + b.amountMinor, 0);
+  const primary = `${formatAmount(totalMinor, terms.decimals)} ${terms.unit}`;
+
+  const used = new Set(board.queue.map((b) => b.origin?.code).filter((c): c is string => !!c));
+  used.delete(terms.unit);
+  const others = [...used]
+    .map((code) => {
+      const to = findCurrency(code);
+      const rate = table && to ? crossRate(table, terms.unit, code) : null;
+      if (!to || rate === null) return null;
+      const converted = convertMinor(totalMinor, terms.decimals, to.decimals, rate);
+      return `${formatAmount(converted, to.decimals)} ${to.code}`;
+    })
+    .filter((x): x is string => x !== null);
+
+  const dated = table
+    ? new Date(table.asOf).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+    : null;
+
+  return `
+    <div class="live-totals">
+      <p class="live-total-main">raised <strong>${esc(primary)}</strong>
+        <span class="muted">across ${board.queue.length} bid${board.queue.length === 1 ? '' : 's'}
+        in the queue</span></p>
+      ${others.length
+        ? `<p class="live-total-alt">about ${esc(others.join(' · '))}${
+             dated ? `, at the daily rate for ${esc(dated)}` : ''}</p>`
+        : ''}
+      <p class="field-hint">The first figure is what was bid, and it does not change. The others are
+      that same total priced today, so they will read differently tomorrow. Nothing was escrowed, so
+      this is what people committed to rather than what has been collected.</p>
+    </div>`;
+}
+
 function boardPanel(
   board: Board,
   terms: Terms,
@@ -263,6 +338,7 @@ function boardPanel(
   passed: ReadonlySet<string>,
   seller: boolean,
   contacts: ReadonlyMap<string, string>,
+  table: RateTable | null,
 ): string {
   if (board.bids.length === 0) {
     return `<div class="card live-card"><p class="live-in-head">no bids</p>
@@ -303,7 +379,11 @@ function boardPanel(
         <span class="live-who">${esc(b.name || 'anon')}
           <span class="live-code mono" title="the receipt this bid was sealed under">${esc(receiptCode(b.ctHash))}</span>
           ${yours ? '<span class="live-tag">you</span>' : ''}</span>
-        <span class="live-bidamt mono">${esc(formatAmount(b.amountMinor, terms.decimals))}</span>
+        <span class="live-bidamt mono">${esc(formatAmount(b.amountMinor, terms.decimals))}${
+          b.origin
+            ? `<span class="live-origin" title="what this bidder typed, converted when they bid"
+                     >${esc(`${formatAmount(b.origin.amountMinor, b.origin.decimals)} ${b.origin.code}`)}</span>`
+            : ''}</span>
         ${why}
         ${reach ? `<span class="live-reach">${esc(reach)}</span>` : ''}
       </li>`;
@@ -333,6 +413,8 @@ function boardPanel(
         ? `<button class="btn live-pass" id="live-unpass">start the list again</button>`
         : '';
 
+  const totals = totalsPanel(board, terms, table);
+
   const replayed = board.discarded.filter((d) => d.reason === 'other-auction').length;
   const outside = board.bids.length - board.queue.length;
   const notes = [
@@ -346,6 +428,7 @@ function boardPanel(
     <div class="card live-card">
       ${head}
       <ol class="live-board">${rows}</ol>
+      ${totals}
       ${control}
       <p class="field-hint">${esc(notes.join(' · '))}. Ties break on the batch's own ordering, which
       comes from the ciphertext hashes and is not the order bids arrived in. Nothing was escrowed,
@@ -371,6 +454,21 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
   let condition: ConditionDetail | null = null;
   let reveal: Reveal | null = null;
   let mine: MyBid | null = readMyBid(terms.auctionId);
+  /** Rates for the currency picker. Starts with whatever this device already
+   * cached, so the picker is there on first paint rather than appearing a
+   * second later, and is refreshed in the background. */
+  let rateTable: RateTable | null = cachedRates();
+  /** What the bidder is typing in. The auction's own currency until they say
+   * otherwise, so the default is always the one that needs no conversion. */
+  let bidCurrency = terms.unit;
+
+  // Refreshed in the background. The form is already usable with the auction's
+  // own currency, so this only ever adds choices; it never gates the bid.
+  void rates().then((table) => {
+    if (!table || table === rateTable) return;
+    rateTable = table;
+    if (phase === 'open' && !mine) paintPanel(true);
+  });
   let passed: Set<string> = readPassed(terms.auctionId);
   /** Contact details, opened with the seller's own key. Empty on every other
    * device, because opening one needs a key that only exists on theirs. */
@@ -464,10 +562,10 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
     panel.innerHTML =
       noticeHtml(notice) +
       (next === 'done' && reveal
-        ? boardPanel(buildBoard(reveal.slots, terms), terms, mine, passed, seller, contacts)
+        ? boardPanel(buildBoard(reveal.slots, terms), terms, mine, passed, seller, contacts, rateTable)
         : next === 'waiting'
           ? waiting()
-          : bidForm(terms, mine));
+          : bidForm(terms, mine, rateTable, bidCurrency));
     wireCopy(panel);
     if (next === 'open' && !mine) wireBid(panel);
 
@@ -485,12 +583,75 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
     });
   }
 
+  /** What the bidder typed, converted into the auction's currency.
+   *
+   * Returns null when no conversion is needed or possible. Throws only what
+   * parseAmount throws, so the caller reports one kind of error.
+   */
+  function convertTyped(typed: string): { committed: number; origin: BidOrigin } | null {
+    if (bidCurrency === terms.unit) return null;
+    const from = findCurrency(bidCurrency);
+    const rate = rateTable && from ? crossRate(rateTable, bidCurrency, terms.unit) : null;
+    if (!from || rate === null) return null;
+
+    const amountMinor = parseAmount(typed, from.decimals);
+    return {
+      committed: convertMinor(amountMinor, from.decimals, terms.decimals, rate),
+      origin: { code: from.code, amountMinor, decimals: from.decimals },
+    };
+  }
+
   function wireBid(panel: HTMLElement): void {
     const go = panel.querySelector<HTMLButtonElement>('#live-bid');
     const err = panel.querySelector<HTMLElement>('#live-bid-err');
     const amountEl = panel.querySelector<HTMLInputElement>('#live-amount');
     const nameEl = panel.querySelector<HTMLInputElement>('#live-name');
     if (!go || !err || !amountEl || !nameEl) return;
+
+    const pick = panel.querySelector<HTMLSelectElement>('#live-currency');
+    const convertEl = panel.querySelector<HTMLElement>('#live-convert');
+
+    /** Show what will actually be committed, before it is committed.
+     *
+     * The converted figure IS the bid, so a bidder must see it while they can
+     * still change their mind. Anything unparseable simply shows nothing:
+     * complaining about a half-typed number as it is typed is noise. */
+    const preview = (): void => {
+      if (!convertEl) return;
+      if (bidCurrency === terms.unit) {
+        convertEl.hidden = true;
+        return;
+      }
+      let converted: { committed: number; origin: BidOrigin } | null = null;
+      try {
+        converted = convertTyped(amountEl.value);
+      } catch {
+        converted = null;
+      }
+      if (!converted || !amountEl.value.trim()) {
+        convertEl.hidden = true;
+        return;
+      }
+      const when = rateTable ? new Date(rateTable.asOf) : null;
+      const dated = when
+        ? when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+        : 'today';
+      // "Daily", not "live". The provider republishes once a day and saying
+      // otherwise would be a small lie on a page that asks to be believed.
+      const old = rateTable && isStale(rateTable) ? ' this rate is more than a day old.' : '';
+      convertEl.textContent =
+        `you are bidding ${formatAmount(converted.committed, terms.decimals)} ${terms.unit}.`
+        + ` converted at the daily rate for ${dated}.${old}`;
+      convertEl.hidden = false;
+    };
+
+    amountEl.addEventListener('input', preview);
+    pick?.addEventListener('change', () => {
+      bidCurrency = pick.value;
+      amountEl.placeholder = (findCurrency(bidCurrency)?.decimals ?? terms.decimals) ? '0.00' : '0';
+      preview();
+    });
+    preview();
 
     const show = (message: string): void => {
       err.textContent = message;
@@ -511,8 +672,26 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
       }
 
       let amountMinor: number;
+      let origin: BidOrigin | null = null;
       try {
-        amountMinor = parseAmount(amountEl.value, terms.decimals);
+        const converted = convertTyped(amountEl.value);
+        if (converted) {
+          // What gets committed and ranked is the converted figure, which the
+          // line under the input has been showing all along.
+          amountMinor = converted.committed;
+          origin = converted.origin;
+          if (amountMinor <= 0) {
+            show(`that is too small to be a bid in ${terms.unit}.`);
+            return;
+          }
+        } else if (bidCurrency !== terms.unit) {
+          // The picker offered a currency the rates can no longer price. Bid in
+          // the auction's own rather than guess at a rate.
+          show(`that currency cannot be converted right now. bid in ${terms.unit} instead.`);
+          return;
+        } else {
+          amountMinor = parseAmount(amountEl.value, terms.decimals);
+        }
       } catch (e) {
         show(e instanceof AmountError ? e.message : 'that is not an amount.');
         return;
@@ -534,6 +713,7 @@ export function renderLive(root: HTMLElement, packed: string): Cleanup {
         }
         const bytes = encodeBid({
           auctionId: terms.auctionId, amountMinor, name: nameEl.value.trim().slice(0, 24), contact,
+          origin,
         });
         const { ctHash, sealedB64 } = await client.seal(bytes, terms.auctionId);
         // Clear the typed amount as soon as it has been sealed. It is not
