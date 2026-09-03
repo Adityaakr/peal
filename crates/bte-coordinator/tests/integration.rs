@@ -810,3 +810,44 @@ async fn oversize_payload_is_still_rejected() {
         "exactly the cap must be accepted"
     );
 }
+
+#[tokio::test]
+async fn listing_conditions_reports_how_many_exist_not_how_many_fit() {
+    // The list is capped at 100. A client counting the array it received would
+    // report 100 forever once the network passed that, which reads as nothing
+    // happening at exactly the moment the most is.
+    let h = harness().await;
+
+    let body: Value = h
+        .client
+        .get(format!("{}/v0/conditions", h.base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["total"].as_i64().unwrap(), 0);
+
+    for _ in 0..3 {
+        let (status, _) = h
+            .post(
+                "/v0/conditions",
+                json!({"committee_id": h.committee_id, "in_secs": 600}),
+            )
+            .await;
+        assert_eq!(status, 200);
+    }
+
+    let body: Value = h
+        .client
+        .get(format!("{}/v0/conditions", h.base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["total"].as_i64().unwrap(), 3);
+    assert_eq!(body["conditions"].as_array().unwrap().len(), 3);
+}

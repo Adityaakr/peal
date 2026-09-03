@@ -109,9 +109,23 @@ export function getCommittee(): Promise<CommitteeDetail> {
   return get<CommitteeDetail>('/v0/committees/default');
 }
 
+export interface ConditionList {
+  conditions: ConditionSummary[];
+  /** How many exist, which is not how many were returned: the endpoint caps the
+   * list. Absent on a coordinator that predates the field. */
+  total: number | null;
+}
+
 export async function listConditions(): Promise<ConditionSummary[]> {
-  const body = await get<{ conditions: ConditionSummary[] }>('/v0/conditions');
-  return body.conditions;
+  return (await listConditionsWithTotal()).conditions;
+}
+
+export async function listConditionsWithTotal(): Promise<ConditionList> {
+  const body = await get<{ conditions: ConditionSummary[]; total?: number }>('/v0/conditions');
+  return {
+    conditions: body.conditions,
+    total: typeof body.total === 'number' ? body.total : null,
+  };
 }
 
 export function getCondition(id: string): Promise<ConditionDetail> {

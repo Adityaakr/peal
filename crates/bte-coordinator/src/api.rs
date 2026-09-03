@@ -255,7 +255,16 @@ async fn list_conditions(State(app): State<App>) -> Result<Json<Value>, ApiError
         .map_err(internal)?
         .collect::<Result<_, _>>()
         .map_err(internal)?;
-    Ok(Json(json!({"conditions": rows})))
+
+    // How many exist, not how many were returned. The list is capped at 100, so
+    // a client counting the array it received would report 100 forever once the
+    // network passed that, which reads as "nothing is happening" precisely when
+    // the most is.
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM conditions", [], |r| r.get(0))
+        .map_err(internal)?;
+
+    Ok(Json(json!({"conditions": rows, "total": total})))
 }
 
 async fn get_condition(

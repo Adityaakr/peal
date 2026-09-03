@@ -5206,3 +5206,46 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
   color: var(--accent);
   background: var(--accent-weak);
 }
+
+/* How many conditions the network holds, beside the heading.
+   The list endpoint caps at a hundred, so this is the coordinator's own total
+   rather than the length of what came back: counting the array would freeze at
+   a hundred at exactly the point there is most to watch. */
+.section-count {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 9px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: color 200ms ease, background 200ms ease, border-color 200ms ease;
+}
+
+/* A short flash when it goes up, so a new condition is something you SEE
+   arrive rather than something you notice later. */
+.section-count.is-up {
+  animation: count-up 1100ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes count-up {
+  0% {
+    color: var(--accent);
+    background: var(--accent-weak);
+    border-color: var(--accent-border);
+    transform: translateY(-2px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section-count.is-up {
+    animation-duration: 1ms;
+  }
+}

@@ -1,4 +1,4 @@
-import { getCommittee, listConditions, type ConditionSummary } from '../api';
+import { getCommittee, listConditionsWithTotal, type ConditionSummary } from '../api';
 import { forgetSeal, listSeals, markSealRevealed, type WatchedSeal } from '../attention';
 import { renderPlayground } from '../playground';
 import { esc, fmtCountdown, fmtRelative, statusChip, tagLabel, truncMiddle } from '../util';
@@ -31,7 +31,7 @@ export function renderHome(root: HTMLElement): () => void {
       </div>
     </section>
     <section class="section">
-      <h2>conditions</h2>
+      <h2>conditions <span class="section-count" id="conditions-total" aria-live="polite"></span></h2>
       <div id="conditions" class="table-wrap">
         <div class="skeleton-row">
           <span class="skeleton" style="width:100%"></span>
@@ -71,9 +71,31 @@ export function renderHome(root: HTMLElement): () => void {
   };
 
   let lastRendered = '';
+  let lastTotal: number | null = null;
+
+  /** Show how many there are, and make it visible when it moves. */
+  function paintTotal(total: number, approximate: boolean): void {
+    const el = root.querySelector<HTMLElement>('#conditions-total');
+    if (!el) return;
+    el.textContent = approximate ? `${total}+` : String(total);
+    el.title = approximate
+      ? 'this coordinator does not report a total, so this is what the list returned'
+      : 'every condition this coordinator has ever held';
+    if (lastTotal !== null && total > lastTotal) {
+      // Restart the animation rather than relying on the class being absent.
+      el.classList.remove('is-up');
+      void el.offsetWidth;
+      el.classList.add('is-up');
+    }
+    lastTotal = total;
+  }
   const poll = async () => {
     try {
-      const conditions = await listConditions();
+      const { conditions, total } = await listConditionsWithTotal();
+      // The count is the network's, not this list's: the endpoint returns at
+      // most a hundred, so counting the array would stop moving at exactly the
+      // point there is most to watch.
+      paintTotal(total ?? conditions.length, total === null);
       lastConditions = conditions;
       listLoaded = true;
       // Anything the network says is revealed gets flagged in the local list.
