@@ -7,4 +7,5 @@ pub mod eip712;
 pub mod engine;
 pub mod intents;
 pub mod merkle;
+pub mod names;
 pub mod state;

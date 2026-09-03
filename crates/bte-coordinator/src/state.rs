@@ -76,6 +76,8 @@ pub struct Inner {
     pub buckets: Mutex<HashMap<String, (f64, i64)>>,
     /// Shared HTTP client (at_block JSON-RPC polling).
     pub http: reqwest::Client,
+    /// Link previews for named auctions, keyed by name. See names.rs.
+    pub previews: crate::names::PreviewCache,
     pub cfg: Config,
 }
 
@@ -90,6 +92,7 @@ impl App {
             cross: Mutex::new(HashMap::new()),
             buckets: Mutex::new(HashMap::new()),
             http: reqwest::Client::new(),
+            previews: crate::names::PreviewCache::default(),
             cfg,
         }));
         app.load_committees()?;

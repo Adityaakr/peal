@@ -7,9 +7,51 @@
 		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
 	}
 
+	# A short link is a path, so unlike a fragment link it reaches us and can
+	# carry a real preview. The coordinator serves the same shell with that
+	# auction's name, description and picture in its meta tags; the rewrite is
+	# internal, so the address bar keeps /shoonya. Only bare single-segment
+	# lowercase paths match, which is exactly the shape PealNames allows and
+	# never an asset (those have a dot or a slash in them).
+	# The preview is a nicety; the auction opening is not. If the coordinator
+	# has no shell to serve (it runs in its own container under
+	# docker-compose.yml, where /srv/explorer is the web image's) or is simply
+	# down, the static shell is served instead and the short link behaves
+	# exactly as it did before any of this.
+	@named path_regexp named ^/([a-z0-9-]{3,32})/?$
+	handle @named {
+		reverse_proxy {$BTE_UPSTREAM:coordinator:8080} {
+			rewrite /link/{re.named.1}
+			@no_preview status 404 500 502 503 504
+			handle_response @no_preview {
+				root * /srv/explorer
+				rewrite * /index.html
+				file_server
+			}
+		}
+	}
+
 	handle {
 		root * /srv/explorer
 		try_files {path} /index.html
 		file_server
+	}
+
+	# The other half of the same promise. handle_response above catches a
+	# coordinator that ANSWERS badly; this catches one that does not answer at
+	# all, which Caddy turns into a 502 before any response exists to handle.
+	# Scoped to short links so ordinary errors are still ordinary errors.
+	handle_errors {
+		@named_error path_regexp ^/([a-z0-9-]{3,32})/?$
+		handle @named_error {
+			root * /srv/explorer
+			rewrite * /index.html
+			# 200, not the 502 that got us here. The page is complete and
+			# correct, only its preview is missing, and a crawler that sees an
+			# error status throws the whole thing away.
+			file_server {
+				status 200
+			}
+		}
 	}
 }

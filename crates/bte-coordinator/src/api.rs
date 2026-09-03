@@ -52,6 +52,10 @@ pub fn router(app: App) -> Router {
     Router::new()
         .nest("/v0", api)
         .nest("/v1", crate::intents::routes())
+        // The app shell for a short link, with that auction's own preview meta
+        // written into it. Caddy rewrites `/{name}` onto this; the browser's
+        // address bar keeps the pretty path. See names.rs.
+        .route("/link/{name}", get(crate::names::named_shell))
         // Bounded by the one route that carries bulk: a sealed blob arrives
         // base64'd inside JSON, so 4/3 of the blob cap plus slack for the
         // surrounding fields. This is what a request may BUFFER, so it is kept
@@ -124,6 +128,14 @@ async fn rate_limit(
         }
     };
     if !allowed {
+        // A throttled API call is a JSON error, but a throttled PAGE must still
+        // be a page. /link/{name} is a person opening a short link, so it
+        // degrades to the shell with no custom preview rather than showing them
+        // a JSON error where an auction should be. The limiter still did its
+        // job: the chain lookup behind the preview was skipped.
+        if request.uri().path().starts_with("/link/") {
+            return crate::names::plain_shell();
+        }
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({"error": "rate limited"})),
