@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_DESCRIPTION_CHARS, MAX_IMAGE_CHARS, MAX_TITLE_CHARS, TermsError, canonicalTerms, checksum, imageProblem, liveLink, packTerms,
-  registryProblem, unpackTerms, type Terms,
+  unpackTerms, type Terms,
 } from '../src/terms.js';
 
 const BASE: Terms = {
@@ -262,33 +262,6 @@ describe('the picture', () => {
     expect(() => packTerms({ ...BASE, image: long })).toThrow(TermsError);
   });
 
-  it('leaves room for a short link on an ordinary auction', () => {
-    expect(registryProblem({ ...BASE, image: IMG })).toBeNull();
-    expect(registryProblem({ ...BASE, title: 'x'.repeat(80), image: `https://e.com/${'a'.repeat(150)}` }))
-      .toBeNull();
-  });
-
-  it('says so before the auction exists when the terms are too big to name', () => {
-    // PealNames refuses terms over 512 bytes and cannot be changed. Discovering
-    // that from a reverted claim, on an auction that is already running and can
-    // never be edited, is the worst possible moment.
-    const huge: Terms = {
-      auctionId: 'x'.repeat(64),
-      title: '🎈'.repeat(80),
-      unit: 'x'.repeat(12),
-      decimals: 4,
-      closeAt: 9_999_999_999,
-      reserveMinor: 1_000_000_000_000,
-      maxMinor: 1_000_000_000_000,
-      image: `https://e.com/${'a'.repeat(MAX_IMAGE_CHARS - 15)}`,
-      description: 'x'.repeat(MAX_DESCRIPTION_CHARS),
-      contactKey: null,
-    };
-    // The auction itself is fine: the fragment has no such limit.
-    expect(() => packTerms(huge)).not.toThrow();
-    expect(registryProblem(huge)).toMatch(/fewer characters/);
-  });
-
   it('treats an empty string as no picture rather than a broken one', () => {
     expect(imageProblem('')).toBeNull();
     expect(imageProblem('   ')).toBeNull();
@@ -317,28 +290,6 @@ describe('the description', () => {
     expect(() => packTerms({ ...BASE, description: 'x'.repeat(MAX_DESCRIPTION_CHARS + 1) }))
       .toThrow(TermsError);
   });
-
-  it('leaves room for a real auction: a paragraph, a picture and a title', () => {
-    // The case that was being refused. Measured at 464 canonical bytes against
-    // the registry's 512, so it always fitted; the check was measuring the
-    // base64 of it, which is 619.
-    expect(registryProblem({
-      ...BASE,
-      title: 'Put Your Logo on PolyBaskets — Nepal Relief',
-      description: 'x'.repeat(272),
-      image: 'https://pbs.twimg.com/media/HRSgPmSakAIlIEW?format=jpg&name=medium',
-    })).toBeNull();
-    expect(registryProblem({ ...BASE, description: 'x'.repeat(MAX_DESCRIPTION_CHARS) })).toBeNull();
-  });
-
-  it('still refuses what genuinely does not fit', () => {
-    expect(registryProblem({
-      ...BASE,
-      title: 'x'.repeat(MAX_TITLE_CHARS),
-      description: 'x'.repeat(MAX_DESCRIPTION_CHARS),
-      image: `https://e.com/${'a'.repeat(186)}`,
-    })).toMatch(/fewer characters/);
-  });
 });
 
 describe('the seller key in the terms', () => {
@@ -362,67 +313,5 @@ describe('the seller key in the terms', () => {
     expect(await checksum({ ...BASE, contactKey: a.publicKey }))
       .not.toBe(await checksum({ ...BASE, contactKey: b.publicKey }));
     expect(await checksum({ ...BASE, contactKey: a.publicKey })).not.toBe(await checksum(BASE));
-  });
-
-  it('leaves room for a short link, and says so when it does not', async () => {
-    const { generateSellerKeys } = await import('../src/contact.js');
-    const keys = await generateSellerKeys();
-    expect(registryProblem({ ...BASE, contactKey: keys.publicKey })).toBeNull();
-    // A key is about ninety bytes. On its own it costs nothing that matters;
-    // with a full description AND a long picture link it is what tips an
-    // auction over.
-    expect(registryProblem({
-      ...BASE,
-      contactKey: keys.publicKey,
-      description: 'x'.repeat(MAX_DESCRIPTION_CHARS),
-      image: `https://e.com/${'a'.repeat(MAX_IMAGE_CHARS - 14)}`,
-    })).toMatch(/fewer characters/);
-  });
-});
-
-describe('what the short-link message asks for', () => {
-  const tooBig: Terms = {
-    ...BASE,
-    title: 'x'.repeat(MAX_TITLE_CHARS),
-    description: 'x'.repeat(MAX_DESCRIPTION_CHARS),
-    image: `https://cdn.example.com/${'a'.repeat(170)}`,
-  };
-
-  it('counts characters, not the base64 they turn into', () => {
-    // The packed form is four thirds of what it encodes. Reporting the packed
-    // overshoot said 248 when 186 characters would have done it, so a seller
-    // was told to cut a third more than they had to.
-    const said = Number(/about (\d+) fewer/.exec(registryProblem(tooBig)!)![1]);
-
-    let cut = 0;
-    let t = tooBig;
-    while (registryProblem(t) !== null && cut < 500) {
-      cut++;
-      t = { ...tooBig, description: 'x'.repeat(Math.max(0, MAX_DESCRIPTION_CHARS - cut)) };
-    }
-    // Within a few characters of the truth, and never asking for more than it
-    // needs by a wide margin.
-    expect(said).toBeGreaterThanOrEqual(cut - 8);
-    expect(said).toBeLessThanOrEqual(cut + 8);
-  });
-
-  it('names the longest field, so it is an instruction rather than a hint', () => {
-    expect(registryProblem(tooBig)).toContain('the description is the longest');
-    // Still over the cap, but now the picture link is the longer of the two.
-    const pictureHeavy: Terms = {
-      ...BASE,
-      title: 'x'.repeat(MAX_TITLE_CHARS),
-      description: 'x'.repeat(190),
-      image: `https://cdn.example.com/${'a'.repeat(MAX_IMAGE_CHARS - 24)}`,
-    };
-    expect(registryProblem(pictureHeavy)).toContain('the picture link is the longest');
-  });
-
-  it('mentions the contact key only when one is costing you the room', async () => {
-    const { generateSellerKeys } = await import('../src/contact.js');
-    const keys = await generateSellerKeys();
-    expect(registryProblem(tooBig)).not.toContain('contact details');
-    expect(registryProblem({ ...tooBig, contactKey: keys.publicKey }))
-      .toContain('turning off contact details');
   });
 });

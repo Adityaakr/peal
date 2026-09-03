@@ -208,48 +208,6 @@ function b64urlDecode(text: string): Uint8Array {
   return out;
 }
 
-/** What `PealNames.claim` accepts, mirrored from the deployed contract's
- * MAX_TERMS_BYTES. It is immutable, so this is a fact to design around rather
- * than a limit that can be raised.
- *
- * It is a limit on BYTES, and the registry stores the canonical terms as bytes.
- * Storing the base64 of them instead spent a third of the budget on the
- * encoding, which is what made an ordinary auction with a picture and a
- * paragraph refuse to take a short link. */
-export const MAX_REGISTRY_TERMS_BYTES = 512;
-
-/** Why these terms cannot have a short link, or null when they can.
- *
- * Only the SHORT LINK is bounded. The auction itself rides in a URL fragment,
- * which has no such limit, so a long title and a big picture address are
- * perfectly fine as long as nobody wants a name for them. Checking here means a
- * seller is told before the auction exists, rather than watching a claim revert
- * on an auction that is already running and cannot be edited. */
-export function registryProblem(t: Terms): string | null {
-  // The canonical bytes, which is what the registry actually stores. It used to
-  // measure the base64 of them, which is four thirds the size, so an auction
-  // that fitted in 464 bytes was refused for being 619. A third of the space
-  // was being thrown away by measuring the wrong thing.
-  const size = canonicalTerms(t).length;
-  if (size <= MAX_REGISTRY_TERMS_BYTES) return null;
-
-  const cut = size - MAX_REGISTRY_TERMS_BYTES;
-
-  // Naming the longest field turns "shorten something" into an instruction. It
-  // is almost always the description or the picture link, and a seller looking
-  // at three inputs should not have to guess which one is the problem.
-  const longest = [
-    { what: 'the description', length: (t.description ?? '').length },
-    { what: 'the picture link', length: (t.image ?? '').length },
-    { what: 'the item name', length: t.title.trim().length },
-  ].sort((a, b) => b.length - a.length)[0]!;
-
-  const contact = t.contactKey
-    ? ' turning off contact details would free about 90 of them.'
-    : '';
-  return `a short link needs about ${cut} fewer characters. ${longest.what} is the longest, at ${longest.length}.${contact}`;
-}
-
 /** Terms as the fragment segment of a share link. */
 export function packTerms(t: Terms): string {
   return b64urlEncode(canonicalTerms(t));
