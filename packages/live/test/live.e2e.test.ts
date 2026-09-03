@@ -25,7 +25,7 @@ run('a whole auction, against the live coordinator', () => {
 
     const terms: Terms = {
       auctionId, title: 'signed tour poster', unit: 'USD',
-      decimals: 2, closeAt, reserveMinor: 1000, maxMinor: 500_00, image: null,
+      decimals: 2, closeAt, reserveMinor: 1000, maxMinor: 500_00, image: null, description: null, contactKey: null,
     };
 
     const entered = [

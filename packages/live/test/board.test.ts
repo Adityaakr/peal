@@ -12,6 +12,8 @@ const TERMS: Terms = {
   reserveMinor: null,
   maxMinor: null,
   image: null,
+  description: null,
+  contactKey: null,
 };
 
 const b64 = (bytes: Uint8Array): string =>
