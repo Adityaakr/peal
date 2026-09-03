@@ -216,3 +216,45 @@ describe('the queue', () => {
     expect(buildBoard([], TERMS).queue).toEqual([]);
   });
 });
+
+describe('a bid that carries contact details', () => {
+  it('ranks exactly as one that does not', async () => {
+    // The contact is opaque to the board: it is encrypted to a key the board
+    // does not have, and nothing about it may influence who wins.
+    const { generateSellerKeys, sealContact } = await import('../src/contact.js');
+    const keys = await generateSellerKeys();
+    const withContact: RevealedSlot = {
+      position: 0,
+      ct_hash: 'hash0',
+      payload_b64: b64(encodeBid({
+        auctionId: TERMS.auctionId,
+        amountMinor: 500,
+        name: 'ana',
+        contact: await sealContact(keys.publicKey, 'ana@example.com'),
+      })),
+    };
+    const board = buildBoard([withContact, bidSlot(1, 900, 'bo')], TERMS);
+    expect(board.bids.map((b) => b.name)).toEqual(['bo', 'ana']);
+    expect(board.winner?.name).toBe('bo');
+    expect(board.discarded).toEqual([]);
+  });
+
+  it('is not exposed by the board, which has no key for it', async () => {
+    const { generateSellerKeys, sealContact } = await import('../src/contact.js');
+    const keys = await generateSellerKeys();
+    const slot: RevealedSlot = {
+      position: 0,
+      ct_hash: 'hash0',
+      payload_b64: b64(encodeBid({
+        auctionId: TERMS.auctionId,
+        amountMinor: 500,
+        name: 'ana',
+        contact: await sealContact(keys.publicKey, 'ana@example.com'),
+      })),
+    };
+    const board = buildBoard([slot], TERMS);
+    // A board entry is what everybody sees. Nothing on it may carry a contact.
+    expect(JSON.stringify(board)).not.toContain('example.com');
+    expect(Object.keys(board.bids[0]!)).not.toContain('contact');
+  });
+});
