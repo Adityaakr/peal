@@ -27,6 +27,15 @@ import {
   createPublicClient, createWalletClient, custom, formatUnits, http,
   keccak256, parseUnits, stringToHex, type Address,
 } from 'viem';
+import { BteClient } from 'bte-sdk';
+import {
+  AmountError, checksum, currencyLabel, findCurrency, imageProblem, liveLink, nameLink,
+  nameProblem, normalizeName, packTerms, parseAmount, registryProblem, searchCurrencies,
+  type Terms,
+} from 'peal-live';
+import { API_BASE } from '../api';
+import { anchorTerms, claimName, fundedWallet, namesAvailable } from '../live-chain';
+import { forgetAuctions, recentAuctions, rememberAuction } from '../live-recent';
 import { session, onAuthChange, type Eip1193Like } from '../auth';
 import { recordTx, txlogHtml, onTxLogChange } from '../txlog';
 import { esc } from '../util';
@@ -247,9 +256,101 @@ function brief(e: unknown): string {
   return parts.join(' ').slice(0, 300);
 }
 
-export function renderAuctionCreate(root: HTMLElement): Cleanup {
+/** What is being created. Both are sealed-bid auctions on Tempo; they differ in
+ * what a bidder has to bring.
+ *
+ * `live` is for a stream or a room: bids are sealed in the bidder's own browser
+ * and nothing is escrowed, so a bidder needs no wallet, no sign in and no gas,
+ * and the creator needs none either. `sale` is the escrowed on-chain auction,
+ * where real balances move and the issuer must therefore be an account that
+ * still exists tomorrow. */
+export type CreateKind = 'live' | 'sale';
+
+/** A live auction shorter than this cannot be shared and opened in time, and
+ * the coordinator refuses a close that is already in the past. */
+const LIVE_MIN_SECS = 30;
+
+/** Past this the on-chain terms record falls outside the block window the
+ * bidder's page can search, so the link stops being able to show its own
+ * anchor. The auction would still work; it would just quietly lose the check. */
+const LIVE_MAX_DAYS = 30;
+
+const LIVE_DURATIONS = [
+  { label: '2 min', secs: 120 },
+  { label: '5 min', secs: 300 },
+  { label: '15 min', secs: 900 },
+  { label: '1 hour', secs: 3600 },
+] as const;
+
+export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind = 'live'): Cleanup {
   const prevTitle = document.title;
   document.title = 'SealBid. create an auction';
+
+  let kind: CreateKind = initialKind;
+  const live = new BteClient({ url: API_BASE });
+  let liveBusy = false;
+  let liveSecs: number = LIVE_DURATIONS[1].secs;
+  /** True once "custom" is picked, which swaps the presets for the same
+   * duration-or-exact-time controls the on-chain form already uses. */
+  let liveCustom = false;
+  /** What has been typed into the live form.
+   *
+   * draw() rebuilds the whole page, so anything living only in the DOM is gone
+   * the moment anything redraws: showing an error used to blank the form, and
+   * setting `working` on the button wiped the custom close before it had been
+   * read, so a custom duration was silently replaced by the field's default. */
+  const liveDraft = {
+    item: '',
+    image: '',
+    name: '',
+    reserve: '',
+    max: '',
+    unit: 'USD',
+    amount: '30',
+    unitTime: 'minutes',
+    closeAtLocal: unixToLocalInput(Math.floor(Date.now() / 1000) + 1800),
+    exact: false,
+  };
+
+  /** Pull the form into the draft. Call before anything that redraws. */
+  function captureLive(): void {
+    const read = (id: string): string | null =>
+      root.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.value ?? null;
+    const item = read('c-live-item');
+    if (item !== null) liveDraft.item = item;
+    const name = read('c-live-name');
+    if (name !== null) liveDraft.name = name;
+    const image = read('c-live-image');
+    if (image !== null) liveDraft.image = image;
+    const reserve = read('c-live-reserve');
+    if (reserve !== null) liveDraft.reserve = reserve;
+    const max = read('c-live-max');
+    if (max !== null) liveDraft.max = max;
+    const unit = read('c-live-unit');
+    if (unit !== null) liveDraft.unit = unit;
+    const amount = read('c-live-amount');
+    if (amount !== null) liveDraft.amount = amount;
+    const unitTime = read('c-live-unit-time');
+    if (unitTime !== null) liveDraft.unitTime = unitTime;
+    const closeAt = read('c-live-close-at');
+    if (closeAt !== null) liveDraft.closeAtLocal = closeAt;
+    const checked = root.querySelector<HTMLInputElement>('input[name="c-live-timing"]:checked');
+    if (checked) liveDraft.exact = checked.value === 'exact';
+  }
+  let liveErr = '';
+  let liveUrl = '';
+  let liveCode = '';
+  let livePacked = '';
+  let liveTerms: Terms | null = null;
+  /** null while the anchor is still being attempted. */
+  let liveAnchor: { txHash: `0x${string}`; blockNumber: bigint } | null | undefined = undefined;
+  /** The short link, once it has been asked for. */
+  let liveName = '';
+  /** The name that was asked for, kept so the panel can show a short-link row
+   * while the claim is still in flight. */
+  let liveWantedName = '';
+  let liveNameState: 'none' | 'claiming' | 'claimed' | 'failed' = 'none';
+  let liveNameError = '';
 
   let account: Address | null = null;
   let busy = false;
@@ -464,24 +565,11 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
       <input id="${id}" value="${esc(value)}" inputmode="${mode}" autocomplete="off" /></label>`;
   }
 
-  function draw(): void {
-    const shareUrl = created ? `${location.origin}${location.pathname}#/a/${created}` : '';
-    // Which use case is selected drives the words and the starting numbers.
-    const useCase = root.querySelector<HTMLSelectElement>('#c-usecase')?.value ?? 'token-launch';
-    const p = preset(useCase);
-
-    root.innerHTML = `<div class="ml sl">
-      <section class="ml-section sl-alist-top">
-        <div class="ml-wrap sl-create-wrap">
-          <p class="ml-sec-kicker">sealbid</p>
-          <h1 class="ml-h2 sl-alist-h1">create an auction</h1>
-          <p class="ml-sub sl-alist-sub">
-            bids stay sealed until your close time, then open together and settle at one price.
-            the supply goes into the auction contract and its rules take over. nobody, including
-            you, can change them afterwards.
-          </p>
-
-          ${created ? `
+  /** The escrowed, on-chain sale. Unchanged: it still needs a signed-in issuer
+   * because the factory pulls the whole supply out of their wallet, and the
+   * proceeds have to land somewhere they still control afterwards. */
+  function saleSection(shareUrl: string, useCase: string, p: Preset): string {
+    return `          ${created ? `
           <div class="sl-created">
             <h3>your auction is live</h3>
             <p class="ak-hint">share this link. anyone who opens it can bid.</p>
@@ -601,18 +689,620 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
               ${busy ? 'working' : 'create and fund the auction'}
             </button>
           </form>` : ''}
-          `}
+          `}`;
+  }
 
-          ${txlogHtml()}
+
+  /** The live auction: nothing escrowed, so nothing to sign, on either side. */
+  function liveSection(): string {
+    if (liveUrl) {
+      const anchor =
+        liveAnchor === undefined
+          ? 'recording your terms&hellip;'
+          : liveAnchor
+            ? `terms recorded · <a class="link" href="#/condition/${esc(encodeURIComponent(liveTerms?.auctionId ?? ''))}">verification</a>`
+            : 'the terms were not recorded. the auction runs the same; there is just nothing timestamped to hold them against.';
+      // NOTHING here ever replaces a link that was already on screen.
+      //
+      // The short link is claimed on chain, which takes about fifteen seconds,
+      // and the panel used to show the full link and then swap it for the short
+      // one when the claim landed. Anyone who pressed copy in between got a
+      // different link from the one they were looking at a moment later, with
+      // nothing to tell them why. Both links work, and both stay put.
+      const shortRow = !liveWantedName ? '' : liveNameState === 'claimed'
+        ? `<label class="live-linklabel">short link</label>
+           <div class="sl-share">
+             <input id="c-share-short" readonly value="${esc(nameLink(location, liveName))}" />
+             <button class="ak-btn" data-copy-target="c-share-short">copy</button>
+           </div>
+           <p class="ak-hint">yours permanently, and it points at this auction only.</p>`
+        : liveNameState === 'failed'
+          ? `<p class="ak-status ak-error">${esc(liveNameError)}</p>`
+          : `<label class="live-linklabel">short link</label>
+             <div class="sl-share">
+               <input readonly disabled value="${esc(`${location.host}/${liveWantedName}`)}" />
+               <button class="ak-btn" disabled>claiming</button>
+             </div>
+             <p class="ak-hint">being claimed, which takes a few seconds. the full link below
+             already works and will keep working either way.</p>`;
+
+      return `
+      <div class="sl-created">
+        <h3>your auction is live</h3>
+        <p class="ak-hint">share this link. anyone who opens it can bid with no wallet, no sign in and no gas.</p>
+        ${shortRow}
+        <label class="live-linklabel">${liveWantedName ? 'full link' : 'the link'}</label>
+        <div class="sl-share">
+          <input id="c-share" readonly value="${esc(liveUrl)}" />
+          <button class="ak-btn" data-copy-target="c-share">copy</button>
+        </div>
+        <p class="ak-hint">read this out on stream. anyone opening your link sees the same eight
+        characters, and if theirs differ they are looking at somebody else&rsquo;s auction wearing
+        your item&rsquo;s name. it is the only thing that catches a swapped link.</p>
+        <p class="live-code mono">${esc(liveCode)}</p>
+        <p class="ak-hint">${anchor}</p>
+        <div class="ml-hero-ctas">
+          <a class="ml-btn ml-btn-dark" href="#/live/${esc(livePacked)}">open the auction</a>
+          <button class="ml-btn" type="button" id="c-live-again">start another</button>
+        </div>
+      </div>`;
+    }
+
+    return `
+      ${liveErr ? `<p class="ak-status ak-error">${esc(liveErr)}</p>` : ''}
+      ${recentList()}
+      <form class="sl-form" id="c-live-form">
+        <div class="sl-fieldset">
+          <h3>what you are selling</h3>
+          ${field('c-live-item', 'item', liveDraft.item, 'shown to everyone who opens your link')}
+          ${field('c-live-image', 'picture', liveDraft.image, 'optional, an https link to an image', 'url')}
+          <div class="live-preview" id="c-live-preview" hidden>
+            <img alt="" referrerpolicy="no-referrer" />
+          </div>
+          <p class="ak-hint">somebody deciding what to bid is looking at a name and a number.
+          a picture is the difference between a guess and an offer. paste a link to one and it
+          appears here first, so you know it works before you share it.</p>
+        </div>
+
+        <div class="sl-fieldset">
+          <h3>how long bidding stays open</h3>
+          <div class="live-chips" id="c-live-durations">
+            ${LIVE_DURATIONS.map((d) => `<button class="live-chip${!liveCustom && d.secs === liveSecs ? ' is-on' : ''}" type="button" data-secs="${d.secs}">${d.label}</button>`).join('')}
+            <button class="live-chip${liveCustom ? ' is-on' : ''}" type="button" data-secs="custom">custom</button>
+          </div>
+
+          ${liveCustom ? `
+          <div class="sl-modes" role="radiogroup" aria-label="how to set the close">
+            <label class="sl-mode"><input type="radio" name="c-live-timing" value="duration"${liveDraft.exact ? '' : ' checked'} /> for a duration</label>
+            <label class="sl-mode"><input type="radio" name="c-live-timing" value="exact"${liveDraft.exact ? ' checked' : ''} /> until a date and time</label>
+          </div>
+
+          <div id="c-live-mode-duration">
+            <label>bidding stays open for
+              <div class="sl-duration">
+                <input id="c-live-amount" value="${esc(liveDraft.amount)}" inputmode="decimal" autocomplete="off" />
+                <select id="c-live-unit-time">
+                  ${['minutes', 'hours', 'days'].map((u) => `<option value="${u}"${u === liveDraft.unitTime ? ' selected' : ''}>${u}</option>`).join('')}
+                </select>
+              </div>
+            </label>
+          </div>
+
+          <div id="c-live-mode-exact" hidden>
+            <label>bidding closes at
+              <input id="c-live-close-at" type="datetime-local" value="${esc(liveDraft.closeAtLocal)}" />
+            </label>
+            <p class="ak-hint">on your own clock. the link carries the same instant, so somebody in
+            another timezone counts down to the same moment.</p>
+          </div>
+          <p class="ak-hint">anywhere from ${LIVE_MIN_SECS} seconds to ${LIVE_MAX_DAYS} days.</p>
+          ` : ''}
+
+          <p class="ak-hint">the batch opens by itself when the timer runs out. nobody sends a
+          reveal transaction, so there is no auction that never opens.</p>
+        </div>
+
+        ${namesAvailable() ? `
+        <div class="sl-fieldset">
+          <h3>the link</h3>
+          <label>${esc(location.host)}/
+            <input id="c-live-name" value="${esc(liveDraft.name)}" maxlength="32"
+                   autocomplete="off" placeholder="shoonya" inputmode="url" />
+          </label>
+          <p class="ak-hint">optional. lowercase letters, numbers and hyphens. a name is claimed
+          once and never moves, so a link you shared can never come to mean a different auction,
+          and a name you spend is spent.</p>
+        </div>` : ''}
+
+        <div class="sl-fieldset">
+          <h3>currency and limits</h3>
+          <label>bids are in
+            <div class="live-combo">
+              <input id="c-live-unit" value="${esc(liveDraft.unit)}" autocomplete="off"
+                     role="combobox" aria-expanded="false" aria-autocomplete="list"
+                     aria-controls="c-live-unit-list" placeholder="USD, INR, JPY, points" />
+              <ul class="live-combo-list" id="c-live-unit-list" role="listbox" hidden></ul>
+            </div>
+          </label>
+          <p class="ak-hint">type a code, a name or a symbol: inr, rupee, ₹ all find the same one.
+          how many decimal places it has comes from the currency, so a yen bid is a whole number
+          and a dinar has three.</p>
+          ${field('c-live-reserve', 'reserve', liveDraft.reserve, 'optional, nothing below it can win', 'decimal')}
+          ${field('c-live-max', 'most you would believe', liveDraft.max, 'optional, nothing above it can win', 'decimal')}
+          <p class="ak-hint">nothing is escrowed here, so a bid costs nothing to make and somebody
+          can type a number they have no intention of paying. a ceiling bounds that: a joke bid of
+          ninety nine million cannot take your auction, and the result moves down the list to the
+          next person if the top one does not pay.</p>
+        </div>
+
+        <button class="ml-btn ml-btn-dark sl-submit" type="submit" ${liveBusy ? 'disabled' : ''}>
+          ${liveBusy ? 'working' : 'get the link'}
+        </button>
+      </form>`;
+  }
+
+  /** The close, from whichever control the creator actually used.
+   *
+   * Returns null and puts the reason on screen rather than throwing, because
+   * every failure here is somebody typing something reasonable that this form
+   * cannot honour, not a fault. */
+  function liveCloseAt(): number | null {
+    const now = Math.floor(Date.now() / 1000);
+    if (!liveCustom) return now + liveSecs;
+
+    let closeAt: number;
+    if (liveDraft.exact) {
+      const picked = localToUnix(liveDraft.closeAtLocal);
+      if (picked === null) {
+        liveErr = 'pick a date and time for the close.';
+        draw();
+        return null;
+      }
+      closeAt = Number(picked);
+    } else {
+      const amount = Number(liveDraft.amount.trim());
+      const hours = Number.isFinite(amount) ? amount * (UNIT_HOURS[liveDraft.unitTime] ?? 1) : NaN;
+      if (!(hours > 0)) {
+        liveErr = 'how long should bidding stay open?';
+        draw();
+        return null;
+      }
+      closeAt = now + Math.round(hours * 3600);
+    }
+
+    if (closeAt - now < LIVE_MIN_SECS) {
+      liveErr = `that close is too soon. give bidding at least ${LIVE_MIN_SECS} seconds.`;
+      draw();
+      return null;
+    }
+    if (closeAt - now > LIVE_MAX_DAYS * 86400) {
+      liveErr = `that is more than ${LIVE_MAX_DAYS} days out, which is longer than this can hold.`;
+      draw();
+      return null;
+    }
+    return closeAt;
+  }
+
+  /** The currency field: a text input that searches, rather than a menu.
+   *
+   * A menu of four was a menu; a menu of fifty is a scroll. This filters on the
+   * code, the name and the symbol, so "inr", "rupee" and the symbol itself all
+   * arrive at the same row, which a `<datalist>` cannot do: browsers filter a
+   * datalist on the option's value only, so searching by name would silently
+   * not work in most of them.
+   */
+  function wireCurrencyCombo(): void {
+    const input = root.querySelector<HTMLInputElement>('#c-live-unit');
+    const list = root.querySelector<HTMLUListElement>('#c-live-unit-list');
+    if (!input || !list) return;
+
+    let active = -1;
+
+    const close = (): void => {
+      list.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      active = -1;
+    };
+
+    const options = (): HTMLLIElement[] => Array.from(list.querySelectorAll('li'));
+
+    const highlight = (i: number): void => {
+      const items = options();
+      active = items.length === 0 ? -1 : (i + items.length) % items.length;
+      items.forEach((el, n) => el.classList.toggle('is-active', n === active));
+      items[active]?.scrollIntoView({ block: 'nearest' });
+    };
+
+    const choose = (code: string): void => {
+      input.value = code;
+      liveDraft.unit = code;
+      close();
+    };
+
+    const open = (): void => {
+      const found = searchCurrencies(input.value);
+      if (found.length === 0) {
+        close();
+        return;
+      }
+      list.innerHTML = found
+        .map((c) => `<li role="option" data-code="${esc(c.code)}">${esc(currencyLabel(c))}</li>`)
+        .join('');
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      highlight(0);
+    };
+
+    input.addEventListener('input', () => {
+      liveDraft.unit = input.value;
+      open();
+    });
+    input.addEventListener('focus', open);
+
+    input.addEventListener('keydown', (ev) => {
+      if (list.hidden && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) {
+        open();
+        return;
+      }
+      if (list.hidden) return;
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); highlight(active + 1); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); highlight(active - 1); }
+      else if (ev.key === 'Escape') { close(); }
+      else if (ev.key === 'Enter') {
+        const code = options()[active]?.dataset.code;
+        // Enter picks the highlighted currency rather than submitting the form
+        // out from under a half-typed one.
+        if (code) { ev.preventDefault(); choose(code); }
+      }
+    });
+
+    list.addEventListener('mousedown', (ev) => {
+      // mousedown, not click: blur would close the list before a click landed.
+      const li = (ev.target as HTMLElement).closest<HTMLLIElement>('[data-code]');
+      if (!li) return;
+      ev.preventDefault();
+      choose(li.dataset.code!);
+    });
+
+    input.addEventListener('blur', () => {
+      // Let a click on the list win the race, then tidy the typed value into the
+      // canonical code so "inr" becomes "INR" instead of failing on submit.
+      setTimeout(() => {
+        const known = findCurrency(input.value);
+        if (known) choose(known.code);
+        else close();
+      }, 120);
+    });
+  }
+
+  /** Auctions this browser started or bid in.
+   *
+   * A live auction is its link and nothing else, which is what lets it need no
+   * backend and also what makes it easy to lose: close the tab and the auction
+   * carries on without you having any way back to it. */
+  function recentList(): string {
+    const recent = recentAuctions();
+    if (recent.length === 0) return '';
+    const now = Math.floor(Date.now() / 1000);
+    const rows = recent
+      .map((a) => {
+        const open = a.closeAt > now;
+        const where = a.name ? `/${a.name}` : `#/live/${a.packed}`;
+        return `<li class="live-recent-row">
+          <a class="live-recent-link" href="${esc(where)}">${esc(a.title)}</a>
+          <span class="live-recent-role">${a.role === 'host' ? 'you started this' : 'you bid'}</span>
+          <span class="chip chip-${open ? 'pending' : 'revealed'}">${open ? 'open' : 'closed'}</span>
+        </li>`;
+      })
+      .join('');
+    return `
+      <div class="sl-fieldset live-recent">
+        <h3>your auctions</h3>
+        <ul class="live-recent-list">${rows}</ul>
+        <p class="ak-hint">kept on this device only, so it is a way back to a link rather than a
+        record of anything. <button class="live-recent-clear" type="button" id="c-live-forget">clear the list</button></p>
+      </div>`;
+  }
+
+  /** Show the picture before the auction is made.
+   *
+   * A seller pasting an address cannot tell whether it points at an image, at a
+   * page containing one, or at nothing. Rendering it here turns that into
+   * something they can see rather than something a bidder discovers. */
+  function wireImagePreview(): void {
+    const input = root.querySelector<HTMLInputElement>('#c-live-image');
+    const box = root.querySelector<HTMLElement>('#c-live-preview');
+    const img = box?.querySelector('img');
+    if (!input || !box || !img) return;
+
+    const refresh = (): void => {
+      const url = input.value.trim();
+      liveDraft.image = input.value;
+      if (!url || imageProblem(url)) {
+        box.hidden = true;
+        img.removeAttribute('src');
+        return;
+      }
+      img.src = url;
+    };
+
+    // Only show the box once the image has actually decoded. Setting src and
+    // hoping produces a broken-image icon, which looks like the page is at
+    // fault rather than the address.
+    img.addEventListener('load', () => { box.hidden = false; });
+    img.addEventListener('error', () => { box.hidden = true; });
+    input.addEventListener('input', refresh);
+    input.addEventListener('change', refresh);
+    refresh();
+  }
+
+  async function submitLive(): Promise<void> {
+    if (liveBusy) return;
+    liveErr = '';
+    // Read the whole form once, up front. Everything after this may redraw.
+    captureLive();
+    const title = liveDraft.item.trim();
+    if (!title) {
+      liveErr = 'name what you are selling first.';
+      draw();
+      return;
+    }
+    const unit = findCurrency(liveDraft.unit);
+    if (!unit) {
+      // Never fall back to dollars: that would seal an auction denominated in
+      // something the seller did not choose.
+      liveErr = `"${liveDraft.unit.trim()}" is not a currency we know. try a code like INR, or points.`;
+      draw();
+      return;
+    }
+    const reserveText = liveDraft.reserve.trim();
+
+    const image = liveDraft.image.trim();
+    const imageWhy = imageProblem(image);
+    if (imageWhy) {
+      liveErr = `${imageWhy}.`;
+      draw();
+      return;
+    }
+
+    const wantedName = normalizeName(liveDraft.name);
+    if (wantedName) {
+      const why = nameProblem(wantedName);
+      if (why) {
+        liveErr = `link name: ${why}.`;
+        draw();
+        return;
+      }
+    }
+
+    let reserveMinor: number | null = null;
+    if (reserveText) {
+      try {
+        reserveMinor = parseAmount(reserveText, unit.decimals);
+      } catch (e) {
+        liveErr = e instanceof AmountError ? `reserve: ${e.message}` : 'that reserve is not a number.';
+        draw();
+        return;
+      }
+    }
+
+    const maxText = liveDraft.max.trim();
+    let maxMinor: number | null = null;
+    if (maxText) {
+      try {
+        maxMinor = parseAmount(maxText, unit.decimals);
+      } catch (e) {
+        liveErr = e instanceof AmountError ? `maximum: ${e.message}` : 'that maximum is not a number.';
+        draw();
+        return;
+      }
+      if (reserveMinor !== null && maxMinor < reserveMinor) {
+        liveErr = 'the maximum cannot be below the reserve.';
+        draw();
+        return;
+      }
+    }
+
+    const closeAt = liveCloseAt();
+    if (closeAt === null) return;
+
+    // The name registry caps the terms it will store, and the contract cannot be
+    // changed. Check it here, against a stand-in id of the length the
+    // coordinator always mints, so a seller is told to shorten something BEFORE
+    // an auction exists rather than watching the claim revert on one that is
+    // already running and can never be edited.
+    if (wantedName) {
+      const tooBig = registryProblem({
+        auctionId: 'c'.repeat(29),
+        title, unit: unit.code, decimals: unit.decimals, closeAt, reserveMinor, maxMinor,
+        image: image || null,
+      });
+      if (tooBig) {
+        liveErr = `${tooBig}.`;
+        draw();
+        return;
+      }
+    }
+
+    liveBusy = true;
+    draw();
+    try {
+      // The condition's own fires_at is the cue. The terms carry the same
+      // instant so a bidder can count down without a round trip, but the
+      // coordinator acts on its copy rather than on the one in the link.
+      const auctionId = await live.condition({ at: closeAt, tag: 'live:auction' });
+      const terms: Terms = {
+        auctionId, title, unit: unit.code, decimals: unit.decimals, closeAt, reserveMinor, maxMinor,
+        image: image || null,
+      };
+      liveTerms = terms;
+      liveUrl = liveLink(location, terms);
+      livePacked = packTerms(terms);
+      liveCode = await checksum(terms);
+      rememberAuction({ packed: livePacked, title, closeAt, role: 'host' });
+      liveBusy = false;
+      draw();
+
+      // Both chain writes are deliberately after the link is on screen. The
+      // auction is already running, so nothing waits on a chain.
+      //
+      // One funded key for both, sent in order. The short link goes first
+      // because it is the thing about to be read out loud, so a failure there
+      // has to be visible before anybody shares it.
+      liveWantedName = wantedName;
+      liveNameState = wantedName ? 'claiming' : 'none';
+      draw();
+      void (async () => {
+        const wallet = await fundedWallet();
+
+        if (wantedName) {
+          const claimed = await claimName(wallet, wantedName, terms);
+          if ('error' in claimed) {
+            liveNameState = 'failed';
+            liveNameError = claimed.error;
+          } else {
+            liveNameState = 'claimed';
+            liveName = wantedName;
+            rememberAuction({
+              packed: livePacked, title, closeAt, role: 'host', name: wantedName,
+            });
+          }
+          draw();
+        }
+
+        liveAnchor = await anchorTerms(wallet, terms);
+        draw();
+      })();
+    } catch (e) {
+      liveErr = brief(e);
+      liveBusy = false;
+      draw();
+    }
+  }
+
+  function draw(): void {
+    const shareUrl = created ? `${location.origin}${location.pathname}#/a/${created}` : '';
+    // Which use case is selected drives the words and the starting numbers.
+    const useCase = root.querySelector<HTMLSelectElement>('#c-usecase')?.value ?? 'token-launch';
+    const p = preset(useCase);
+
+    root.innerHTML = `<div class="ml sl">
+      <section class="ml-section sl-alist-top">
+        <div class="ml-wrap sl-create-wrap">
+          <p class="ml-sec-kicker">sealbid</p>
+          <h1 class="ml-h2 sl-alist-h1">create an auction</h1>
+
+          <div class="sl-kinds" id="c-kinds">
+            <button type="button" class="sl-kind${kind === 'live' ? ' is-on' : ''}" data-kind="live">
+              <b>live auction</b>
+              <span>for a stream or a room. bidders need no wallet, no sign in and no gas, and
+              neither do you. opens on a timer.</span>
+            </button>
+            <button type="button" class="sl-kind${kind === 'sale' ? ' is-on' : ''}" data-kind="sale">
+              <b>token sale</b>
+              <span>escrowed on chain and settled at one clearing price. bidders bring a wallet
+              and real balances.</span>
+            </button>
+          </div>
+
+          <p class="ml-sub sl-alist-sub">
+            ${kind === 'live'
+              ? `bids are sealed in each bidder's own browser and stay unreadable until your close
+                 time, then the whole batch opens at once and the page names the winner. nothing is
+                 escrowed, so this settles who bid the most and not the payment.`
+              : `bids stay sealed until your close time, then open together and settle at one price.
+                 the supply goes into the auction contract and its rules take over. nobody, including
+                 you, can change them afterwards.`}
+          </p>
+
+          ${kind === 'live' ? liveSection() : saleSection(shareUrl, useCase, p)}
+
+          ${kind === 'sale' ? txlogHtml() : ''}
 
           <p class="sl-create-foot">
-            testnet demo. the reveal committee's signing keys are published on purpose so anyone can
-            reproduce the demo, which means an auction created here is revealed by a committee anyone
-            could impersonate. do not put anything of value behind it.
+            ${kind === 'live'
+              ? `testnet. the committee that opens your batch came from a single trusted setup we
+                 ran, so whoever ran that machine could read every bid, and the close is kept by our
+                 coordinator's clock rather than enforced by the operators. nothing is escrowed and
+                 a bid is not a payment. do not put anything of value behind it.`
+              : `testnet demo. the reveal committee's signing keys are published on purpose so anyone
+                 can reproduce the demo, which means an auction created here is revealed by a
+                 committee anyone could impersonate. do not put anything of value behind it.`}
           </p>
         </div>
       </section>
     </div>`;
+
+    // Same page, same shell, different thing being built. Switching resets the
+    // form on purpose: the two kinds share no fields worth carrying across.
+    root.querySelector('#c-kinds')?.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>('[data-kind]');
+      if (!btn) return;
+      const next = btn.dataset.kind as CreateKind;
+      if (next === kind) return;
+      kind = next;
+      liveErr = '';
+      status = '';
+      draw();
+    });
+
+    root.querySelector('#c-live-durations')?.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>('[data-secs]');
+      if (!btn) return;
+      captureLive();
+      const picked = btn.dataset.secs ?? '';
+      liveCustom = picked === 'custom';
+      if (!liveCustom) liveSecs = Number(picked);
+      liveErr = '';
+      draw();
+    });
+
+    // Same toggle the on-chain form uses: one of the two panels at a time, so
+    // there is never a duration and a date on screen disagreeing about when the
+    // auction closes.
+    const liveTiming = (): void => {
+      const exact =
+        root.querySelector<HTMLInputElement>('input[name="c-live-timing"]:checked')?.value === 'exact';
+      liveDraft.exact = exact;
+      root.querySelector<HTMLElement>('#c-live-mode-duration')?.toggleAttribute('hidden', exact);
+      root.querySelector<HTMLElement>('#c-live-mode-exact')?.toggleAttribute('hidden', !exact);
+    };
+    for (const el of Array.from(root.querySelectorAll('input[name="c-live-timing"]'))) {
+      el.addEventListener('change', liveTiming);
+    }
+    liveTiming();
+
+    root.querySelector('#c-live-form')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      void submitLive();
+    });
+
+    wireCurrencyCombo();
+    wireImagePreview();
+
+    root.querySelector('#c-live-again')?.addEventListener('click', () => {
+      liveUrl = '';
+      livePacked = '';
+      liveCode = '';
+      liveTerms = null;
+      liveName = '';
+      liveWantedName = '';
+      liveNameState = 'none';
+      liveNameError = '';
+      liveAnchor = undefined;
+      liveErr = '';
+      // The item and the short link are the two that must not carry over: one
+      // is a different thing being sold, and the other can never be reused.
+      liveDraft.item = '';
+      liveDraft.image = '';
+      liveDraft.name = '';
+      draw();
+    });
+
+    root.querySelector('#c-live-forget')?.addEventListener('click', () => {
+      forgetAuctions();
+      draw();
+    });
 
     root.querySelector('#c-connect')?.addEventListener('click', () => void connect());
 
@@ -646,11 +1336,30 @@ export function renderAuctionCreate(root: HTMLElement): Cleanup {
     root.querySelector('#c-quote')?.addEventListener('change', refreshMeta);
     refreshMeta();
     root.querySelector('#c-form')?.addEventListener('submit', (e) => { e.preventDefault(); void submit(); });
-    root.querySelector('#c-copy')?.addEventListener('click', () => {
-      const el = root.querySelector<HTMLInputElement>('#c-share');
+    // Copy whatever field the button names. There is more than one link on the
+    // page once a short one has been claimed, and a single handler that always
+    // read `#c-share` would have copied the wrong one.
+    const copyFrom = (id: string, btn: HTMLButtonElement): void => {
+      const el = root.querySelector<HTMLInputElement>(`#${id}`);
       if (!el) return;
       el.select();
-      try { navigator.clipboard?.writeText(el.value); } catch { /* unavailable */ }
+      try {
+        void navigator.clipboard?.writeText(el.value);
+      } catch {
+        // Clipboard is unavailable on an http origin; the value is selected, so
+        // the link is still there to copy by hand.
+        return;
+      }
+      const original = btn.textContent ?? 'copy';
+      btn.textContent = 'copied';
+      setTimeout(() => { btn.textContent = original; }, 1500);
+    };
+
+    for (const btn of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-copy-target]'))) {
+      btn.addEventListener('click', () => copyFrom(btn.dataset.copyTarget!, btn));
+    }
+    root.querySelector<HTMLButtonElement>('#c-copy')?.addEventListener('click', (ev) => {
+      copyFrom('c-share', ev.currentTarget as HTMLButtonElement);
     });
 
     // Show the ladder the numbers actually produce. A reserve and a step are

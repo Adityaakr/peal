@@ -88,6 +88,9 @@ importers:
       peal-auctionkit:
         specifier: workspace:*
         version: link:../auctionkit
+      peal-live:
+        specifier: workspace:*
+        version: link:../live
       react:
         specifier: ^19.1.0
         version: 19.2.7
@@ -119,6 +122,18 @@ importers:
       vite:
         specifier: ^6.3.5
         version: 6.4.3(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)
+
+  packages/live:
+    devDependencies:
+      bte-sdk:
+        specifier: workspace:*
+        version: link:../sdk
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.6(@types/debug@4.1.13)(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.0)
 
   packages/mempool-agents:
     dependencies:
@@ -7501,7 +7516,7 @@ snapshots:
 
   extension-port-stream@3.0.0:
     dependencies:
-      readable-stream: 3.6.2
+      readable-stream: 4.7.0
       webextension-polyfill: 0.10.0
 
   fast-copy@3.0.2: {}

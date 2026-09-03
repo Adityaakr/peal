@@ -27,6 +27,7 @@
     "peal-auctionkit": "workspace:*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "viem": "^2.21.0"
+    "viem": "^2.21.0",
+    "peal-live": "workspace:*"
   }
 }
