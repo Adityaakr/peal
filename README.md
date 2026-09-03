@@ -5,11 +5,14 @@ name a cue (a time, a block, an event), and when the cue fires the whole batch
 opens at once, for everyone, guaranteed. Nothing is readable early, not by the
 operators and not by us, and no one ever sends a reveal transaction.
 
-This repo is two things:
+This repo is three things:
 
 - **the disclosure network** ([`bte-sdk`](packages/sdk), a Rust coordinator and
   operator nodes) that any dapp can integrate for sealed bids, hidden votes, or
-  fair launches, and
+  fair launches,
+- **Peal Live** ([`peal-live`](packages/live)), a sealed auction anyone can enter
+  with no wallet, no sign in and no gas, built as the smallest thing that puts
+  the network in front of people who have never heard of it, and
 - **the encrypted mempool**, a live end-to-end demo that puts Peal in front of a
   swap and shows a real MEV sandwich vanish, on a real chain, with every step
   verifiable.
@@ -32,6 +35,35 @@ there is no "the winner never opened their commitment", no reveal-deadline
 griefing, and no trusted auctioneer sitting on plaintexts.
 
 ---
+
+## Peal Live
+
+A seller names an item and a close time and gets a link. Anyone who opens it
+types a number and hits bid: no wallet, no sign in, no gas, nothing to install.
+The bid is sealed in the bidder's own browser, so the seller cannot read it
+before the close and neither can anyone else bidding. At the close the whole
+batch opens at once and the page ranks it.
+
+The point is what it does not need. A bidder brings nothing, and a seller does
+not either: the terms ride in the URL fragment, so an auction is a link and
+needs no backend to exist. `peal.network/shoonya` works because
+[`PealNames`](contracts/src/PealNames.sol) on Tempo maps a name to those terms,
+once and permanently.
+
+Three things it deliberately does not claim:
+
+- **Nothing is escrowed.** It settles who bid the most, not the payment. The
+  board is a queue rather than a winner, so a bid nobody honours costs the
+  seller one line rather than the sale.
+- **The close is our coordinator's clock**, not something the operators check.
+- **The committee's keys came from one setup we ran**, so this is a fair reveal
+  rather than a trustless one, and the pages say so in those words.
+
+Contact details are the exception that proves the rule: everything sealed into a
+bid is published when the batch opens, so they are encrypted to a key only the
+seller holds rather than hidden in the interface.
+[`packages/live`](packages/live) is the pure half, 217 tests, no DOM and no
+network.
 
 ## The encrypted mempool
 
