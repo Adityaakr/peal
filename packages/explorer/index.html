@@ -3,12 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Peal Network. your users commit. the network reveals.</title>
-    <meta name="description" content="secrets that open themselves add them to your dapp in minutes. seal data to a cue (a time, a block, a condition, an event) and when it fires, the whole batch opens at once: no second transaction, no selective reveal. built on batched threshold encryption; decentralized operator committee on the roadmap." />
+    <title>Peal Network. Sealed now, opened at the time you set.</title>
+    <meta name="description" content="Lock a bid, a vote or a message so nobody can read it before the moment you choose. When that moment arrives it opens for everyone at once, in the same instant. Used for sealed bid auctions, encrypted mempools and private onchain actions." />
     <meta name="theme-color" content="#2563eb" />
-    <meta property="og:title" content="Peal Network. your users commit. the network reveals." />
-    <meta property="og:description" content="someone sealed something. it opens on cue, for everyone at once. nobody could read it early, the operators included." />
+    <meta property="og:title" content="Peal Network. Sealed now, opened at the time you set." />
+    <meta property="og:description" content="Lock a bid, a vote or a message so nobody can read it before the moment you choose. When that moment arrives, it opens for everyone at once." />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Peal Network" />
+    <!-- No og:image and no twitter:image on purpose: a link to Peal should
+         unfurl as text. There is deliberately no <img> in this shell either,
+         because a crawler with no image tag falls back to scraping the markup,
+         and the header logo was being served as the preview: a transparent PNG
+         that renders as a blank white slab in every chat client. The logo is a
+         CSS background now, which crawlers do not read. -->
     <meta name="twitter:card" content="summary" />
     <link rel="icon" type="image/png" href="/peal-logo.png" />
     <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet" />
@@ -22,7 +29,7 @@
   <body>
     <header class="site-header">
       <div class="site-identity">
-        <a class="site-title" href="#/"><img class="site-logo" src="/peal-logo.png" alt="" width="40" height="40" />Peal Network</a>
+        <a class="site-title" href="#/"><span class="site-logo" aria-hidden="true"></span>Peal Network</a>
         <span class="site-sub">The Programmable Disclosure Network</span>
       </div>
       <nav class="site-nav" aria-label="Primary navigation">
