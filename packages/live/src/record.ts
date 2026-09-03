@@ -14,17 +14,22 @@
  * fourteen bytes for a display name inside the same budget, and because a
  * fixed-width record has to have exactly one encoding of any given bid.
  *
- *   [0]                     version, 1
+ *   [0]                     version, 2
  *   [1..9)                  amount in minor units, u64 big endian
  *   [9]                     auction id length in bytes
  *   [10 .. 10+idLen)        auction id, utf-8
  *   [10+idLen]              display name length in bytes
  *   [.. +nameLen)           display name, utf-8
+ *   [+0]                    sealed contact length, 0 when there is none
+ *   [.. +contactLen)        the contact, encrypted to the seller's key
  *   [.. RECORD_BYTES)       zero padding
  */
 
-export const RECORD_VERSION = 1;
-export const RECORD_BYTES = 96;
+export const RECORD_VERSION = 2;
+/** Every record is this long, in every auction, whether or not it carries
+ * contact details. A record that grew when a contact was attached would say on
+ * the wire that one was, which is most of what a contact reveals. */
+export const RECORD_BYTES = 288;
 
 /** Bids are integers of minor units, so no bid can carry a rounding error.
  * The ceiling keeps the value inside the exactly-representable integer range
@@ -34,6 +39,17 @@ export const MAX_AMOUNT_MINOR = 1_000_000_000_000;
 /** Enough for a stream handle, and it has to be a byte cap rather than a
  * character one: twenty four emoji are ninety six bytes and would not fit. */
 export const MAX_NAME_BYTES = 48;
+
+/** The longest auction id the format will carry, matching MAX_AUCTION_ID_CHARS
+ * in the terms.
+ *
+ * Bounded here rather than left to the record's own size. While a record was 96
+ * bytes an id length of 255 could not fit and was rejected for that reason; at
+ * 288 it fits, and a record claiming one would have decoded to an id of
+ * whatever happened to be in the padding. A length that is only rejected as a
+ * side effect of the buffer being small is not a rule, and it stopped being
+ * true the moment the buffer grew. */
+export const MAX_AUCTION_ID_BYTES = 64;
 
 export interface Bid {
   /** The coordinator condition this bid was sealed for. Carried INSIDE the
@@ -47,6 +63,13 @@ export interface Bid {
   /** What the bidder wants to be called on the board. Never unique, never
    * trusted, and never used to decide anything. */
   name: string;
+  /** Contact details, already encrypted to the seller's key. Null when the
+   * auction did not ask for any.
+   *
+   * Encrypted before it gets here, on purpose: this record is published in full
+   * when the batch opens, so anything readable in it is readable by every other
+   * bidder. See contact.ts. */
+  contact?: Uint8Array | null;
 }
 
 /** A lone half of a surrogate pair.
@@ -80,10 +103,13 @@ export function encodeBid(bid: Bid): Uint8Array {
   const id = utf8.encode(bid.auctionId);
   const name = utf8.encode(bid.name);
   if (id.length === 0) fail('auction id is required');
-  if (id.length > 255) fail('auction id is too long');
+  if (id.length > MAX_AUCTION_ID_BYTES) fail('auction id is too long');
   if (name.length > MAX_NAME_BYTES) fail(`name exceeds ${MAX_NAME_BYTES} bytes`);
 
-  const used = 10 + id.length + 1 + name.length;
+  const contact = bid.contact ?? null;
+  if (contact && contact.length > 255) fail('sealed contact is too long');
+
+  const used = 10 + id.length + 1 + name.length + 1 + (contact ? contact.length : 0);
   if (used > RECORD_BYTES) fail(`record needs ${used} bytes, the format holds ${RECORD_BYTES}`);
 
   const out = new Uint8Array(RECORD_BYTES);
@@ -94,6 +120,9 @@ export function encodeBid(bid: Bid): Uint8Array {
   out.set(id, 10);
   out[10 + id.length] = name.length;
   out.set(name, 11 + id.length);
+  const contactAt = 11 + id.length + name.length;
+  out[contactAt] = contact ? contact.length : 0;
+  if (contact) out.set(contact, contactAt + 1);
   return out;
 }
 
@@ -112,12 +141,16 @@ export function decodeBid(bytes: Uint8Array): Bid | null {
   if (amount <= 0n || amount > BigInt(MAX_AMOUNT_MINOR)) return null;
 
   const idLen = bytes[9]!;
-  if (idLen === 0) return null;
+  if (idLen === 0 || idLen > MAX_AUCTION_ID_BYTES) return null;
   const nameLenAt = 10 + idLen;
   if (nameLenAt >= RECORD_BYTES) return null;
   const nameLen = bytes[nameLenAt]!;
-  const end = nameLenAt + 1 + nameLen;
-  if (nameLen > MAX_NAME_BYTES || end > RECORD_BYTES) return null;
+  const nameEnd = nameLenAt + 1 + nameLen;
+  if (nameLen > MAX_NAME_BYTES || nameEnd >= RECORD_BYTES) return null;
+
+  const contactLen = bytes[nameEnd]!;
+  const end = nameEnd + 1 + contactLen;
+  if (end > RECORD_BYTES) return null;
 
   // Padding must be zero. Otherwise one bid has many encodings, which would
   // make the record a place to smuggle bytes past a board that only shows a
@@ -128,7 +161,8 @@ export function decodeBid(bytes: Uint8Array): Bid | null {
     return {
       auctionId: fromUtf8.decode(bytes.subarray(10, 10 + idLen)),
       amountMinor: Number(amount),
-      name: fromUtf8.decode(bytes.subarray(nameLenAt + 1, end)),
+      name: fromUtf8.decode(bytes.subarray(nameLenAt + 1, nameEnd)),
+      contact: contactLen === 0 ? null : bytes.slice(nameEnd + 1, end),
     };
   } catch {
     return null;
