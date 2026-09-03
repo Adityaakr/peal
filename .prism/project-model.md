@@ -1060,3 +1060,60 @@ optional escrow for bidders who do have a wallet (the only real stake).
 fades while it is out above 900px. Open/closed is a CLASS, never the `hidden`
 attribute, because `display: none` cannot transition. The tagline renders only on
 `#/` and `#/app` (`body.no-tagline`).
+
+### Peal Live, second pass (2026-09-03)
+
+**Wire versions moved fast, and each bump is deliberate.** Terms are v5 (2 added
+the bid ceiling, 3 the picture, 4 the description, 5 the seller's contact key).
+The bid record is v2 and 288 bytes. An older link fails to unpack rather than
+being read with a field missing: the tuple is positional, so links of different
+lengths cannot be told apart by shape, and filling in a default would be
+honouring terms nobody agreed to.
+
+**Contact details are encrypted to the seller, not hidden in the UI.** Everything
+sealed into a bid is published at reveal, so `packages/live/src/contact.ts` uses
+WebCrypto ECDH P-256 + AES-GCM joined by its own `deriveKey`. Public half in the
+terms, private half in `localStorage` under `peal-live-key:<auctionId>` on the
+creating device only. The private key is THE ONLY COPY: losing that browser
+makes every contact unreadable by everyone. Ephemeral key per bid (so two bids
+from one person are not linkable), plaintext padded to the cap before encryption
+(so length leaks nothing), record fixed at 288 bytes whether or not one is
+attached (so the wire does not announce that there was one).
+
+**Growing the record exposed a rule that was only true by accident.** An auction
+id length of 255 used to be rejected because it could not fit in 96 bytes; at 288
+it fits, so a record claiming one would have decoded an id out of the padding.
+`MAX_AUCTION_ID_BYTES` now bounds it in both directions. A limit that holds only
+because the buffer is small is not a limit, and it stops being true the moment
+the buffer grows.
+
+**The seller is identified by `isHostOf(packed)` in live-recent.ts**, which reads
+this browser's own list. It gates an AFFORDANCE, not a permission: everything
+behind it is device-local. It exists because the pass-over control used to render
+for everyone, and a bidder could press it and be told their own bid was now top.
+
+**The receipt is six hex characters**, shown on the sealed card and beside every
+row, so a bidder matches their own row by eye rather than trusting the page. It
+replaced a 64-character hash with a copy button that had nowhere to paste.
+
+**`/v0/conditions` now returns `total`.** The list is capped at `LIMIT 100`
+(api.rs), so a client counting the array froze at 100 forever, at exactly the
+moment there was most to watch. The explorer falls back to `<n>+` against a
+coordinator that does not send it.
+
+**Deploy facts.** Railway service is `bte-explorer` with `bte-explorer-volume`
+attached and the `peal.network` domain; a failed build leaves the previous
+container serving, which is how state survived two bad deploys. Verified live
+after a successful deploy: committee `2d7ce50d…` unchanged, 100 conditions.
+
+**Two build traps, both cost real time.** `forge script --broadcast` sizes the tx
+from `eth_estimateGas`, which on Tempo ignores the ~1000 gas per byte of code:
+666,270 estimated vs 2,680,516 actual, and `gas_limit` in foundry.toml governs
+simulation only. Use `forge create --gas-limit 29000000`. And
+`ERR_PNPM_IGNORED_BUILDS` was latent for months behind a cached Docker layer:
+four `allowBuilds` entries in pnpm-workspace.yaml were the literal string "set
+this to true or false".
+
+**Testing note for next time.** Browser tests against a 120s auction race the
+close when more than one bidder seals. Use a longer window or poll the condition
+status page-side; several apparent product failures were the harness.
