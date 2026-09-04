@@ -15,3 +15,4 @@ pub mod pages;
 pub mod state;
 pub mod stats;
 pub mod v1;
+pub mod x402;
