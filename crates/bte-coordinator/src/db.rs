@@ -60,6 +60,17 @@ CREATE TABLE IF NOT EXISTS batch_slots (
     batch_id   INTEGER PRIMARY KEY REFERENCES batches(id),
     slots_json TEXT NOT NULL
 );
+-- Counted events that leave no other trace: a skill file fetched, a paid call
+-- settled. One row per kind per day, so the table stays small no matter how
+-- much traffic there is, and nothing about a visitor is stored: not an address,
+-- not an agent string, not a request. Only that a thing happened, and when.
+CREATE TABLE IF NOT EXISTS counters (
+    kind  TEXT NOT NULL,
+    day   TEXT NOT NULL,            -- YYYY-MM-DD, UTC
+    count INTEGER NOT NULL,
+    PRIMARY KEY (kind, day)
+);
+
 -- Retry safety for POST /v1/rounds. Keyed by the caller's Idempotency-Key so a
 -- timed-out create returns the original round instead of making a second one.
 CREATE TABLE IF NOT EXISTS idempotency (
