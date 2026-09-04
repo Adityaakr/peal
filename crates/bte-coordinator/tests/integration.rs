@@ -1166,3 +1166,45 @@ async fn v1_rounds_filter_by_tag_and_page_without_gaps() {
     let (_, by_status) = h.get("/v1/rounds?status=open&tag=theirs").await;
     assert_eq!(by_status["data"].as_array().unwrap().len(), 3);
 }
+/// Errors a program can branch on, rather than English it has to match.
+#[tokio::test]
+async fn v1_errors_are_problem_json_with_a_stable_code() {
+    let h = harness().await;
+
+    let (status, body, headers) = {
+        let resp = h
+            .client
+            .post(format!("{}/v1/rounds", h.base))
+            .json(&json!({"tag": "no-deadline"}))
+            .send()
+            .await
+            .unwrap();
+        let s = resp.status().as_u16();
+        let hd = resp.headers().clone();
+        (s, resp.json::<Value>().await.unwrap(), hd)
+    };
+    assert_eq!(status, 400);
+    assert_eq!(headers["content-type"], "application/problem+json");
+    assert_eq!(body["code"], "missing_deadline");
+    assert_eq!(body["field"], "opens_at");
+    assert_eq!(body["status"], 400);
+    assert!(body["type"].as_str().unwrap().starts_with("https://"));
+
+    for (payload, code) in [
+        (json!({"opens_in": 600, "tag": "BAD CAPS"}), "invalid_tag"),
+        (json!({"opens_at": "not a date"}), "invalid_time"),
+        (json!({"opens_in": -5}), "opens_in_past"),
+    ] {
+        let (_, body) = h.post("/v1/rounds", payload).await;
+        assert_eq!(body["code"], code, "{body}");
+    }
+
+    let (status, body) = h.get("/v1/rounds/cond_nope").await;
+    assert_eq!(status, 404);
+    assert_eq!(body["code"], "not_found");
+
+    let (_, body) = h.get("/v1/rounds?status=banana").await;
+    assert_eq!(body["code"], "invalid_status");
+    let (_, body) = h.get("/v1/rounds?cursor=!!!not-base64!!!").await;
+    assert_eq!(body["code"], "invalid_cursor");
+}
