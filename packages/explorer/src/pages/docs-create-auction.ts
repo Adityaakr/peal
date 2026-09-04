@@ -264,15 +264,38 @@ code.
 
 A bidder can attach a phone number or a handle. Everything in a bid is published
 when the batch opens, so a plain contact field would be readable by every other
-bidder. It has to be encrypted to you.
+bidder. It has to be encrypted to you, and the client does the whole thing:
 
-1. Generate a keypair in your own application.
-2. Pass the **public** half as \`contactPublicKey\` when you create the auction.
-3. Bidders encrypt to it and pass the result as \`sealedContact\`.
-4. You decrypt with the private half after the close.
+\`\`\`js
+import { peal, generateSellerKeys, sealContact, openContact } from '${base}/peal.js';
+
+// once, when you create the auction. KEEP THE PRIVATE HALF.
+const keys = await generateSellerKeys();
+const auction = await peal.createAuction({
+  contactPublicKey: keys.publicKey,
+  /* … */
+});
+
+// the bidder, encrypting to that key
+const sealed = await sealContact(auction.contact_public_key, 'ana@example.com');
+await peal.bid(auction.id, { amountMinor: 125_00, name: 'ana', sealedContact: sealed });
+
+// you, after it closes
+for (const bid of (await peal.results(auction.id)).bids) {
+  if (!bid.sealed_contact_b64) continue;
+  const blob = Uint8Array.from(atob(bid.sealed_contact_b64), (c) => c.charCodeAt(0));
+  console.log(bid.name, await openContact(keys.privateKey, blob));
+}
+\`\`\`
 
 Send us the private half and we could read every contact detail sealed to it, so
 the API only accepts the public one.
+
+Three details that are doing work: the ephemeral key is per bid, so two bids
+from one person are not linkable by anything in the blob; the text is padded to
+the cap before encryption, so its length says nothing; and every sealed contact
+is 157 bytes, so a bid carrying one is indistinguishable from a bid that does
+not. Up to 63 bytes of text.
 
 The cost is real and cannot be engineered away: the private key is the only
 copy. Lose it and the contact details are unreadable by everyone, including you.

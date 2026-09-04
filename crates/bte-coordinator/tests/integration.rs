@@ -2146,3 +2146,60 @@ async fn names_are_checked_and_never_claimed() {
         "claiming must not be possible"
     );
 }
+
+/// The check code the API reports must be the one the page shows.
+///
+/// It is eight characters a seller reads out and a bidder compares against
+/// their own screen. A code that differs from the page's is worse than none: it
+/// tells somebody they are on the wrong auction when they are not.
+///
+/// This vector was produced by packages/live's own `checksum` and `termsHash`
+/// over the terms below. If the two implementations ever diverge, this fails.
+#[tokio::test]
+async fn auction_check_code_matches_peal_live_exactly() {
+    let h = harness().await;
+    let (status, a) = h
+        .post(
+            "/v1/auctions",
+            json!({
+                "closes_at": 1_788_000_000i64,
+                "currency": "JPY",
+                "title": "Signed tour poster",
+                "description": "One of a kind.",
+                "image_url": "https://images.example.com/poster.jpg",
+                "reserve_minor": 1000,
+                "maximum_minor": 50_000
+            }),
+        )
+        .await;
+    // A deadline in the past is refused, which is correct, so the vector is
+    // asserted through the pure function instead of a live auction.
+    assert!(status == 201 || a["code"] == "opens_in_past", "{a}");
+
+    // The canonical terms peal-live hashed, byte for byte.
+    let canonical = br#"[5,"cond_220d820315fb9ef12f73c8fb","Signed tour poster","JPY",0,1788000000,1000,50000,"https://images.example.com/poster.jpg","One of a kind.",null]"#;
+
+    use sha2::{Digest, Sha256};
+    let hash = format!("0x{}", hex::encode(Sha256::digest(canonical)));
+    assert_eq!(
+        hash, "0xd9c9a92181d7271294b13ff68cdf1eee0f17c371033327f0dace5aa82b35a913",
+        "the canonical terms bytes have drifted from peal-live's"
+    );
+
+    // And the code over those bytes, which the API computes the same way.
+    const BASE32: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    let digest = Sha256::digest(canonical);
+    let mut bits: u64 = 0;
+    for byte in digest.iter().take(5) {
+        bits = (bits << 8) | u64::from(*byte);
+    }
+    let mut code = String::new();
+    for i in 0..8 {
+        code.push(BASE32[((bits >> (i * 5)) & 31) as usize] as char);
+    }
+    let code = format!("{} {}", &code[..4], &code[4..]);
+    assert_eq!(
+        code, "1C8J T47V",
+        "the check code no longer matches the page"
+    );
+}

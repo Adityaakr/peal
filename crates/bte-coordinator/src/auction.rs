@@ -500,7 +500,21 @@ fn auction_json(app: &App, id: &str) -> Result<Value> {
     // with nothing on it is worse than no page.
     let origin = std::env::var("PEAL_ORIGIN").unwrap_or_else(|_| "https://peal.network".into());
     let snapshot = Value::Object(obj.clone());
-    obj.insert("bid_url".into(), json!(live_link(&origin, id, &snapshot)));
+    match canonical_terms(id, &snapshot) {
+        Some(canonical) => {
+            obj.insert("bid_url".into(), json!(live_link(&origin, &canonical)));
+            // The code a bidder checks against what the seller told them, and
+            // the hash a caller anchors on chain. Both from the same bytes as
+            // the link, so the three cannot describe different auctions.
+            obj.insert("check_code".into(), json!(check_code(&canonical)));
+            obj.insert("terms_hash".into(), json!(terms_hash(&canonical)));
+        }
+        None => {
+            obj.insert("bid_url".into(), Value::Null);
+            obj.insert("check_code".into(), Value::Null);
+            obj.insert("terms_hash".into(), Value::Null);
+        }
+    }
     Ok(round)
 }
 
@@ -520,7 +534,9 @@ fn auction_json(app: &App, id: &str) -> Result<Value> {
 /// rather than assembled from a map.
 const TERMS_VERSION: i64 = 5;
 
-fn live_link(origin: &str, id: &str, a: &Value) -> Option<String> {
+/// The canonical terms bytes: the link, the check code and the hash all come
+/// from these, so the three can never describe different auctions.
+fn canonical_terms(id: &str, a: &Value) -> Option<Vec<u8>> {
     let text = |k: &str| {
         a[k].as_str()
             .map(|s| s.trim().to_string())
@@ -539,10 +555,51 @@ fn live_link(origin: &str, id: &str, a: &Value) -> Option<String> {
         text("description"),
         a["contact_public_key"].as_str(),
     ]);
-    Some(format!(
-        "{origin}/#/live/{}",
-        b64url(serde_json::to_string(&wire).ok()?.as_bytes())
-    ))
+    Some(serde_json::to_string(&wire).ok()?.into_bytes())
+}
+
+fn live_link(origin: &str, canonical: &[u8]) -> String {
+    format!("{origin}/#/live/{}", b64url(canonical))
+}
+
+/// sha256 over the canonical terms, as 0x hex. This is what a caller anchors on
+/// chain: it commits to every field at once, so a link whose reserve or close
+/// time was edited hashes to something else.
+fn terms_hash(canonical: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("0x{}", hex::encode(Sha256::digest(canonical)))
+}
+
+/// Crockford's alphabet: no I, L, O or U, so nothing here can be misheard as
+/// something else when it is read off a screen.
+const BASE32: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/// A short, speakable fingerprint of the terms.
+///
+/// Forty bits, which is not a cryptographic commitment and is not trying to be.
+/// It exists so a bidder can hear "3QK7 M2WD" read out and see the same eight
+/// characters on their own screen: its threat model is a swapped link, not a
+/// determined collision search.
+///
+/// Must agree exactly with `checksum` in packages/live/src/terms.ts. A check
+/// code that differs from the one the page shows is worse than none, because it
+/// tells somebody they are on the wrong auction when they are not.
+fn check_code(canonical: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(canonical);
+    let mut bits: u64 = 0;
+    for byte in digest.iter().take(5) {
+        bits = (bits << 8) | u64::from(*byte);
+    }
+    // Least significant group first. The TypeScript builds this string by
+    // PREPENDING while counting down, which lands the low five bits at index 0;
+    // appending while counting down produces the exact reverse, and a reversed
+    // check code tells a bidder they are on the wrong auction when they are not.
+    let mut out = String::new();
+    for i in 0..8 {
+        out.push(BASE32[((bits >> (i * 5)) & 31) as usize] as char);
+    }
+    format!("{} {}", &out[..4], &out[4..])
 }
 
 fn b64url(bytes: &[u8]) -> String {

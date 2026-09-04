@@ -532,6 +532,159 @@ export interface Auction extends Omit<Round, 'seals' | 'opens_at' | 'opens_at_un
   bid_url: string | null;
 }
 
+// ------------------------------------------------- contact details --------
+
+/**
+ * Contact details a bidder gives the seller, and nobody else.
+ *
+ * THE PROBLEM. Everything in a bid is published when the batch opens: that is
+ * what the reveal IS. So a plain contact field would be readable by every other
+ * bidder the moment the auction closed. Hiding it in an interface and calling it
+ * private would be exactly the claim this cannot afford to make.
+ *
+ * THE SHAPE. The seller makes a keypair. The public half goes on the auction, so
+ * every bidder has it. The private half never leaves the seller's machine; a
+ * bidder encrypts to the public half and only the seller can undo it.
+ *
+ * WHAT IS USED. WebCrypto's own ECDH P-256 and AES-GCM, joined by its own
+ * deriveKey. No key derivation is written here.
+ *
+ * THE COST, WHICH IS REAL. The private key is the only copy. Lose it and every
+ * contact detail is permanently unreadable, by everyone, including the seller.
+ * There is no recovery and there cannot be: anything that let us recover it
+ * would let us read them.
+ */
+export const MAX_CONTACT_BYTES = 64;
+const CONTACT_PUBLIC_KEY_BYTES = 65;
+const CONTACT_IV_BYTES = 12;
+const CONTACT_TAG_BYTES = 16;
+/** Fixed, so a bid carrying a contact is the same length as one that does not. */
+export const SEALED_CONTACT_BYTES =
+  CONTACT_PUBLIC_KEY_BYTES + CONTACT_IV_BYTES + MAX_CONTACT_BYTES + CONTACT_TAG_BYTES;
+
+const ECDH = { name: 'ECDH', namedCurve: 'P-256' } as const;
+
+export interface SellerKeys {
+  /** Goes on the auction as contactPublicKey. */
+  publicKey: string;
+  /** Stays with you. Nothing can read a contact without it, including us. */
+  privateKey: JsonWebKey;
+}
+
+/** A keypair for one auction. Keep the private half; there is no second copy. */
+export async function generateSellerKeys(): Promise<SellerKeys> {
+  const pair = await crypto.subtle.generateKey(ECDH, true, ['deriveKey']);
+  const raw = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
+  return {
+    publicKey: bytesToB64url(raw),
+    privateKey: await crypto.subtle.exportKey('jwk', pair.privateKey),
+  };
+}
+
+/** Whether a string is shaped like a seller's public key. Checked before use,
+ * because it arrives inside an auction somebody else created. */
+export function isSellerKey(key: string): boolean {
+  try {
+    return b64urlToBytes(key.trim()).length === CONTACT_PUBLIC_KEY_BYTES;
+  } catch {
+    return false;
+  }
+}
+
+/** Encrypt a contact so only the seller can read it.
+ *
+ * The ephemeral key is per bid and thrown away, which is what stops two bids
+ * from the same person being linkable by anything in the blob. The text is
+ * padded to the cap before encryption, so its length says nothing either. */
+export async function sealContact(
+  sellerPublicKey: string,
+  text: string,
+): Promise<Uint8Array> {
+  const plain = new TextEncoder().encode(text);
+  if (plain.length > MAX_CONTACT_BYTES - 1) {
+    throw new PealError(
+      `contact details exceed ${MAX_CONTACT_BYTES - 1} bytes`,
+      'contact_too_long',
+      0,
+    );
+  }
+  const seller = await crypto.subtle.importKey(
+    'raw',
+    b64urlToBytes(sellerPublicKey) as BufferSource,
+    ECDH,
+    false,
+    [],
+  );
+  const ephemeral = await crypto.subtle.generateKey(ECDH, true, ['deriveKey']);
+  const shared = await crypto.subtle.deriveKey(
+    { name: 'ECDH', public: seller },
+    ephemeral.privateKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt'],
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(CONTACT_IV_BYTES));
+  const padded = new Uint8Array(MAX_CONTACT_BYTES);
+  padded[0] = plain.length;
+  padded.set(plain, 1);
+  const body = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, shared, padded as BufferSource),
+  );
+  const ephRaw = new Uint8Array(await crypto.subtle.exportKey('raw', ephemeral.publicKey));
+  const out = new Uint8Array(SEALED_CONTACT_BYTES);
+  out.set(ephRaw, 0);
+  out.set(iv, CONTACT_PUBLIC_KEY_BYTES);
+  out.set(body, CONTACT_PUBLIC_KEY_BYTES + CONTACT_IV_BYTES);
+  return out;
+}
+
+/** Read a contact back, with the key only the seller has.
+ *
+ * Null rather than throwing for anything that does not open: a board is built
+ * from strangers' bids and one unreadable blob must not stop the rest. */
+export async function openContact(
+  privateKey: JsonWebKey,
+  sealed: Uint8Array,
+): Promise<string | null> {
+  if (sealed.length !== SEALED_CONTACT_BYTES) return null;
+  try {
+    const mine = await crypto.subtle.importKey('jwk', privateKey, ECDH, false, ['deriveKey']);
+    const theirs = await crypto.subtle.importKey(
+      'raw',
+      sealed.subarray(0, CONTACT_PUBLIC_KEY_BYTES) as BufferSource,
+      ECDH,
+      false,
+      [],
+    );
+    const shared = await crypto.subtle.deriveKey(
+      { name: 'ECDH', public: theirs },
+      mine,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt'],
+    );
+    const iv = sealed.subarray(CONTACT_PUBLIC_KEY_BYTES, CONTACT_PUBLIC_KEY_BYTES + CONTACT_IV_BYTES);
+    const body = sealed.subarray(CONTACT_PUBLIC_KEY_BYTES + CONTACT_IV_BYTES);
+    const padded = new Uint8Array(
+      await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as BufferSource }, shared, body as BufferSource),
+    );
+    const len = padded[0] ?? 0;
+    if (len === 0 || len > MAX_CONTACT_BYTES - 1) return null;
+    return new TextDecoder('utf-8', { fatal: true }).decode(padded.subarray(1, 1 + len));
+  } catch {
+    return null;
+  }
+}
+
+function bytesToB64url(bytes: Uint8Array): string {
+  return bytesToB64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function b64urlToBytes(text: string): Uint8Array {
+  const padded = text.replace(/-/g, '+').replace(/_/g, '/');
+  return b64ToBytes(padded + '='.repeat((4 - (padded.length % 4)) % 4));
+}
+
 export interface CurrencyInfo {
   code: string;
   name: string;
