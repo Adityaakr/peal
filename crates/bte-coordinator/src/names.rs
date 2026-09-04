@@ -116,10 +116,11 @@ pub async fn named_shell(
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, "text/html; charset=utf-8"),
-            // The shell is rebuilt on every deploy and names are permanent, so
-            // a short cache is all the edge needs and it keeps a bad preview
-            // from being pinned for hours.
-            (header::CACHE_CONTROL, "public, max-age=60"),
+            // Same reasoning as page_response: this shell names the bundle,
+            // so holding it means running yesterday's code against today's
+            // API. Names are permanent, so there is nothing else here worth
+            // caching.
+            (header::CACHE_CONTROL, "no-cache"),
         ],
         html,
     )
@@ -195,7 +196,16 @@ fn page_response(shell: &str, page: &crate::pages::Page, canonical: Option<&str>
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, "text/html; charset=utf-8"),
-            (header::CACHE_CONTROL, "public, max-age=300"),
+            // Revalidated every time, never held.
+            //
+            // The shell is the thing that names which hashed bundle to load, so
+            // caching it for five minutes meant that for five minutes after a
+            // deploy a browser would run the previous bundle against the new
+            // API. That is exactly how the activity page ended up stuck on
+            // "loading": old code read a field the new server had stopped
+            // sending. The assets it points at are content hashed and can be
+            // cached for ever; the pointer to them cannot.
+            (header::CACHE_CONTROL, "no-cache"),
         ],
         page_html(shell, page, canonical),
     )
