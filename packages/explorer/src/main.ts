@@ -184,6 +184,19 @@ function route(): void {
   const hashIsEmpty = !location.hash || location.hash === '#' || location.hash === '#/';
   const cleanPath = isDocsPath(pagePath) ? pagePath : null;
 
+  // What to render, decided BEFORE the address bar is touched.
+  //
+  // This used to be computed after the normalisation below, and the two
+  // branches that strip a fragment left location.hash empty, so the router read
+  // "#/" and rendered the landing page under a correct looking docs URL. Every
+  // older `#/developers/...` link broke that way, silently: right address, wrong
+  // page. Read the intent first, then rewrite the bar.
+  const hash = !hashIsEmpty
+    ? location.hash
+    : cleanPath
+      ? `#/${cleanPath}`
+      : '#/';
+
   if (cleanPath) {
     if (!hashIsEmpty && location.hash !== `#/${cleanPath}`) {
       // A link out of the docs, followed while a docs path was in the bar. The
@@ -209,10 +222,6 @@ function route(): void {
     history.replaceState(null, '', `/${location.hash.slice(2)}`);
   }
 
-  // A clean docs path is translated into the fragment it means, so nothing
-  // below had to learn about paths. A fragment still wins when there is one, so
-  // every `#/developers/...` link ever shared keeps working.
-  const hash = hashIsEmpty && cleanPath ? `#/${cleanPath}` : location.hash || '#/';
   // A bare path is only a short link when there is no hash asking for something
   // else. Following a nav link from `/shoonya` should go to that page, not stay
   // stuck on the auction, so a hash always wins and the path is then normalised
