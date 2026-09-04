@@ -9,3 +9,4 @@ pub mod intents;
 pub mod merkle;
 pub mod names;
 pub mod state;
+pub mod stats;

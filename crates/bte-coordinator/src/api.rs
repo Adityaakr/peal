@@ -19,7 +19,7 @@ const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STA
 /// Sealed wire blob cap: framing + 48 + 16 + payload cap, with headroom.
 const MAX_SEALED_BLOB: usize = bte_crypto::MAX_PAYLOAD_BYTES + 4096;
 
-type ApiError = (StatusCode, Json<Value>);
+pub(crate) type ApiError = (StatusCode, Json<Value>);
 
 fn bad_request(msg: impl Into<String>) -> ApiError {
     (StatusCode::BAD_REQUEST, Json(json!({"error": msg.into()})))
@@ -29,7 +29,7 @@ fn not_found(msg: &str) -> ApiError {
     (StatusCode::NOT_FOUND, Json(json!({"error": msg})))
 }
 
-fn internal(e: impl std::fmt::Display) -> ApiError {
+pub(crate) fn internal(e: impl std::fmt::Display) -> ApiError {
     tracing::error!(error = %e, "internal error");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -48,6 +48,7 @@ pub fn router(app: App) -> Router {
         .route("/seals/{code}", get(resolve_seal))
         .route("/committees", get(list_committees).post(register_committee))
         .route("/committees/{id}", get(get_committee))
+        .route("/stats", get(crate::stats::get_stats))
         .route("/healthz", get(|| async { Json(json!({"ok": true})) }));
     Router::new()
         .nest("/v0", api)

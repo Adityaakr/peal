@@ -851,3 +851,117 @@ async fn listing_conditions_reports_how_many_exist_not_how_many_fit() {
     assert_eq!(body["total"].as_i64().unwrap(), 3);
     assert_eq!(body["conditions"].as_array().unwrap().len(), 3);
 }
+
+/// The numbers behind the developer leaderboard.
+///
+/// It reports WORK, not people: there are no accounts here, so a tag is the
+/// only attribution the network has. These assertions are about the two ways
+/// that count could quietly lie.
+#[tokio::test]
+async fn stats_count_real_work_per_tag() {
+    let h = harness().await;
+
+    // Two apps and one caller who sent no tag at all.
+    for (tag, payloads) in [
+        (Some("alpha"), 3usize),
+        (Some("alpha"), 1),
+        (Some("beta"), 2),
+        (None, 2),
+    ] {
+        let mut body = json!({"committee_id": h.committee_id, "in_secs": 600});
+        if let Some(t) = tag {
+            body["tag"] = json!(t);
+        }
+        let (status, cond) = h.post("/v0/conditions", body).await;
+        assert_eq!(status, 200, "{cond}");
+        let id = cond["id"].as_str().unwrap().to_string();
+
+        let mut rng = bte_crypto::os_rng();
+        for i in 0..payloads {
+            let ct = seal(&h.params, format!("payload {i}").as_bytes(), &mut rng).unwrap();
+            let (status, _) = h
+                .post(
+                    "/v0/ciphertexts",
+                    json!({"condition_id": id, "sealed_blob_b64": B64.encode(ct.to_bytes())}),
+                )
+                .await;
+            assert_eq!(status, 200);
+        }
+    }
+
+    let (status, stats) = h.get("/v0/stats").await;
+    assert_eq!(status, 200, "{stats}");
+
+    // Totals cover everything, tagged or not.
+    assert_eq!(stats["totals"]["conditions"], 4);
+    assert_eq!(stats["totals"]["sealed"], 8);
+    assert_eq!(stats["totals"]["pending"], 4);
+
+    let tags = stats["tags"].as_array().unwrap();
+    // The untagged condition is real work but nobody claimed it, so it is in
+    // the totals and not on the board.
+    assert_eq!(tags.len(), 2, "{stats}");
+
+    // Ordered by how much is under each tag, which is what a board is for.
+    assert_eq!(tags[0]["tag"], "alpha");
+    assert_eq!(tags[0]["conditions"], 2);
+    assert_eq!(tags[0]["ciphertexts"], 4);
+    assert_eq!(tags[1]["tag"], "beta");
+    assert_eq!(tags[1]["conditions"], 1);
+    assert_eq!(tags[1]["ciphertexts"], 2);
+}
+
+/// The coordinator pads every batch to a multiple of B with its own dummies.
+/// Counting those would mean a tag with one real bid reporting sixty four, and
+/// the board would be showing our own work back to us as somebody else's.
+#[tokio::test]
+async fn stats_never_count_the_coordinator_s_own_padding() {
+    let h = harness().await;
+
+    let (status, cond) = h
+        .post(
+            "/v0/conditions",
+            json!({"committee_id": h.committee_id, "in_secs": 0, "tag": "solo"}),
+        )
+        .await;
+    assert_eq!(status, 200, "{cond}");
+    let id = cond["id"].as_str().unwrap().to_string();
+
+    let mut rng = bte_crypto::os_rng();
+    let ct = seal(&h.params, b"the only real one", &mut rng).unwrap();
+    h.post(
+        "/v0/ciphertexts",
+        json!({"condition_id": id, "sealed_blob_b64": B64.encode(ct.to_bytes())}),
+    )
+    .await;
+
+    // Freeze, which is where the padding is written.
+    engine::tick(&h.app).await.unwrap();
+
+    let (_, stats) = h.get("/v0/stats").await;
+    // B is 4 in this harness, so freezing added three dummies.
+    assert_eq!(stats["totals"]["padding"], 3, "{stats}");
+    assert_eq!(stats["totals"]["sealed"], 1);
+    assert_eq!(stats["tags"][0]["tag"], "solo");
+    assert_eq!(
+        stats["tags"][0]["ciphertexts"], 1,
+        "padding leaked in: {stats}"
+    );
+}
+
+/// A window a caller asks for is clamped rather than trusted: this is an
+/// unauthenticated endpoint doing a table scan.
+#[tokio::test]
+async fn stats_window_is_bounded() {
+    let h = harness().await;
+    for (asked, want) in [
+        ("1", 60),
+        ("0", 60),
+        ("-99999", 60),
+        ("999999999", 366 * 24 * 60 * 60),
+    ] {
+        let (status, stats) = h.get(&format!("/v0/stats?window_secs={asked}")).await;
+        assert_eq!(status, 200);
+        assert_eq!(stats["window_secs"], want, "asked for {asked}");
+    }
+}
