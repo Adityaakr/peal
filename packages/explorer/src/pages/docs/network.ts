@@ -209,6 +209,15 @@ export const network: DocsPage = {
       </section>
     </div>
 
+    <h2 id="api-calls">API calls</h2>
+    <p>Every request to <code>/v0</code> and <code>/v1</code>, counted by family. The dashboard's
+    own polling is excluded: it runs every fifteen seconds per open tab, and counting it would
+    make this page the busiest thing on the chart it is drawing.</p>
+    <div class="act-panel">
+      <div class="act-total" id="act-calls-total"></div>
+      <div class="act-chart" id="act-calls-chart"><p class="muted">loading…</p></div>
+    </div>
+
     <h2 id="skill-installs">Agent skill installs</h2>
     <p>Counted by the last line of the installer, after the files have landed. It sends no
     identifier, so read it as a floor on real installs rather than a headcount: anyone can call
@@ -454,6 +463,33 @@ export const network: DocsPage = {
         }
       });
 
+      panel('#act-calls-chart', () => {
+        const failures = a.endpoints.reduce((sum, e) => sum + e.errors, 0);
+        const busiest = a.endpoints[0];
+        const callsTotal = el('#act-calls-total');
+        if (callsTotal) {
+          callsTotal.innerHTML = `
+            <strong>${nf.format(a.calls)}</strong>
+            <span>call${a.calls === 1 ? '' : 's'} in the last ${a.days} days</span>
+            <em>${
+              failures > 0
+                ? `${nf.format(failures)} failed`
+                : 'none failed'
+            }${busiest ? ` · busiest ${esc(busiest.family)}` : ''}</em>`;
+        }
+        const callsChart = el<HTMLElement>('#act-calls-chart');
+        if (callsChart) {
+          const any = a.series.some((d) => d.calls > 0);
+          // Reuses the same chart as Over time with one series selected, so
+          // the two cannot end up drawing the same numbers differently.
+          callsChart.innerHTML = any
+            ? lineChart(a.series, new Set<SeriesKey>(['calls']))
+            : `<p class="act-empty">No calls counted in this window.
+               <span>Counting started when this page shipped. Anything before then is not
+               in here.</span></p>`;
+        }
+      });
+
       panel('#act-installs', () => {
         // The running total, which is the number people actually want, above a
         // chart that only ever shows the selected window. Without it the section
@@ -596,7 +632,7 @@ export const network: DocsPage = {
     const unavailable = (): void => {
       if (latest) return;
       for (const id of ['#act-lines', '#act-installs', '#act-latency', '#dev-board',
-                        '#act-donut', '#act-endpoints']) {
+                        '#act-donut', '#act-endpoints', '#act-calls-chart']) {
         const node = el(id);
         if (node && node.textContent?.trim() === 'loading…') {
           node.innerHTML = '<p class="muted">the network numbers are not reachable from here '
