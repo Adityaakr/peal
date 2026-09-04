@@ -1208,3 +1208,49 @@ async fn v1_errors_are_problem_json_with_a_stable_code() {
     let (_, body) = h.get("/v1/rounds?cursor=!!!not-base64!!!").await;
     assert_eq!(body["code"], "invalid_cursor");
 }
+/// A closed round refuses new seals with a conflict, not a generic 400: the
+/// request was well formed, the world moved.
+#[tokio::test]
+async fn v1_sealing_after_the_close_is_a_conflict() {
+    let h = harness().await;
+    let (_, round) = h.post("/v1/rounds", json!({"opens_in": 1})).await;
+    let id = round["id"].as_str().unwrap().to_string();
+    h.drive_to_reveal(&id).await;
+
+    let mut rng = bte_crypto::os_rng();
+    let ct = seal(&h.params, b"too late", &mut rng).unwrap();
+    let (status, body) = h
+        .post(
+            &format!("/v1/rounds/{id}/seals"),
+            json!({"ciphertext_b64": B64.encode(ct.to_bytes())}),
+        )
+        .await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(body["code"], "round_closed");
+}
+/// Anything that is not a ciphertext is refused at the door. One unopenable
+/// member would spoil the reveal for everybody else in the batch.
+#[tokio::test]
+async fn v1_refuses_anything_that_is_not_a_ciphertext() {
+    let h = harness().await;
+    let (_, round) = h.post("/v1/rounds", json!({"opens_in": 600})).await;
+    let id = round["id"].as_str().unwrap();
+
+    let (status, body) = h
+        .post(
+            &format!("/v1/rounds/{id}/seals"),
+            json!({"ciphertext_b64": "!!!"}),
+        )
+        .await;
+    assert_eq!(status, 400);
+    assert_eq!(body["code"], "invalid_base64");
+
+    let (status, body) = h
+        .post(
+            &format!("/v1/rounds/{id}/seals"),
+            json!({"ciphertext_b64": B64.encode(b"not a ciphertext")}),
+        )
+        .await;
+    assert_eq!(status, 422, "{body}");
+    assert_eq!(body["code"], "invalid_ciphertext");
+}
