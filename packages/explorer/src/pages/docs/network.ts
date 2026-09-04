@@ -78,22 +78,31 @@ const SERIES = [
 
 type SeriesKey = (typeof SERIES)[number]['key'];
 
-/** Railway names its edges by the airport nearest them. The header is all the
- *  location signal there is, so it is translated rather than dressed up: an
- *  edge is where the request was served, not where the caller lives. */
-const EDGES: Record<string, [string, string]> = {
-  sin: ['🇸🇬', 'Singapore'],
-  iad: ['🇺🇸', 'US East'],
-  sjc: ['🇺🇸', 'US West'],
-  ord: ['🇺🇸', 'US Central'],
-  ams: ['🇳🇱', 'Amsterdam'],
-  fra: ['🇩🇪', 'Frankfurt'],
-  lhr: ['🇬🇧', 'London'],
-  cdg: ['🇫🇷', 'Paris'],
-  nrt: ['🇯🇵', 'Tokyo'],
-  syd: ['🇦🇺', 'Sydney'],
-  gru: ['🇧🇷', 'São Paulo'],
-  bom: ['🇮🇳', 'Mumbai'],
+/** Edge codes, for the fallback case. Railway names its edges by the airport
+ *  nearest them, which says where this server is and not where a caller is. */
+const EDGES: Record<string, string> = {
+  sin: 'Singapore', iad: 'US East', sjc: 'US West', ord: 'US Central',
+  ams: 'Amsterdam', fra: 'Frankfurt', lhr: 'London', cdg: 'Paris',
+  nrt: 'Tokyo', syd: 'Sydney', gru: 'São Paulo', bom: 'Mumbai',
+};
+
+/** The country a timezone sits in, for the zones a browser is likely to report.
+ *  Unlisted zones fall back to showing the zone itself, which is still true. */
+const TZ_COUNTRY: Record<string, string> = {
+  Kolkata: 'IN', Calcutta: 'IN', Karachi: 'PK', Dhaka: 'BD', Colombo: 'LK',
+  Singapore: 'SG', Bangkok: 'TH', Jakarta: 'ID', Manila: 'PH', 'Ho_Chi_Minh': 'VN',
+  Tokyo: 'JP', Seoul: 'KR', Shanghai: 'CN', Hong_Kong: 'HK', Taipei: 'TW',
+  Dubai: 'AE', Riyadh: 'SA', Tehran: 'IR', Jerusalem: 'IL', Istanbul: 'TR',
+  London: 'GB', Dublin: 'IE', Lisbon: 'PT', Madrid: 'ES', Paris: 'FR',
+  Brussels: 'BE', Amsterdam: 'NL', Berlin: 'DE', Zurich: 'CH', Vienna: 'AT',
+  Rome: 'IT', Prague: 'CZ', Warsaw: 'PL', Stockholm: 'SE', Oslo: 'NO',
+  Copenhagen: 'DK', Helsinki: 'FI', Kyiv: 'UA', Moscow: 'RU', Athens: 'GR',
+  New_York: 'US', Chicago: 'US', Denver: 'US', Los_Angeles: 'US', Phoenix: 'US',
+  Anchorage: 'US', Honolulu: 'US', Toronto: 'CA', Vancouver: 'CA', Edmonton: 'CA',
+  Mexico_City: 'MX', Bogota: 'CO', Lima: 'PE', Santiago: 'CL',
+  Sao_Paulo: 'BR', Buenos_Aires: 'AR',
+  Lagos: 'NG', Nairobi: 'KE', Johannesburg: 'ZA', Cairo: 'EG', Casablanca: 'MA',
+  Sydney: 'AU', Melbourne: 'AU', Perth: 'AU', Brisbane: 'AU', Auckland: 'NZ',
 };
 
 /** A two letter code into its flag: the regional indicator pair. */
@@ -103,22 +112,64 @@ function flagOf(cc: string): string {
     .join('');
 }
 
-function regionLabel(code: string): { flag: string; name: string; sub?: string } {
-  if (/^[A-Za-z]{2}$/.test(code)) {
-    let name = code.toUpperCase();
-    try {
-      // Built into the browser, so no country table ships with this page.
-      name = new Intl.DisplayNames(['en'], { type: 'region' }).of(code.toUpperCase()) ?? name;
-    } catch {
-      /* older browser: the code is a usable label on its own */
-    }
-    return { flag: flagOf(code), name };
+function countryName(cc: string): string {
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(cc.toUpperCase()) ?? cc.toUpperCase();
+  } catch {
+    return cc.toUpperCase();
   }
-  const stem = code.replace(/[0-9]+$/, '');
-  const hit = EDGES[stem];
-  if (hit) return { flag: hit[0], name: hit[1], sub: 'edge' };
-  if (code === 'unknown') return { flag: '🌐', name: 'not reported', sub: 'no edge header' };
-  return { flag: '🌐', name: code, sub: 'edge' };
+}
+
+/** What two region codes have to agree on to be the same bar. */
+function groupKey(code: string): string {
+  if (code.startsWith('cc:')) return `c:${code.slice(3).toUpperCase()}`;
+  if (code.startsWith('tz:')) {
+    const city = code.slice(3).split('/').pop() ?? '';
+    const cc = TZ_COUNTRY[city];
+    // An unrecognised zone groups by its own area, which is still true and
+    // still better than one bar per city.
+    return cc ? `c:${cc}` : `z:${code.slice(3).split('/')[0] ?? code}`;
+  }
+  if (code.startsWith('edge:')) return 'edge';
+  return 'unknown';
+}
+
+interface RegionLabel {
+  flag: string;
+  name: string;
+  sub: string;
+  /** Whether this row says anything about the caller. */
+  real: boolean;
+}
+
+/**
+ * The server tags each region with where it learned it, and the label says so.
+ * An edge row is our own server and must never be presented as a caller's
+ * location, which is exactly what the first version of this panel did.
+ */
+function regionLabel(code: string): RegionLabel {
+  if (code.startsWith('cc:')) {
+    const cc = code.slice(3);
+    return { flag: flagOf(cc), name: countryName(cc), sub: 'resolved at the edge', real: true };
+  }
+  if (code.startsWith('tz:')) {
+    const zone = code.slice(3);
+    const city = (zone.split('/').pop() ?? zone).replace(/_/g, ' ');
+    const cc = TZ_COUNTRY[zone.split('/').pop() ?? ''];
+    return cc
+      ? { flag: flagOf(cc), name: `${countryName(cc)}`, sub: `${city} time`, real: true }
+      : { flag: '🌍', name: city, sub: zone.split('/')[0] ?? 'timezone', real: true };
+  }
+  if (code.startsWith('edge:')) {
+    const stem = code.slice(5).replace(/[0-9]+$/, '');
+    return {
+      flag: '🖥',
+      name: EDGES[stem] ?? code.slice(5),
+      sub: 'our server, not the caller',
+      real: false,
+    };
+  }
+  return { flag: '·', name: 'not reported', sub: 'an API client, not a browser', real: false };
 }
 
 function ago(unix: number, now: number): string {
@@ -247,8 +298,8 @@ export const network: DocsPage = {
 
       <section class="act-panel">
         <h3>Where calls come from</h3>
-        <p class="act-panel-note">The edge that served the request. No address is read or
-        stored.</p>
+        <p class="act-panel-note">Reported by the caller, never derived from an address. A
+        browser sends its timezone; an API client sends nothing.</p>
         <div id="act-regions"><p class="muted">loading…</p></div>
       </section>
 
@@ -285,11 +336,13 @@ export const network: DocsPage = {
     to show. Nothing here observes a reader: no visitor count, no session, no cookie, no stored
     address. The numbers above are work the coordinator performed and had to record in order to
     perform it.</p>
-    <p><strong>Region is not an exception to that.</strong> It is read from a header the edge
-    already set before the request arrived, at the resolution of a handful of metros. Resolving a
-    visitor address against a geolocation database would mean this coordinator handling addresses
-    in order to draw a chart, and on a product whose whole claim is that it cannot read what you
-    send it, that is not a trade worth making for a nicer map.</p>
+    <p><strong>Region is not an exception to that.</strong> A browser tells us its own
+    timezone, which it already knows and which identifies nobody, and that is the only thing
+    behind those rows. Nothing is derived from an address. Resolving a caller's address against a
+    geolocation database is the only way to place an API client that is not a browser, and it
+    would mean this coordinator handling addresses in order to draw a chart. On a product whose
+    whole claim is that it cannot read what you send it, that is not a trade worth making for a
+    map, so a caller that reports nothing is counted as reporting nothing.</p>
     <p>Two consequences worth stating plainly. Skill installs are a floor, for the reason given
     above. And sealed payload counts exclude the decoys every batch is padded with, so a quiet
     round does not appear busy.</p>
@@ -468,7 +521,18 @@ export const network: DocsPage = {
       }
 
       const installs = el('#act-installs');
-      if (installs) installs.innerHTML = installBars(a);
+      if (installs) {
+        const any = a.series.some((d) => d.skill_installs > 0);
+        // An all-zero bar chart is an empty white box, which reads as broken
+        // rather than as nothing having happened yet. Say which it is.
+        installs.innerHTML = any
+          ? installBars(a)
+          : `<p class="act-empty">No installs counted in this window.
+             <span>Counting started when this page shipped, so anything installed before
+             then is not in here. Run
+             <code>curl -fsSL https://peal.network/skill/install.sh | sh</code>
+             and this fills in within about fifteen seconds.</span></p>`;
+      }
 
       // ---- donut: what the network is used for ----
       const donutHost = el('#act-donut');
@@ -489,14 +553,59 @@ export const network: DocsPage = {
       }
 
       // ---- regions ----
+      //
+      // Rows that say something about the caller come first and keep the
+      // colour. Rows that do not are greyed and labelled, rather than left
+      // sitting at the top of the chart looking like a finding.
       const regionHost = el('#act-regions');
       if (regionHost) {
-        const rows: BarRow[] = a.regions.map((r) => {
-          const { flag, name, sub } = regionLabel(r.code);
-          return { label: `${flag}  ${name}`, value: r.calls, sub, colour: PALETTE.sealed };
-        });
+        // Grouped by what the row means, not by the string that produced it.
+        //
+        // A browser reports whichever zone name its platform uses, so the same
+        // country arrives as Asia/Kolkata from one and Asia/Calcutta from
+        // another, and America/New_York and America/Chicago are both the United
+        // States. Left ungrouped the panel showed one country as three bars and
+        // read as three places.
+        const merged = new Map<string, { code: string; calls: number; zones: number }>();
+        for (const r of a.regions) {
+          const key = groupKey(r.code);
+          const at = merged.get(key);
+          if (at) {
+            at.calls += r.calls;
+            at.zones += 1;
+          } else {
+            merged.set(key, { code: r.code, calls: r.calls, zones: 1 });
+          }
+        }
+        const labelled = [...merged.values()]
+          .sort((x, y) => y.calls - x.calls)
+          .map((r) => {
+            const label = regionLabel(r.code);
+            // Naming one city under a bar that merged several would be a
+            // smaller lie than the one just fixed, but still a lie.
+            return r.zones > 1 && r.code.startsWith('tz:')
+              ? { ...r, ...label, sub: `${r.zones} timezones` }
+              : { ...r, ...label };
+          });
+        const real = labelled.filter((r) => r.real);
+        const rest = labelled.filter((r) => !r.real);
+        const rows: BarRow[] = [...real, ...rest].map((r) => ({
+          label: `${r.flag}  ${r.name}`,
+          value: r.calls,
+          sub: r.sub,
+          colour: r.real ? PALETTE.sealed : PALETTE.muted,
+        }));
+        const reported = real.reduce((sum, r) => sum + r.calls, 0);
         regionHost.innerHTML = rows.length
-          ? barList(rows, ' calls')
+          ? `${barList(rows, ' calls')}
+             <p class="field-hint">${
+               reported > 0
+                 ? `${nf.format(reported)} of ${nf.format(
+                     labelled.reduce((sum, r) => sum + r.calls, 0),
+                   )} calls told us where they were.`
+                 : 'No caller has reported a location yet. Browsers send a timezone; '
+                   + 'an API client sends nothing, and nothing is inferred from its address.'
+             }</p>`
           : '<p class="muted">no calls counted in this window yet.</p>';
       }
 
@@ -560,7 +669,7 @@ export const network: DocsPage = {
               return `
               <li class="dev-rank${live ? ' is-live' : ''}">
                 <span class="dev-rank-n mono">${i + 1}</span>
-                <span class="dev-rank-tag mono">${esc(t.tag)}${live ? '<span class="dev-live">active</span>' : ''}</span>
+                <span class="dev-rank-tag mono"><span>${esc(t.tag)}</span>${live ? '<span class="dev-live">active</span>' : ''}</span>
                 <span class="dev-rank-bar" aria-hidden="true"><i style="width:${share}%"></i></span>
                 <span class="dev-rank-num">${nf.format(t.rounds)}</span>
                 <span class="dev-rank-num">${nf.format(t.recent)}</span>

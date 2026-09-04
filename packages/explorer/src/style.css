@@ -5559,11 +5559,24 @@ textarea.live-input {
   color: var(--muted);
 }
 
+/* The tag truncates; the badge beside it does not.
+ *
+ * Both used to live in one span with overflow:hidden, so the ellipsis ate the
+ * badge instead of the tag and the board showed "ACTIV…" and "A…". The tag is
+ * the part that can be any length, so it is the part that gets clipped. */
 .dev-rank-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dev-rank-tag > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 
 .dev-rank-num {
   font-variant-numeric: tabular-nums;
@@ -5640,7 +5653,7 @@ textarea.live-input {
 }
 
 .dev-live {
-  margin-left: 8px;
+  flex: none;
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--green-weak);
@@ -8682,6 +8695,34 @@ body.docs-page main {
 .x402-feed-when {
   margin-left: auto;
   color: var(--muted-soft);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* An empty chart panel. A blank white box reads as broken rather than as
+   nothing having happened yet, so it says which it is and how to change it. */
+.act-empty {
+  margin: 0;
+  padding: 34px 4px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.act-empty span {
+  display: block;
+  max-width: 520px;
+  margin: 8px auto 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.act-empty code {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--surface);
+  font-family: var(--mono);
   font-size: 12px;
   white-space: nowrap;
 }
