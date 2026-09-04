@@ -1398,3 +1398,50 @@ async fn a_block_scheduled_round_keeps_its_tag() {
         assert_eq!(status, 400, "{cond}");
     }
 }
+/// Listing an opened round's seals used to deadlock: the handler held the
+/// database mutex and then asked for the reveal, which takes it again. The
+/// mutex is not reentrant, so the coordinator stopped answering anything.
+/// Every earlier test listed seals only while the round was still open.
+#[tokio::test]
+async fn v1_listing_seals_after_the_round_opens_returns_payloads() {
+    let h = harness().await;
+    let (_, round) = h
+        .post("/v1/rounds", json!({"opens_in": 1, "tag": "listing"}))
+        .await;
+    let id = round["id"].as_str().unwrap().to_string();
+
+    let mut rng = bte_crypto::os_rng();
+    for text in [b"first".as_slice(), b"second"] {
+        let ct = seal(&h.params, text, &mut rng).unwrap();
+        h.post(
+            &format!("/v1/rounds/{id}/seals"),
+            json!({"ciphertext_b64": B64.encode(ct.to_bytes())}),
+        )
+        .await;
+    }
+    h.drive_to_reveal(&id).await;
+
+    let listed = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        h.get(&format!("/v1/rounds/{id}/seals")),
+    )
+    .await
+    .expect("listing seals after the reveal hung");
+
+    let (status, body) = listed;
+    assert_eq!(status, 200, "{body}");
+    let data = body["data"].as_array().unwrap();
+    assert_eq!(data.len(), 2, "{body}");
+    let mut opened: Vec<String> = data
+        .iter()
+        .map(|s| {
+            String::from_utf8(B64.decode(s["payload_b64"].as_str().unwrap()).unwrap()).unwrap()
+        })
+        .collect();
+    opened.sort();
+    assert_eq!(opened, vec!["first".to_string(), "second".to_string()]);
+
+    // And the coordinator is still answering, which is the part that broke.
+    let (status, _) = h.get("/v1").await;
+    assert_eq!(status, 200, "the coordinator stopped responding");
+}
