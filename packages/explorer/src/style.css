@@ -7524,3 +7524,337 @@ body.docs-page main {
     border-bottom: 1px solid var(--border);
   }
 }
+
+/* ---------------------------------------------------------------- activity --
+   The dashboard at #/developers/network. It borrows the API reference's card:
+   white on the page's blue wash, hairline accent border, the same 16px radius
+   and the same blue-tinted shadow, so the two reference pages read as one set
+   rather than two designs that happen to share a site. */
+
+.act-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 4px 0 22px;
+}
+
+.act-range {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.act-range-btn {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: 600 13px/1 var(--mono);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.act-range-btn:hover {
+  color: var(--accent-strong);
+}
+
+.act-range-btn.is-on {
+  background: var(--accent);
+  color: #fff;
+}
+
+.act-asof {
+  margin: 0;
+  font: 400 13px/1.4 var(--mono);
+}
+
+/* Cards wrap rather than scroll: six of them at three across is a readable
+   block on a laptop and a single column on a phone, with no hidden seventh. */
+.act-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+  margin: 0 0 34px;
+}
+
+.act-card {
+  position: relative;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgb(37 99 235 / 5%), 0 8px 24px -16px rgb(37 99 235 / 22%);
+}
+
+/* The series colour as a spine down the left edge, so a card and its line in
+   the chart below are recognisably the same thing. */
+.act-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--card, var(--accent));
+}
+
+.act-card span {
+  display: block;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.act-card strong {
+  display: block;
+  margin: 9px 0 4px;
+  font-size: 27px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.act-card em {
+  font: 400 12px/1.3 var(--mono);
+  font-style: normal;
+  color: var(--muted-soft);
+}
+
+.act-panel {
+  position: relative;
+  margin: 0 0 30px;
+  padding: 18px 20px 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(37 99 235 / 5%), 0 8px 24px -16px rgb(37 99 235 / 22%);
+}
+
+.act-legend {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 6px;
+}
+
+.act-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  font: 500 12px/1 var(--mono);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, opacity 160ms ease;
+  opacity: 0.55;
+}
+
+.act-key i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.act-key.is-on {
+  opacity: 1;
+  color: var(--text);
+  border-color: var(--accent-border);
+}
+
+.act-chart {
+  min-height: 200px;
+}
+
+/* preserveAspectRatio is left at its default, so the chart scales without
+   shearing the strokes; non-scaling-stroke keeps a 2px line 2px at any width. */
+.ch {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.ch-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.ch-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.ch-area {
+  opacity: 0.07;
+}
+
+.ch-dot {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.ch-dot.is-on {
+  opacity: 1;
+}
+
+.ch-cross {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+  transition: opacity 120ms ease;
+}
+
+.ch-bar {
+  fill: #7c3aed;
+  opacity: 0.85;
+  transition: opacity 140ms ease;
+}
+
+.ch-bars:hover .ch-bar {
+  opacity: 0.45;
+}
+
+.ch-bars .ch-bar:hover {
+  opacity: 1;
+}
+
+.ch-ytick,
+.ch-xtick {
+  font: 500 11px var(--mono);
+  fill: var(--muted-soft);
+}
+
+.ch-ytick {
+  text-anchor: end;
+}
+
+.ch-xtick {
+  text-anchor: middle;
+}
+
+/* The readout follows the pointer along the panel, clamped to its edges by the
+   mount so it never hangs off the card. */
+.act-tip {
+  position: absolute;
+  bottom: 46px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 6px 20px -8px rgb(37 99 235 / 30%);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.act-tip[hidden] {
+  display: none;
+}
+
+.act-tip strong {
+  font: 600 12px/1 var(--mono);
+  color: var(--text);
+}
+
+.act-tip span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 400 12px/1.4 var(--mono);
+  color: var(--muted);
+}
+
+.act-tip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.act-tip b {
+  margin-left: auto;
+  padding-left: 14px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.lat {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lat-row {
+  display: grid;
+  grid-template-columns: 40px minmax(80px, 1fr) 78px minmax(0, 1.1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.lat-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.lat-bar {
+  height: 9px;
+  border-radius: 999px;
+  background: var(--accent-weak);
+  overflow: hidden;
+}
+
+.lat-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #0ea5e9, var(--accent));
+}
+
+.lat-val {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.lat-note {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .lat-row {
+    grid-template-columns: 36px 1fr 66px;
+  }
+
+  .lat-note {
+    display: none;
+  }
+
+  .act-card strong {
+    font-size: 23px;
+  }
+}
