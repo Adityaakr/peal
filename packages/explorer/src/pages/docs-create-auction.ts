@@ -71,6 +71,53 @@ came out wrong in public.
 \`decimals\` tells the API how to read them, and it comes from the currency
 rather than from preference. Yen has none. A Kuwaiti dinar has three.
 
+### Picking the closing time
+
+\`closesIn\` is seconds from now, which is the easy case. For a real date, use
+\`closesAt\`, which takes a \`Date\`, an RFC 3339 string, or unix seconds.
+
+\`\`\`js
+// in an hour
+closesIn: 3600
+
+// a fixed moment, written in UTC
+closesAt: '2026-09-12T18:00:00Z'
+
+// unix seconds, if that is what your database holds
+closesAt: 1789408800
+
+// a Date, which is the one to reach for when a human picked the time
+closesAt: new Date('2026-09-12T18:00:00Z')
+\`\`\`
+
+A seller almost never thinks in UTC. They think "next Friday at six". Build the
+\`Date\` in their own timezone and pass it: a \`Date\` carries the offset, so
+the conversion happens for you.
+
+\`\`\`js
+// tomorrow at 18:00 in whatever timezone this code is running in
+const closes = new Date();
+closes.setDate(closes.getDate() + 1);
+closes.setHours(18, 0, 0, 0);
+await peal.createAuction({ closesAt: closes, /* … */ });
+
+// straight from an <input type="datetime-local">, which gives local time
+const closes = new Date(form.closesAt.value);   // '2026-09-12T18:00'
+
+// a specific timezone, regardless of where your server runs
+const closes = new Date('2026-09-12T18:00:00+05:45');   // Kathmandu
+\`\`\`
+
+Three things to know about time here:
+
+- **A bare local string is refused.** \`'2026-09-12T18:00'\` has no offset, so
+it means a different instant in every timezone. Pass a \`Date\` or include the
+offset. You get \`invalid_time\` rather than a guess.
+- **Everything comes back in UTC**, as \`closes_at\`, with \`closes_at_unix\`
+beside it for arithmetic. Format it in the reader's timezone when you display it.
+- **The time must be in the future.** A deadline in the past is \`opens_in_past\`,
+because nothing could ever be sealed to it.
+
 ### The reserve and the maximum
 
 Both optional, and the maximum is the one people skip and regret.
@@ -203,6 +250,49 @@ The ones you will meet: \`missing_deadline\`, \`invalid_currency\`,
 \`invalid_decimals\`, \`invalid_reserve\`, \`invalid_maximum\`,
 \`invalid_ciphertext\`, \`round_closed\` when a bid arrives after the close, and
 \`not_found\`.
+
+## Every limit, in one place
+
+Checked on the server, so these are the numbers that actually refuse a request
+rather than a summary of them.
+
+### Creating an auction
+
+- \`title\` up to **120 characters**
+- \`description\` up to **2000 characters**
+- \`imageUrl\` up to **500 characters**, \`https://\` only, no whitespace
+- \`tag\` up to **32 characters** of \`a-z 0-9 : _ -\`
+- \`currency\` **1 to 12 characters**
+- \`decimals\` **0 to 4**
+- \`reserveMinor\` and \`maximumMinor\` **0 to 1,000,000,000,000** minor units,
+and the maximum may not be below the reserve
+- \`closesAt\` must be in the future; \`closesIn\` must be positive
+- \`Idempotency-Key\` up to **200 characters**, remembered for **24 hours**
+
+### Bidding
+
+- \`amountMinor\` **1 to 1,000,000,000,000**, a whole number
+- \`name\` up to **48 bytes** of UTF-8. Bytes, not characters: an emoji is four,
+so twelve of them is the limit
+- \`sealedContact\` up to **157 bytes**, which is what the contact scheme
+produces
+- every bid is **320 bytes** before encryption, whatever is in it
+- a raw seal outside an auction is padded to **256, 1024, 4096, 16384 or 65536
+bytes**, and capped at **5 MB**
+
+### Reading
+
+- \`limit\` **1 to 200**, default **25**
+- rate limit **50 requests a second**, bursting to **400**, per IP. Every
+response carries \`RateLimit-Remaining\`, so you never have to be refused to
+find out
+- batches are **64 slots**; a smaller auction is padded with decoys, so the slot
+count is never the number of bidders
+
+### What happens at each limit
+
+Nothing is truncated silently. Over a limit is a \`400\` with a \`code\` and
+the \`field\` at fault, so you can put the message next to the right input.
 
 ## A checklist before you ship
 

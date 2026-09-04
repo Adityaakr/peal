@@ -454,10 +454,18 @@ function encodeBid(auctionId: string, opts: BidOptions): Uint8Array {
   }
   const enc = new TextEncoder();
   const id = enc.encode(auctionId);
-  const name = enc.encode((opts.name ?? '').slice(0, 24));
+  const name = enc.encode(opts.name ?? '');
   const contact = opts.sealedContact ?? null;
+  // The cap is BYTES, and it is checked rather than silently applied. Slicing
+  // to 24 characters and then checking 48 bytes rejected a name of 24 emoji,
+  // which is 96 bytes, while claiming the limit was characters. Quietly cutting
+  // somebody's name is worse than telling them: it is the one field they chose.
   if (name.length > MAX_BID_NAME_BYTES) {
-    throw new PealError('that name is too long', 'invalid_name', 0);
+    throw new PealError(
+      `that name is ${name.length} bytes; the limit is ${MAX_BID_NAME_BYTES}`,
+      'invalid_name',
+      0,
+    );
   }
   const used = 10 + id.length + 1 + name.length + 1 + (contact?.length ?? 0);
   if (used > BID_ORIGIN_AT) {

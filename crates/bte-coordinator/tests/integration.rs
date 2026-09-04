@@ -1945,3 +1945,71 @@ async fn seo_nested_guide_pages_have_their_own_identity() {
     // And a nested path is never mistaken for a short link.
     assert!(pages::find("createauction").is_none());
 }
+
+/// The limits the guide publishes are the limits the server enforces.
+///
+/// A documented number that is not the enforced one is worse than none: it is
+/// checked once by a reader and then trusted for ever. Each pair below is the
+/// largest accepted value and the smallest rejected one.
+#[tokio::test]
+async fn auction_limits_are_exactly_what_is_documented() {
+    let h = harness().await;
+    let ok = json!({"closes_in": 600, "currency": "USD"});
+
+    let mut at_limit = ok.clone();
+    at_limit["title"] = json!("x".repeat(120));
+    let (status, _) = h.post("/v1/auctions", at_limit).await;
+    assert_eq!(status, 201, "120 characters of title should be accepted");
+
+    for (field, value, code) in [
+        ("title", json!("x".repeat(121)), "invalid_title"),
+        (
+            "description",
+            json!("x".repeat(2001)),
+            "invalid_description",
+        ),
+        (
+            "image_url",
+            json!(format!("https://e.com/{}", "a".repeat(487))),
+            "invalid_image_url",
+        ),
+        ("tag", json!("a".repeat(33)), "invalid_tag"),
+        ("currency", json!("c".repeat(13)), "invalid_currency"),
+        ("decimals", json!(5), "invalid_decimals"),
+        (
+            "maximum_minor",
+            json!(1_000_000_000_001i64),
+            "invalid_maximum",
+        ),
+        ("reserve_minor", json!(-1), "invalid_reserve"),
+    ] {
+        let mut body = ok.clone();
+        body[field] = value;
+        let (_, out) = h.post("/v1/auctions", body).await;
+        assert_eq!(out["code"], code, "{field} at its limit: {out}");
+        // And the field is named, so a caller can put the message by the input.
+        assert_eq!(out["field"], field, "{out}");
+    }
+
+    // Time: an instant with no offset means a different moment in every
+    // timezone, so it is refused rather than guessed at.
+    let (_, naive) = h
+        .post(
+            "/v1/auctions",
+            json!({"closes_at": "2026-09-12T18:00", "currency": "USD"}),
+        )
+        .await;
+    assert_eq!(naive["code"], "invalid_time");
+    for form in [
+        json!("2099-09-12T18:00:00Z"),
+        json!("2099-09-12T18:00:00+00:00"),
+    ] {
+        let (status, out) = h
+            .post(
+                "/v1/auctions",
+                json!({"closes_at": form, "currency": "USD"}),
+            )
+            .await;
+        assert_eq!(status, 201, "{form} should be accepted: {out}");
+    }
+}
