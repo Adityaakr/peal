@@ -14,9 +14,9 @@ export default defineConfig({
   // by the landing route (src/pages/landing.tsx), which mounts a React island.
   plugins: [fundPlugin(), react(), tailwindcss()],
   server: {
-    proxy: { '/v0': { target, changeOrigin: true } },
+    proxy: { '/v0': { target, changeOrigin: true }, '/v1': { target, changeOrigin: true } },
   },
   preview: {
-    proxy: { '/v0': { target, changeOrigin: true } },
+    proxy: { '/v0': { target, changeOrigin: true }, '/v1': { target, changeOrigin: true } },
   },
 });
