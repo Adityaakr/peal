@@ -24,6 +24,13 @@ export interface DocsPage {
   html?: string;
   /** Wire anything interactive after the markup is in the document. */
   mount?: (root: HTMLElement) => (() => void) | void;
+  /** Drop the contents rail and give the column its width.
+   *
+   * The API reference is already two columns inside itself: documentation on
+   * the left, the playground on the right. A third rail beside that leaves each
+   * of them about 350px, which is too narrow for a JSON response. The endpoint
+   * list in the sidebar does the rail's job on that page. */
+  wide?: boolean;
 }
 
 export interface DocsLink {
@@ -183,7 +190,7 @@ export function renderDocs(root: HTMLElement, page: DocsPage, activeHref: string
   const next = here >= 0 && here < flat.length - 1 ? flat[here + 1] : null;
 
   root.innerHTML = `
-    <div class="doc-shell">
+    <div class="doc-shell${page.wide ? ' is-wide' : ''}">
       <aside class="doc-side" aria-label="documentation">
         <button class="doc-side-toggle" type="button" id="doc-side-toggle"
                 aria-expanded="false" aria-controls="doc-side-nav">
@@ -223,10 +230,11 @@ export function renderDocs(root: HTMLElement, page: DocsPage, activeHref: string
         </article>
       </div>
 
+      ${page.wide ? '' : `
       <nav class="doc-toc" aria-label="on this page">
         <p class="doc-toc-head">On this page</p>
         <div id="doc-toc-links"></div>
-      </nav>
+      </nav>`}
     </div>`;
 
   const cleanups: (() => void)[] = [];

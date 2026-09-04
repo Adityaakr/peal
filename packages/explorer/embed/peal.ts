@@ -219,6 +219,30 @@ export class Peal {
     });
   }
 
+  /**
+   * Encrypt a payload without submitting it.
+   *
+   * For callers who want to seal here and send the ciphertext through their own
+   * transport: a queue, a signed request, an API playground. Padded exactly as
+   * `seal` pads, so the length still says nothing about the contents.
+   */
+  async encrypt(payload: string | Uint8Array, opts: { padTo?: number } = {}): Promise<string> {
+    const raw = typeof payload === 'string' ? new TextEncoder().encode(payload) : payload;
+    const params = await this.encryptor();
+    return bytesToB64(params.seal(padTo(raw, opts.padTo)));
+  }
+
+  /**
+   * Encrypt a bid without submitting it.
+   *
+   * Same fixed width record `bid` builds, so what comes out is 320 bytes before
+   * encryption whatever the amount inside it.
+   */
+  async encryptBid(auctionId: string, opts: BidOptions): Promise<string> {
+    const params = await this.encryptor();
+    return bytesToB64(params.seal(encodeBid(auctionId, opts)));
+  }
+
   /** Every seal in a round: ids while it is open, payloads once it has opened. */
   async listSeals(roundId: string): Promise<Seal[]> {
     const body = await this.request<{ data: Seal[] }>(
