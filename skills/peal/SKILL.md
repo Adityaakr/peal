@@ -1,6 +1,6 @@
 ---
 name: peal
-description: Use when adding sealed submissions or timed disclosure to an application. Data encrypted on the client, unreadable by anyone including the server, that opens by itself at a deadline. Covers sealed bid auctions on a marketplace, private voting, encrypted mempools, commit-reveal without the reveal step, and agent actions that must not be front run. Trigger on requests like "add auctions to my marketplace", "let people bid without seeing each other", "collect these privately until Friday", "sealed bids", "open at a time", or any mention of Peal or peal.network. Also covers charging per call with x402 micropayments, for requests like "charge per bid", "pay per call", "meter this API" or "let agents pay without an account". Do not use for encryption at rest or for hiding data permanently.
+description: Use when adding sealed submissions or timed disclosure to an application. Data encrypted on the client, unreadable by anyone including the server, that opens by itself at a deadline. Covers sealed bid auctions on a marketplace, private voting, encrypted mempools, commit-reveal without the reveal step, and agent actions that must not be front run. Trigger on requests like "add auctions to my marketplace", "let people bid without seeing each other", "collect these privately until Friday", "sealed bids", "open at a time", or any mention of Peal or peal.network. Also covers building the interface for it, matching the app's existing design system, and charging per call with x402 micropayments, for requests like "charge per bid", "pay per call", "meter this API" or "let agents pay without an account". Do not use for encryption at rest or for hiding data permanently.
 ---
 
 # Peal
@@ -41,6 +41,9 @@ Find out what you are adding to before you write anything.
   own record. Find the database layer, the ORM, the schema or migration folder.
 - **Where users act.** The page or component with the buy button is where the
   bid form goes.
+- **What it is built out of.** Their UI library, their tokens, and the form
+  nearest where you are adding. Three reads, in `reference/ui.md`. An
+  integration that works and looks foreign is one the user has to rewrite.
 - **How time is handled.** Existing timezone conventions decide how you read
   "Monday at 6pm".
 
@@ -81,7 +84,23 @@ Bids are usually sealed **in the browser** anyway, which is the point. The
 plaintext must never reach a server, including the user's own. Server code
 creates the auction and reads results; the browser seals.
 
-### 4. Implement
+### 4. Match the interface to their app
+
+Peal has a design of its own and none of it belongs in somebody else's product.
+Read `reference/ui.md` before writing markup: it is three reads, `package.json`,
+their config, and one existing component, and then you build out of what they
+already have.
+
+Say what you found in one line before you build, so a wrong guess is caught
+before it becomes fifteen files:
+
+> Tailwind with shadcn/ui, `--primary` is a dark green, forms put errors under
+> the field in `text-destructive`. I will build the bid form the same way.
+
+If the repo has no styling yet, ask which they want rather than guessing. If
+they will not choose, `reference/ui.md` has tokens to fall back on.
+
+### 5. Implement
 
 `reference/recipes.md` has working integrations for Next.js, Express, a static
 page, and a non-JavaScript backend. Use them rather than inventing a shape.
@@ -102,7 +121,7 @@ const { winner, queue, bids } = await peal.results(pealAuctionId);
 
 Store `auction.id` against your listing. Everything else is derivable.
 
-### 5. Verify before you say it is done
+### 6. Verify before you say it is done
 
 Do not report success on code that has not run. `reference/verify.md` is a
 script that creates a real auction with a short deadline, bids on it, waits for
@@ -178,6 +197,7 @@ asset rather than only the amount.
 - `reference/api.md`: every endpoint
 - `reference/auctions.md`: the auction rules in depth
 - `reference/errors.md`: error codes and limits
+- `reference/ui.md`: matching their design system, and the states to build
 - `reference/payments.md`: charging per call with x402
 
 ## The trust model, stated plainly

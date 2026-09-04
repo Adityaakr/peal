@@ -79,6 +79,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
 ### 3. The bid form, in the browser
 
+The markup below is deliberately bare: it shows the sealing, the states and the
+error handling, and nothing about how it should look. Do not ship it like this.
+`reference/ui.md` is how you find what the app is built out of and rebuild this
+form from their own components, which takes about three file reads.
+
 ```tsx
 'use client';
 import { useState } from 'react';
