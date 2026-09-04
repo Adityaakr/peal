@@ -3781,7 +3781,7 @@ body.landing-page main {
 .ml-td-key { font-family: var(--mono); font-size: 12.5px; color: var(--accent); white-space: nowrap; }
 
 .ml-why-bottom { display: flex; gap: 32px; align-items: center; flex-wrap: wrap; margin-top: 28px; }
-.ml-quote { flex: 1; min-width: 280px; margin: 0; border-left: 2px solid var(--accent); padding-left: 18px; }
+.ml-quote { flex: 1; min-width: 280px; margin: 0; border-left: 1px solid var(--border); padding-left: 18px; }
 .ml-quote p { font-family: var(--body); font-size: 17px; line-height: 1.6; color: var(--text-soft, #1f2937); margin: 0 0 6px; }
 .ml-quote cite { font-family: var(--body); font-style: normal; font-size: 13px; color: var(--muted); }
 
@@ -5450,9 +5450,9 @@ textarea.live-input {
 .dev-out {
   margin: 10px 0 0;
   padding: 12px 16px;
-  border-left: 3px solid var(--accent);
-  border-radius: 0 10px 10px 0;
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border: 1px solid var(--accent-border);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
   font-family: var(--mono);
   font-size: 12.5px;
   line-height: 1.6;
@@ -5614,8 +5614,8 @@ textarea.live-input {
 .dev-caveat {
   margin-top: 16px;
   padding: 14px 16px;
-  border-left: 3px solid var(--red-border);
-  border-radius: 0 10px 10px 0;
+  border: 1px solid var(--red-border);
+  border-radius: 11px;
   background: var(--red-weak);
   font-size: 14px;
 }
@@ -6661,8 +6661,8 @@ textarea.live-input {
 .doc-quote {
   margin: 0 0 16px;
   padding: 12px 18px;
-  border-left: 3px solid var(--accent-border);
-  border-radius: 0 10px 10px 0;
+  border: 1px solid var(--accent-border);
+  border-radius: 11px;
   background: var(--accent-weak);
   color: var(--text);
 }
@@ -6990,8 +6990,8 @@ body.docs-page main {
 .doc-quote {
   margin: 0 0 18px;
   padding: 16px 20px;
-  border-left: 3px solid var(--accent-border);
-  border-radius: 0 11px 11px 0;
+  border: 1px solid var(--accent-border);
+  border-radius: 11px;
   background: var(--accent-weak);
   color: var(--text);
   font-size: 16px;
@@ -7364,8 +7364,8 @@ body.docs-page main {
 .api-note {
   margin: 20px 0 0;
   padding: 13px 15px;
-  border-left: 3px solid var(--accent-border);
-  border-radius: 0 10px 10px 0;
+  border: 1px solid var(--accent-border);
+  border-radius: 11px;
   background: var(--accent-weak);
   font-size: 13.5px;
   line-height: 1.65;
@@ -7491,8 +7491,7 @@ body.docs-page main {
   margin: 14px 0 0;
   padding: 14px 16px;
   border: 1px solid var(--border);
-  border-left: 3px solid var(--green);
-  border-radius: 4px 11px 11px 4px;
+  border-radius: 11px;
   background: #fff;
   font-family: var(--mono);
   font-size: 12.5px;
@@ -7503,8 +7502,9 @@ body.docs-page main {
   overflow: auto;
 }
 
+/* A failure recolours the whole frame rather than one edge, so it is legible
+   at a glance without a stripe competing with the response text. */
 .api-out.is-error {
-  border-left-color: var(--red);
   border-color: var(--red-border);
   background: var(--red-weak);
 }
@@ -7592,14 +7592,20 @@ body.docs-page main {
   box-shadow: 0 1px 2px rgb(37 99 235 / 5%), 0 8px 24px -16px rgb(37 99 235 / 22%);
 }
 
-/* The series colour as a spine down the left edge, so a card and its line in
-   the chart below are recognisably the same thing. */
-.act-card::before {
+/* The series colour as a dot beside the label, not as a slab down the edge.
+   A three pixel bar of saturated colour is the loudest thing on a card whose
+   job is to show a number, and with six cards in a row it reads as a paint
+   chart. The dot ties the card to its line in the chart below at a fraction of
+   the weight, and the sparkline underneath already carries the colour. */
+.act-card span::before {
   content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
   background: var(--card, var(--accent));
+  vertical-align: 1px;
 }
 
 .act-card span {
@@ -8120,8 +8126,7 @@ body.docs-page main {
   margin: 18px 0 24px;
   padding: 15px 18px;
   border: 1px solid var(--accent-border);
-  border-left: 3px solid var(--accent);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--accent-weak);
 }
 
