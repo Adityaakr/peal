@@ -121,7 +121,7 @@ fn is_tx_hash(s: &str) -> bool {
 
 /// An address as a 32 byte log topic: twelve zero bytes then the address.
 fn topic_for(addr: &str) -> String {
-    format!("0x{}{}", "0".repeat(24), &addr[2..].to_lowercase())
+    format!("0x{}{}", "0".repeat(24), addr[2..].to_lowercase())
 }
 
 fn hex_to_u128(hex: &str) -> Option<u128> {
