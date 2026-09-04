@@ -38,11 +38,11 @@ use tracing::warn;
 use crate::state::App;
 
 /// Tempo Moderato, where PealNames is deployed.
-const TEMPO_CHAIN_ID: i64 = 42431;
-const TEMPO_RPC_FALLBACK: &str = "https://rpc.moderato.tempo.xyz";
+pub(crate) const TEMPO_CHAIN_ID: i64 = 42431;
+pub(crate) const TEMPO_RPC_FALLBACK: &str = "https://rpc.moderato.tempo.xyz";
 /// The registry. Immutable, and the address IS the namespace: pointing this at
 /// a different deployment does not migrate names, it reads an empty registry.
-const PEAL_NAMES: &str = "0x98D1a8b4d8C5d36D5D9a357F7fccE17cB0F63D2f";
+pub(crate) const PEAL_NAMES: &str = "0x98D1a8b4d8C5d36D5D9a357F7fccE17cB0F63D2f";
 
 /// A miss is only cached this long, because an unclaimed name is not a
 /// permanent answer the way a claimed one is.
@@ -323,7 +323,7 @@ async fn preview_for(app: &App, name: &str) -> Option<Preview> {
 
 /// The same rule the contract enforces, so a name it would reject never becomes
 /// an RPC call.
-fn is_valid_name(name: &str) -> bool {
+pub(crate) fn is_valid_name(name: &str) -> bool {
     let b = name.as_bytes();
     if b.len() < 3 || b.len() > 32 || b[0] == b'-' || b[b.len() - 1] == b'-' {
         return false;
@@ -334,7 +334,7 @@ fn is_valid_name(name: &str) -> bool {
 
 /// `PealNames.resolve(name)`, as an `eth_call`. Empty bytes means unclaimed,
 /// which the contract returns rather than reverting.
-async fn resolve(
+pub(crate) async fn resolve(
     http: &reqwest::Client,
     rpc_url: &str,
     name: &str,

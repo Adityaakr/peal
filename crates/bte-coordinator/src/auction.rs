@@ -161,6 +161,8 @@ fn read_origin(bytes: &[u8]) -> Option<Option<(String, u64, u8)>> {
 
 pub fn routes() -> Router<App> {
     Router::new()
+        .route("/currencies", get(list_currencies))
+        .route("/names/{name}", get(check_name))
         .route("/auctions", post(create_auction))
         .route("/auctions/{id}", get(get_auction))
         .route("/auctions/{id}/bids", post(place_bid))
@@ -200,7 +202,20 @@ async fn create_auction(
                 .field("currency"),
         );
     }
-    let decimals = req.decimals.unwrap_or(2);
+    // Known currency, canonical spelling: "usd" and "USD" are one currency, and
+    // the auction stores the code the rest of the world writes.
+    let known = crate::currency::find(&currency);
+    let currency = known.map_or_else(|| currency.trim().to_string(), |c| c.code.to_string());
+
+    // Decimals come from the currency unless the caller overrides them. This is
+    // the difference between an API you have to look things up for and one that
+    // knows the yen has none. An unrecognised code still works; it just has to
+    // say how many places it has.
+    let decimals = match (req.decimals, known) {
+        (Some(d), _) => d,
+        (None, Some(c)) => c.decimals,
+        (None, None) => 2,
+    };
     if !(0..=4).contains(&decimals) {
         return Err(
             Problem::invalid("invalid_decimals", "decimals must be 0 to 4").field("decimals"),
@@ -265,6 +280,75 @@ async fn create_auction(
 
     let body = auction_json(&app, &id)?;
     Ok((StatusCode::CREATED, Json(body)).into_response())
+}
+
+/// GET /v1/names/{name}
+///
+/// Whether a short link is free, and where it points if it is not.
+///
+/// READING ONLY, AND DELIBERATELY. Claiming a name is a permanent onchain
+/// write that can never be undone or repointed: a name spent is spent. This
+/// server will tell you whether one is available and what it resolves to; it
+/// will not spend one on your behalf, because a bug here would burn something
+/// nobody can give back. Claim it from your own key, or from the create page.
+async fn check_name(State(app): State<App>, Path(name): Path<String>) -> Result<Json<Value>> {
+    let valid = crate::names::is_valid_name(&name);
+    if !valid {
+        return Ok(Json(json!({
+            "name": name,
+            "valid": false,
+            "available": false,
+            "detail": "3 to 32 characters of a-z, 0-9 and hyphens, not starting or ending with one",
+        })));
+    }
+
+    let url = app
+        .0
+        .cfg
+        .rpc_urls
+        .get(&crate::names::TEMPO_CHAIN_ID)
+        .cloned()
+        .unwrap_or_else(|| crate::names::TEMPO_RPC_FALLBACK.to_string());
+
+    match crate::names::resolve(&app.0.http, &url, &name).await {
+        Ok(found) => Ok(Json(json!({
+            "name": name,
+            "valid": true,
+            "available": found.is_none(),
+            "url": format!("https://peal.network/{name}"),
+            "registry": crate::names::PEAL_NAMES,
+            "permanent": true,
+        }))),
+        // A registry we cannot reach is not an available name. Saying "free"
+        // because a lookup timed out would send somebody to claim one that is
+        // already taken.
+        Err(e) => Err(Problem::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "registry_unreachable",
+            format!("could not reach the name registry: {e}"),
+        )),
+    }
+}
+
+#[derive(Deserialize)]
+struct CurrencyQuery {
+    q: Option<String>,
+    limit: Option<usize>,
+}
+
+/// GET /v1/currencies
+///
+/// The same list the create page offers, so a caller can build the same picker
+/// instead of hard-coding twelve codes and getting the decimals wrong.
+async fn list_currencies(
+    axum::extract::Query(q): axum::extract::Query<CurrencyQuery>,
+) -> Json<Value> {
+    let limit = q.limit.unwrap_or(200).clamp(1, 200);
+    let found = crate::currency::search(q.q.as_deref().unwrap_or(""), limit);
+    Json(json!({
+        "data": found.iter().map(|c| crate::currency::to_json(c)).collect::<Vec<_>>(),
+        "total": crate::currency::CURRENCIES.len(),
+    }))
 }
 
 async fn get_auction(State(app): State<App>, Path(id): Path<String>) -> Result<Json<Value>> {
@@ -410,7 +494,60 @@ fn auction_json(app: &App, id: &str) -> Result<Value> {
         "results_url".into(),
         json!(format!("/v1/auctions/{id}/results")),
     );
+
+    // A page bidders can open, so an auction is usable before anybody has built
+    // an interface for it. Null when the auction has no title, because a page
+    // with nothing on it is worse than no page.
+    let origin = std::env::var("PEAL_ORIGIN").unwrap_or_else(|_| "https://peal.network".into());
+    let snapshot = Value::Object(obj.clone());
+    obj.insert("bid_url".into(), json!(live_link(&origin, id, &snapshot)));
     Ok(round)
+}
+
+/// The auction as Peal Live terms, so it has a page bidders can actually use.
+///
+/// An auction created through the API otherwise has nowhere to send anybody:
+/// the developer would have to build a bidding interface before their first
+/// test. These are the same terms the create page produces, packed the same
+/// way, so the hosted page renders an API auction exactly like one made here.
+///
+/// The whole auction rides in the URL fragment, which browsers never send to a
+/// server. That is the property the link has always had and it is unchanged:
+/// nobody, including us, learns which auction a bidder opened.
+///
+/// Mirrors `canonicalTerms` in packages/live/src/terms.ts. The tuple is
+/// positional and its order is the format, so it is written out longhand here
+/// rather than assembled from a map.
+const TERMS_VERSION: i64 = 5;
+
+fn live_link(origin: &str, id: &str, a: &Value) -> Option<String> {
+    let text = |k: &str| {
+        a[k].as_str()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+    let wire = json!([
+        TERMS_VERSION,
+        id,
+        text("title")?,
+        a["currency"].as_str()?,
+        a["decimals"].as_i64()?,
+        a["closes_at_unix"].as_i64()?,
+        a["reserve_minor"].as_i64(),
+        a["maximum_minor"].as_i64(),
+        text("image_url"),
+        text("description"),
+        a["contact_public_key"].as_str(),
+    ]);
+    Some(format!(
+        "{origin}/#/live/{}",
+        b64url(serde_json::to_string(&wire).ok()?.as_bytes())
+    ))
+}
+
+fn b64url(bytes: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
 fn base64_decode(s: &str) -> std::result::Result<Vec<u8>, base64::DecodeError> {

@@ -2013,3 +2013,136 @@ async fn auction_limits_are_exactly_what_is_documented() {
         assert_eq!(status, 201, "{form} should be accepted: {out}");
     }
 }
+
+/// Decimals come from the currency, so a caller does not have to know that the
+/// yen has none. Getting this wrong seals a 1250 yen bid and opens it as 12.50.
+#[tokio::test]
+async fn auction_takes_decimals_from_the_currency() {
+    let h = harness().await;
+    for (code, canonical, decimals) in [
+        ("USD", "USD", 2),
+        ("JPY", "JPY", 0),
+        ("KWD", "KWD", 3),
+        ("points", "points", 0),
+        // Case is not a currency: "inr" and "INR" are one, stored the way the
+        // rest of the world writes it.
+        ("inr", "INR", 2),
+    ] {
+        let (status, a) = h
+            .post("/v1/auctions", json!({"closes_in": 600, "currency": code}))
+            .await;
+        assert_eq!(status, 201, "{a}");
+        assert_eq!(a["currency"], canonical, "{code}");
+        assert_eq!(a["decimals"], decimals, "{code}");
+    }
+
+    // An explicit value still wins, and an unknown code still works: it just
+    // has to say how many places it has.
+    let (_, over) = h
+        .post(
+            "/v1/auctions",
+            json!({"closes_in": 600, "currency": "JPY", "decimals": 2}),
+        )
+        .await;
+    assert_eq!(over["decimals"], 2);
+    let (_, unknown) = h
+        .post(
+            "/v1/auctions",
+            json!({"closes_in": 600, "currency": "credits"}),
+        )
+        .await;
+    assert_eq!(unknown["currency"], "credits");
+    assert_eq!(unknown["decimals"], 2);
+}
+
+/// The same picker the create page offers, so a caller builds the same thing
+/// rather than hard-coding twelve codes.
+#[tokio::test]
+async fn currencies_are_searchable_the_way_people_type() {
+    let h = harness().await;
+    let first = |v: &Value| {
+        v["data"][0]["code"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    };
+
+    let (status, all) = h.get("/v1/currencies").await;
+    assert_eq!(status, 200);
+    assert!(all["total"].as_u64().unwrap() >= 50, "{all}");
+
+    // A code, a name and a symbol all find the same currency.
+    for q in ["inr", "INR", "rupee", "Indian"] {
+        let (_, out) = h.get(&format!("/v1/currencies?q={q}")).await;
+        assert_eq!(first(&out), "INR", "searching {q}: {out}");
+    }
+    let (_, yen) = h.get("/v1/currencies?q=yen").await;
+    assert_eq!(first(&yen), "JPY");
+    assert_eq!(yen["data"][0]["decimals"], 0);
+
+    // Points are in the list because plenty of auctions are not money.
+    let (_, points) = h.get("/v1/currencies?q=point").await;
+    assert_eq!(first(&points), "points");
+}
+
+/// An API auction has a page bidders can open, so a developer does not have to
+/// build a bidding interface before their first test.
+#[tokio::test]
+async fn auction_carries_a_link_bidders_can_open() {
+    let h = harness().await;
+    let (_, a) = h
+        .post(
+            "/v1/auctions",
+            json!({
+                "closes_in": 3600, "currency": "JPY", "title": "Signed tour poster",
+                "description": "One of a kind.", "reserve_minor": 1000, "maximum_minor": 50_000
+            }),
+        )
+        .await;
+    let link = a["bid_url"].as_str().expect("an auction has a link");
+    assert!(link.contains("/#/live/"), "{link}");
+
+    // The whole auction rides in the fragment, which browsers never send to a
+    // server: opening the link tells nobody, including us, which auction it is.
+    let packed = link.split("/#/live/").nth(1).unwrap();
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(packed)
+        .expect("the fragment is base64url");
+    let wire: Vec<Value> = serde_json::from_slice(&bytes).expect("terms are a positional tuple");
+
+    // The order IS the format, so it is asserted position by position.
+    assert_eq!(wire[0], 5, "terms version");
+    assert_eq!(wire[1], a["id"]);
+    assert_eq!(wire[2], "Signed tour poster");
+    assert_eq!(wire[3], "JPY");
+    assert_eq!(wire[4], 0, "decimals travel with the auction");
+    assert_eq!(wire[5], a["closes_at_unix"]);
+    assert_eq!(wire[6], 1000);
+    assert_eq!(wire[7], 50_000);
+
+    // An auction with nothing to show gets no link rather than an empty page.
+    let (_, bare) = h
+        .post("/v1/auctions", json!({"closes_in": 600, "currency": "USD"}))
+        .await;
+    assert_eq!(bare["bid_url"], Value::Null);
+}
+
+/// A name can be checked but never claimed here: it is a permanent onchain
+/// write, and a bug that spent one would burn something nobody can give back.
+#[tokio::test]
+async fn names_are_checked_and_never_claimed() {
+    let h = harness().await;
+    for bad in ["ab", "-bad", "bad-", "NOPE", "with space"] {
+        let (status, out) = h.get(&format!("/v1/names/{bad}")).await;
+        if status == 200 {
+            assert_eq!(out["valid"], json!(false), "accepted {bad}: {out}");
+            assert_eq!(out["available"], json!(false));
+        }
+    }
+    // There is no route that claims one.
+    let (status, _) = h.post("/v1/names/anything", json!({})).await;
+    assert!(
+        status == 404 || status == 405,
+        "claiming must not be possible"
+    );
+}

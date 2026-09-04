@@ -71,6 +71,29 @@ came out wrong in public.
 \`decimals\` tells the API how to read them, and it comes from the currency
 rather than from preference. Yen has none. A Kuwaiti dinar has three.
 
+### The currency
+
+Pass a code and the decimals come with it. You do not have to know that the yen
+has none and the Kuwaiti dinar has three, and getting it wrong seals a 1250 yen
+bid and opens it as 12.50.
+
+\`\`\`js
+currency: 'JPY'        // decimals: 0, filled in for you
+currency: 'inr'        // stored as INR, decimals: 2
+currency: 'points'     // not money at all, decimals: 0
+currency: 'credits', decimals: 0    // your own unit, so you say
+\`\`\`
+
+The same list the create page offers is an endpoint, so you can build the same
+picker rather than hard-coding a dozen codes. It searches by code, name and
+symbol, because people type all three.
+
+\`\`\`js
+await peal.currencies('rupee');   // INR, PKR, LKR, …
+await peal.currencies('¥');       // JPY
+await peal.currencies();          // all 56
+\`\`\`
+
 ### Picking the closing time
 
 \`closesIn\` is seconds from now, which is the easy case. For a real date, use
@@ -197,6 +220,46 @@ curl -s ${base}/v1/auctions/AUCTION_ID \\
   -H "if-none-match: $ETAG" -D-
 \`\`\`
 
+## The link bidders open
+
+Every auction with a title comes back with a \`bid_url\`: a hosted page where
+somebody can read the terms and place a bid. You do not have to build a bidding
+interface to test the thing, or ever, if the hosted one suits you.
+
+\`\`\`js
+const auction = await peal.createAuction({ /* … */ });
+console.log(auction.bid_url);
+// https://peal.network/#/live/WzUsImNvbmRfNmRhY2I5…
+\`\`\`
+
+The whole auction rides in the **URL fragment**, the part after the \`#\`.
+Browsers never send a fragment to a server, so opening that link tells nobody
+which auction it is, including us. There is no lookup and no record of who
+looked.
+
+It also means the link is self contained and long. If you want a short one:
+
+### Short links
+
+\`peal.network/shoonya\` instead of a hundred and sixty characters. A name is
+claimed once in an onchain registry and **never moves**, not even by whoever
+claimed it. That is the whole security argument: a name that could be repointed
+would mean the person who shared a link is also the person who can change where
+it goes.
+
+You can check one from the API:
+
+\`\`\`js
+await peal.checkName('shoonya');
+// { name: 'shoonya', valid: true, available: false, url: '…', permanent: true }
+\`\`\`
+
+Claiming is deliberately **not** something this API does for you. It is a
+permanent write that can never be undone, and a name spent is spent, so it
+happens from your own key rather than from a server acting on your behalf. The
+[create page](#/create) claims one for you if you would rather not write that
+code.
+
 ## Contact details, if you need them
 
 A bidder can attach a phone number or a handle. Everything in a bid is published
@@ -262,8 +325,10 @@ rather than a summary of them.
 - \`description\` up to **2000 characters**
 - \`imageUrl\` up to **500 characters**, \`https://\` only, no whitespace
 - \`tag\` up to **32 characters** of \`a-z 0-9 : _ -\`
-- \`currency\` **1 to 12 characters**
-- \`decimals\` **0 to 4**
+- \`currency\` **1 to 12 characters**; a known code fills in \`decimals\`
+- \`decimals\` **0 to 4**, only needed for a code the table does not know
+- \`name\` for a short link: **3 to 32 characters** of \`a-z 0-9 -\`, not
+starting or ending with a hyphen
 - \`reserveMinor\` and \`maximumMinor\` **0 to 1,000,000,000,000** minor units,
 and the maximum may not be below the reserve
 - \`closesAt\` must be in the future; \`closesIn\` must be positive

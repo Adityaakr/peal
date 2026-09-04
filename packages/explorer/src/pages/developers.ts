@@ -782,6 +782,18 @@ const { winner, queue, bids, discarded } = await peal.results(auction.id);</code
             refused here rather than at the close.</p>
           </div>
           <div class="dev-ep">
+            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v1/currencies</code></p>
+            <p>The 56 currencies the API knows, with the decimals each one uses. Search with
+            <code>q</code> by code, name or symbol. Pass a known code when you create an auction
+            and the decimals come with it.</p>
+          </div>
+          <div class="dev-ep">
+            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v1/names/{name}</code></p>
+            <p>Whether a short link is free. Checking only: claiming is a permanent onchain write
+            that can never be undone, so it happens from your own key rather than from a server
+            acting on your behalf.</p>
+          </div>
+          <div class="dev-ep">
             <p class="dev-ep-sig"><span class="dev-verb dev-post">POST</span> <code>/v1/auctions/{id}/bids</code></p>
             <p>A bid is a seal: <code>{ ciphertext_b64 }</code> holding the fixed width record. Same
             validation and the same closed check as any other seal.</p>
@@ -931,6 +943,9 @@ const proof = await peal.getProof(id);</code></pre>
             details</em></li>
           <li><span class="dev-st dev-st-next">shipping next</span>currency conversion in the API
             <em>bidders in another currency; peal-live does it client side today</em></li>
+          <li><span class="dev-st dev-st-next">shipping next</span>claiming a short link from the
+            API <em>you can check availability today; claiming is a permanent onchain write and
+            happens from your own key</em></li>
         </ul>
         <p class="dev-note">An agent cannot sign up for anything: it cannot accept terms, hold an
         API key it did not earn, or expense a subscription. It can pay for one request. That is why

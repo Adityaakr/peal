@@ -353,6 +353,34 @@ export class Peal {
     return this.request(`/v1/auctions/${encodeURIComponent(auctionId)}/results`);
   }
 
+  /** The currencies the API knows, searchable by code, name or symbol. Build
+   * the same picker the create page has instead of hard-coding a dozen codes
+   * and getting the decimals wrong. */
+  async currencies(query = '', limit = 200): Promise<CurrencyInfo[]> {
+    const q = new URLSearchParams();
+    if (query) q.set('q', query);
+    q.set('limit', String(limit));
+    const body = await this.request<{ data: CurrencyInfo[] }>(`/v1/currencies?${q}`);
+    return body.data;
+  }
+
+  /**
+   * Whether a short link is free, and where it points if it is not.
+   *
+   * Checking only. Claiming a name is a permanent onchain write that can never
+   * be undone or repointed, so it is done from your own key rather than by a
+   * server acting on your behalf.
+   */
+  async checkName(name: string): Promise<{
+    name: string;
+    valid: boolean;
+    available: boolean;
+    url?: string;
+    registry?: string;
+  }> {
+    return this.request(`/v1/names/${encodeURIComponent(name)}`);
+  }
+
   /** The public parameters, plus the committee shape. */
   async parameters(): Promise<{
     id: string;
@@ -497,6 +525,18 @@ export interface Auction extends Omit<Round, 'seals' | 'opens_at' | 'opens_at_un
   contact_public_key: string | null;
   bids_url: string;
   results_url: string;
+  /** A hosted page bidders can open, so an auction works before you have built
+   * an interface for it. The whole auction rides in the URL fragment, which
+   * browsers never send anywhere, so opening it tells nobody which auction it
+   * is. Null when the auction has no title. */
+  bid_url: string | null;
+}
+
+export interface CurrencyInfo {
+  code: string;
+  name: string;
+  decimals: number;
+  symbol: string | null;
 }
 
 export interface AuctionBid {

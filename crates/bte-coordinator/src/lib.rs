@@ -3,6 +3,7 @@
 
 pub mod api;
 pub mod auction;
+pub mod currency;
 pub mod db;
 pub mod eip712;
 pub mod engine;
