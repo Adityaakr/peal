@@ -49,6 +49,8 @@ pub fn router(app: App) -> Router {
         .route("/committees", get(list_committees).post(register_committee))
         .route("/committees/{id}", get(get_committee))
         .route("/stats", get(crate::stats::get_stats))
+        .route("/activity", get(crate::activity::get_activity))
+        .route("/skill-installs", post(crate::activity::skill_installed))
         .route("/healthz", get(|| async { Json(json!({"ok": true})) }));
     Router::new()
         .nest("/v0", api)

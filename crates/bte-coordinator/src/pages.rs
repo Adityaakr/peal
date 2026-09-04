@@ -435,7 +435,11 @@ pub fn llms_txt(origin: &str) -> String {
 
 /// Today, as YYYY-MM-DD, for the sitemap's lastmod.
 pub fn today() -> String {
-    let unix = crate::db::unix_now();
+    day_of(crate::db::unix_now())
+}
+
+/// A unix instant as YYYY-MM-DD in UTC.
+pub fn day_of(unix: i64) -> String {
     let days = unix.div_euclid(86_400);
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
