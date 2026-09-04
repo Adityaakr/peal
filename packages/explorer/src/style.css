@@ -5420,6 +5420,19 @@ textarea.live-input {
   font-size: 14px;
 }
 
+/* The article styles every inline <code> as a light pill, which is right in a
+   paragraph and unreadable inside a dark block: it painted a white box behind
+   every line. .codecard resets the same thing for the same reason. */
+.dev-code code,
+.dev-out code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-family: var(--mono);
+  font-size: inherit;
+}
+
 .dev-code {
   margin: 0;
   padding: 14px 16px;
@@ -5609,5 +5622,59 @@ textarea.live-input {
 
   .dev-rank-when {
     display: none;
+  }
+}
+
+/* The section describing what is designed rather than shipped. Marked so it is
+   never mistaken for the runnable API three scrolls above it. */
+.dev-soon {
+  border-left: 2px dashed var(--border);
+  padding-left: 20px;
+}
+
+.dev-badge {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 3px 10px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+
+.dev-price {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin: 18px 0 8px;
+}
+
+.dev-price > div {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.dev-price span {
+  display: block;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.dev-price strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .dev-soon {
+    padding-left: 14px;
   }
 }

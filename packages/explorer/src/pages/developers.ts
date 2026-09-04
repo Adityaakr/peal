@@ -15,10 +15,12 @@ import { mountScrollReveal } from '../reveal';
 import { esc } from '../util';
 
 const sections = [
-  ['start', 'Quickstart'],
+  ['start', 'Start here'],
+  ['how', 'How it works'],
   ['calls', 'The three calls'],
   ['uses', 'What to build'],
   ['reference', 'API reference'],
+  ['next', 'Peal Commit'],
   ['identify', 'Name your app'],
   ['board', 'Live leaderboard'],
   ['limits', 'Limits and trust'],
@@ -100,8 +102,11 @@ export function renderDevelopers(root: HTMLElement): () => void {
     {
       id: 'condition',
       title: '1. Say when it opens',
-      note: `A condition is the cue. Nothing is encrypted yet: this only names the moment.
-             Plain HTTP, no key, no wallet, works from curl.`,
+      note: `A condition is a row in the coordinator naming a moment, and it fires on its own
+             whether or not anyone is watching. Nothing is encrypted yet. <code>in_secs</code> is
+             relative; use <code>fires_at</code> for an absolute unix second, or
+             <code>kind: "at_block"</code> to fire on a chain height instead. Plain HTTP, no key,
+             no wallet, works from curl.`,
       code: `const res = await fetch('${shown}/v0/conditions', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
@@ -125,9 +130,11 @@ const { id } = await res.json();`,
     {
       id: 'seal',
       title: '2. Seal something to it',
-      note: `This one needs the library, because the encryption happens on your side. That is the
-             point: the payload is unreadable before it leaves the page, so there is no moment
-             where we could read it even if we wanted to.`,
+      note: `The only step that needs the library, because this is where the encryption actually
+             happens and it happens on your machine. The SDK fetches the committee's public
+             parameters, checks their digest against what it was served, and encrypts locally. What
+             leaves the page is already a ciphertext, so there is no point in the path where we
+             hold a plaintext, and no way for us to start.`,
       code: `import { BteClient } from 'bte-sdk';
 
 const peal = new BteClient({ url: '${shown}' });
@@ -150,8 +157,10 @@ const { ctHash } = await peal.seal('my secret', id);`,
     {
       id: 'read',
       title: '3. Read it when it opens',
-      note: `Before the cue this returns nothing at all, which is the guarantee working. After it,
-             the whole batch is public in one response. Plain HTTP again.`,
+      note: `A 404 before the cue is the guarantee working, not an error to handle: there is
+             genuinely nothing readable to return. Afterwards the whole batch comes back in one
+             response, decoys flagged, with a merkle root over the set so anyone can check that
+             nothing was added, dropped or reordered. Plain HTTP again.`,
       code: `const res = await fetch(\`${shown}/v0/reveals/\${id}\`);
 // 404 until the cue fires, then every payload in the batch at once.
 const reveal = await res.json();`,
@@ -189,14 +198,18 @@ const reveal = await res.json();`,
   root.innerHTML = `
     <article class="protocol-article dev-article">
       <header id="start" class="scroll-reveal">
-        <p class="kicker">Peal for developers · v0</p>
-        <h1>Seal it now. It opens on cue, for everyone at once.</h1>
-        <p class="lede">Peal is encryption you can put a clock on. Your users seal something, nobody
-        can read it (not them, not you, not us), and at the moment you named it opens by itself
-        for everybody at the same time. No second transaction, no one who gets to peek first, no
-        trusted middleman holding the key until then.</p>
-        <p class="lede">It is three HTTP calls. There is no signup, no API key and no payment, and
-        every example on this page runs against the live network from your browser.</p>
+        <p class="kicker">Peal for developers · v0 devnet</p>
+        <h1>Private submissions. Programmable reveal.</h1>
+        <p class="lede">Peal is one API for collecting encrypted bids, offers, votes and
+        commitments, then opening them only when the rules say. Everything arrives sealed, nothing
+        is readable before the deadline (not by the other participants, not by you, not by us), and
+        when the moment comes the whole set opens at once.</p>
+        <p class="lede">The hard part was never the encryption. It is that somebody has to hold the
+        key until the deadline, and whoever holds it can peek, leak, or quietly decline to open it
+        when the answer does not suit them. Peal removes that person: no single party can open a
+        batch early, and nobody has to come back to reveal, because the network does it.</p>
+        <p class="lede">Three HTTP calls. No signup, no API key, no payment on the devnet. Every
+        example below runs against the live network from this page.</p>
         <div class="facts" id="dev-facts" aria-label="live network numbers">
           <div><span>conditions</span><strong>…</strong></div>
           <div><span>payloads sealed</span><strong>…</strong></div>
@@ -209,6 +222,38 @@ const reveal = await res.json();`,
         ${sections.map(([id, label], i) =>
           `<button type="button" data-section="${id}"${i === 0 ? ' aria-current="true"' : ''}>${label}</button>`).join('')}
       </nav>
+
+      <section id="how" class="scroll-reveal">
+        <h2>How it works</h2>
+        <p>Three pieces, and it is worth knowing which one does what before you build on it.</p>
+        <h3>The cue is a row, not a promise</h3>
+        <p>A <strong>condition</strong> is a moment: a unix second, or a block height on a chain we
+        watch. It exists in the coordinator's database before anything is encrypted to it, and it
+        fires whether or not anyone is paying attention. That is the difference between this and a
+        commit-reveal scheme: the reveal is not a move any participant has to make, so nobody can
+        decline to make it after seeing they have lost.</p>
+        <h3>The encryption happens on your side</h3>
+        <p>You fetch the committee's public parameters and encrypt against them locally, so the
+        plaintext never exists anywhere we run. What crosses the wire is a ciphertext under
+        batched threshold encryption on BLS12-381, with a Fujisaki-Okamoto transform for
+        chosen-ciphertext security. The coordinator parses it, checks the points are on the curve
+        and in the right subgroup, and refuses anything that is not a real ciphertext. It cannot
+        do anything else with it.</p>
+        <h3>Opening is a threshold, and the batch is padded</h3>
+        <p>Five operators hold key shares; any three can open a batch, any two cannot. When the cue
+        fires the coordinator freezes the set, pads it to a multiple of 64 with decoys it seals to
+        itself, and the operators produce shares over the whole batch at once. One decryption for
+        sixty four slots is what makes this cheap enough to use per bid rather than per auction.</p>
+        <p>The padding is not a detail. Without it, a condition with three ciphertexts announces
+        that three people took part, which for a sealed round is often the thing worth hiding. Every
+        reveal comes back with its decoys flagged <code>is_dummy</code>, and the counts on this page
+        exclude them.</p>
+        <h3>What you can check afterwards</h3>
+        <p>A reveal carries every payload with its position and a merkle root over the set, and the
+        positions are a pure function of the ciphertext hashes rather than of arrival order. So the
+        coordinator cannot reorder a batch to change who was first, and anyone can recompute the
+        root from the published payloads and see that nothing was added or dropped.</p>
+      </section>
 
       <section id="calls" class="scroll-reveal">
         <h2>The three calls</h2>
@@ -244,20 +289,52 @@ const reveal = await res.json();`,
           </div>
           <div class="dev-use">
             <h3>Votes that cannot be swayed</h3>
-            <p>Nobody sees a running tally, so nobody votes strategically off the back of one, and
-            no early voter is influenced by a late one.</p>
+            <p>No running tally means no bandwagon and no strategic vote cast off the back of one.
+            Early voters do not influence late ones because there is nothing to see.</p>
             <p class="dev-use-how"><code>tag: 'vote:&lt;proposal&gt;'</code> · one condition per poll</p>
           </div>
           <div class="dev-use">
+            <h3>Agent bids and actions</h3>
+            <p>An autonomous agent that submits in the clear can be front-run by another agent
+            reading the same queue. Sealing the action means a machine can commit to something it
+            cannot secretly alter, and cannot reveal early to gain an edge.</p>
+            <p class="dev-use-how"><code>tag: 'agent:&lt;swarm&gt;'</code> · one condition per round</p>
+          </div>
+          <div class="dev-use">
+            <h3>Procurement and quotes</h3>
+            <p>Suppliers quote blind. Nobody undercuts a number they were not supposed to see, and
+            the buyer cannot shop one supplier's price to another before the close.</p>
+            <p class="dev-use-how"><code>tag: 'rfq:&lt;tender&gt;'</code> · quotes as payloads</p>
+          </div>
+          <div class="dev-use">
+            <h3>Prediction tournaments</h3>
+            <p>Every forecast is sealed until the window shuts, so nobody copies a better
+            forecaster and nobody edits after the fact. The scoreboard is computable by anyone from
+            the reveal.</p>
+            <p class="dev-use-how"><code>tag: 'round:&lt;n&gt;'</code> · one condition per window</p>
+          </div>
+          <div class="dev-use">
+            <h3>Bounty and grant submissions</h3>
+            <p>Entries open together at the deadline, so a late entrant cannot read the field and
+            beat it by a nose, and a reviewer cannot leak one entry to another team.</p>
+            <p class="dev-use-how"><code>fires_at</code> · the deadline, as a unix second</p>
+          </div>
+          <div class="dev-use">
+            <h3>Token allocations and fair launches</h3>
+            <p>A private order book that opens all at once and clears at one price. No visible
+            order flow to trade against, and no allocator advantage from seeing the book first.</p>
+            <p class="dev-use-how"><code>tag: 'sale:&lt;id&gt;'</code> · orders as payloads</p>
+          </div>
+          <div class="dev-use">
             <h3>Embargoes that hold themselves</h3>
-            <p>Earnings, a security disclosure, a paper under embargo. Send it to everyone now, in
-            a form nobody can open early, and it publishes itself at the hour.</p>
+            <p>Earnings, a security disclosure, a paper under embargo. Distribute it now in a form
+            nobody can open early, and it publishes itself on the hour.</p>
             <p class="dev-use-how"><code>fires_at</code> · an absolute unix second</p>
           </div>
           <div class="dev-use">
             <h3>Anything with a deadline</h3>
-            <p>Sealed bids on a tender, exam papers, a dead man's switch, a time capsule. If the
-            rule is "not before this moment, and then everybody at once", it fits.</p>
+            <p>Exam papers, a dead man's switch, a scheduled disclosure, a time capsule. If the rule
+            is "not before this moment, and then everybody at once", it fits.</p>
             <p class="dev-use-how"><code>in_secs</code> · relative, for anything short lived</p>
           </div>
         </div>
@@ -302,6 +379,79 @@ const reveal = await res.json();`,
             last hundred. This page's numbers and the board below are this endpoint.</p>
           </div>
         </div>
+      </section>
+
+      <section id="next" class="scroll-reveal dev-soon">
+        <h2>Peal Commit <span class="dev-badge">designed, not built</span></h2>
+        <p class="dev-caveat"><strong>Nothing in this section exists yet.</strong> Every other
+        example on this page runs against the live network; these do not. It is here so you can
+        argue with the shape before it is built, and so nobody integrates against an endpoint that
+        is still a paragraph.</p>
+
+        <p>The v0 API above is the primitive: conditions, ciphertexts, reveals. It assumes you are
+        comfortable holding a committee id and encrypting against public parameters. Most callers,
+        and nearly every autonomous agent, want one call instead.</p>
+
+        <p><strong>Peal Commit</strong> is that call. Seal a payload until a deadline, get a
+        commitment and a proof URL back, and have the reveal delivered to you.</p>
+
+        <pre class="dev-code"><code>POST /v1/seals
+
+{
+  "payload":   "the agent's bid, action or forecast",
+  "unlockAt":  "2026-09-12T18:00:00Z",
+  "recipient": "0x…",
+  "webhook":   "https://app.example/reveal"
+}
+
+→ {
+  "sealId":     "seal_…",
+  "commitment": "0x…",
+  "ciphertext": "…",
+  "unlockAt":   "2026-09-12T18:00:00Z",
+  "proofUrl":   "https://peal.network/v1/seals/seal_…/proof"
+}</code></pre>
+
+        <p>With <code>GET /v1/seals/:id</code> for status or the opened payload,
+        <code>GET /v1/seals/:id/proof</code> to verify both the submission and the reveal,
+        <code>POST /v1/rounds</code> for multi-participant sealed rounds, and an MCP tool
+        <code>seal_until(payload, unlockAt)</code> so an agent can reach it without an SDK.</p>
+
+        <h3>Paid per call, with no account</h3>
+        <p>The natural way to charge for this is <a href="https://docs.x402.org/introduction"
+        target="_blank" rel="noopener">x402</a>, which is HTTP 402 put back to work: the server
+        answers a request with <code>402 Payment Required</code> and payment instructions, the
+        caller pays, and the request proceeds. It is built so clients can pay "without accounts,
+        sessions, or credential management", which is the same property this API already has for
+        everything else. <a href="https://docs.x402.org/schemes/batch-settlement" target="_blank"
+        rel="noopener">Batch settlement</a> makes per-call pricing viable at small amounts, and the
+        <a href="https://docs.x402.org/extensions/bazaar" target="_blank" rel="noopener">Bazaar</a>
+        is how an agent would find the endpoint without being told about it.</p>
+
+        <p>Which matters because an autonomous agent cannot sign up for anything. It cannot accept
+        terms, hold an API key it did not earn, or expense a subscription. It can pay for one
+        request.</p>
+
+        <div class="dev-price">
+          <div><span>one sealed payload</span><strong>$0.05</strong></div>
+          <div><span>seal plus delivered reveal</span><strong>$0.25</strong></div>
+          <div><span>multi-party sealed round</span><strong>$5</strong></div>
+          <div><span>managed auction</span><strong>$25–100 + usage</strong></div>
+        </div>
+        <p class="dev-note">Indicative. What is being bought is not the encryption, which is free
+        and public. It is the evidence that nobody could peek, copy, alter or selectively open
+        early, which is the part no participant can produce for themselves.</p>
+
+        <h3>The demo worth building first</h3>
+        <p>A sealed prediction competition for agents. Each entrant pays a few cents, submits a
+        forecast nobody can read, every entry opens in the same instant, and the scoreboard is
+        recomputable by anyone from the reveal. It is easier to explain than a token auction and it
+        exercises the whole path: pay, seal, wait, open, verify.</p>
+
+        <p class="dev-caveat"><strong>One thing not to claim.</strong> An x402 payment is a
+        transaction, and on a public chain it is visible: who paid, how much, when. Peal keeps the
+        payload secret and controls when it opens. It does not make the payment private, and a page
+        selling this should not imply otherwise.</p>
       </section>
 
       <section id="identify" class="scroll-reveal">
