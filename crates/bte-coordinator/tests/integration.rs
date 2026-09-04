@@ -1254,3 +1254,24 @@ async fn v1_refuses_anything_that_is_not_a_ciphertext() {
     assert_eq!(status, 422, "{body}");
     assert_eq!(body["code"], "invalid_ciphertext");
 }
+/// The same ciphertext is the same seal, so a retry needs no key.
+#[tokio::test]
+async fn v1_reposting_a_seal_is_the_same_seal() {
+    let h = harness().await;
+    let (_, round) = h.post("/v1/rounds", json!({"opens_in": 600})).await;
+    let id = round["id"].as_str().unwrap();
+    let mut rng = bte_crypto::os_rng();
+    let ct = seal(&h.params, b"once", &mut rng).unwrap();
+    let body = json!({"ciphertext_b64": B64.encode(ct.to_bytes())});
+
+    let (first, a) = h
+        .post(&format!("/v1/rounds/{id}/seals"), body.clone())
+        .await;
+    let (second, b) = h.post(&format!("/v1/rounds/{id}/seals"), body).await;
+    assert_eq!(first, 201);
+    assert_eq!(second, 200);
+    assert_eq!(a["id"], b["id"]);
+
+    let (_, round) = h.get(&format!("/v1/rounds/{id}")).await;
+    assert_eq!(round["seals"], 1, "a retry created a second seal");
+}
