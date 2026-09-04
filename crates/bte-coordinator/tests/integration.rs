@@ -1334,3 +1334,20 @@ fn crate_unix_now() -> i64 {
         .unwrap()
         .as_secs() as i64
 }
+/// The service describes itself, so limits live where the code enforcing them
+/// lives rather than in prose that drifts.
+#[tokio::test]
+async fn v1_root_describes_the_service() {
+    let h = harness().await;
+    let (status, root) = h.get("/v1").await;
+    assert_eq!(status, 200, "{root}");
+    assert_eq!(root["version"], "v1");
+    assert!(root["limits"]["max_payload_bytes"].as_i64().unwrap() > 0);
+    assert!(root["limits"]["max_page_size"].as_i64().unwrap() > 0);
+
+    let (status, params) = h.get("/v1/parameters").await;
+    assert_eq!(status, 200, "{params}");
+    assert_eq!(params["threshold"], 2);
+    assert_eq!(params["operators"], 3);
+    assert!(!params["parameters_b64"].as_str().unwrap().is_empty());
+}
