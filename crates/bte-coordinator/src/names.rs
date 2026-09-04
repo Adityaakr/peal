@@ -233,10 +233,15 @@ fn page_html(shell: &str, page: &crate::pages::Page, canonical: Option<&str>) ->
         }
     });
 
+    // <title> and the plain description are what a search result shows. og: is
+    // what a pasted link shows. They are allowed to differ, and on the docs
+    // they do: see Page::share.
+    let (card_title, card_desc) = page.share.unwrap_or((page.title, page.description));
+
     let mut html = replace_title(shell, &esc(page.title));
-    html = replace_meta(&html, "og:title", &esc(page.title));
     html = replace_meta(&html, "description", &esc(page.description));
-    html = replace_meta(&html, "og:description", &esc(page.description));
+    html = replace_meta(&html, "og:title", &esc(card_title));
+    html = replace_meta(&html, "og:description", &esc(card_desc));
 
     // A canonical and an og:url on every page. Without one, a page reachable at
     // both /developers and /developers/ is two documents competing with each
@@ -718,6 +723,33 @@ mod tests {
         assert!(html.contains(
             r#"<meta property="og:image" content="https://peal.network/developers.jpg""#
         ));
+    }
+
+    #[test]
+    fn the_docs_card_reads_differently_from_the_title() {
+        let dev = crate::pages::PAGES
+            .iter()
+            .find(|p| p.path == "developers")
+            .expect("developers page");
+        let html = page_html(SHELL, dev, Some("https://peal.network/developers"));
+
+        // The card says what this is.
+        assert!(html.contains(
+            r#"property="og:title" content="The programmable confidentiality layer for digital markets.""#
+        ));
+        assert!(html.contains(r#"property="og:description" content="One API to collect"#));
+
+        // The document title stays its own, so it does not compete with the
+        // home page, which already carries that same sentence.
+        assert!(
+            html.contains("<title>Peal API."),
+            "the <title> must stay distinct"
+        );
+        let home = crate::pages::PAGES
+            .iter()
+            .find(|p| p.path.is_empty())
+            .unwrap();
+        assert_ne!(dev.title, home.title, "two pages must not share a title");
     }
 
     #[test]

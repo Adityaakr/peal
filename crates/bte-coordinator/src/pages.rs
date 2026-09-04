@@ -52,6 +52,18 @@ pub struct Page {
     /// channel, where a card is what makes it read as documentation rather than
     /// a bare URL.
     pub image: Option<&'static str>,
+    /// Card text: (title, description), used for og: and twitter: only.
+    ///
+    /// Separate from `title` and `description` because the two audiences want
+    /// different things. A search result wants the words somebody typed into a
+    /// search box. A card pasted into a channel wants the sentence that says
+    /// what this is. Forcing one string to do both means either a card that
+    /// reads like a keyword list or a title that competes with the home page
+    /// for the same query, which is how a site ends up outranking itself.
+    ///
+    /// None means the card reuses `title` and `description`, which is right
+    /// almost everywhere.
+    pub share: Option<(&'static str, &'static str)>,
 }
 
 /// Titles are written for what people actually type, and read as sentences
@@ -70,6 +82,7 @@ pub const PAGES: &[Page] = &[
         schema: "WebPage",
         index: true,
         image: None,
+        share: None,
     },
     Page {
         path: "developers",
@@ -80,6 +93,11 @@ pub const PAGES: &[Page] = &[
         schema: "TechArticle",
         index: true,
         image: Some(DEV_CARD),
+        share: Some((
+            "The programmable confidentiality layer for digital markets.",
+            "One API to collect encrypted bids, offers, votes, commitments and agent intents, \
+             then reveal them only when predefined conditions are met.",
+        )),
     },
     Page {
         path: "developers/quickstart",
@@ -90,6 +108,7 @@ pub const PAGES: &[Page] = &[
         schema: "HowTo",
         index: true,
         image: Some(DEV_CARD),
+        share: None,
     },
     Page {
         path: "developers/agents",
@@ -100,6 +119,7 @@ pub const PAGES: &[Page] = &[
         schema: "HowTo",
         index: true,
         image: Some(DEV_CARD),
+        share: None,
     },
     Page {
         path: "developers/howitworks",
@@ -110,6 +130,7 @@ pub const PAGES: &[Page] = &[
         schema: "TechArticle",
         index: true,
         image: Some(DEV_CARD),
+        share: None,
     },
     Page {
         path: "developers/auctions",
@@ -120,6 +141,7 @@ pub const PAGES: &[Page] = &[
         schema: "TechArticle",
         index: true,
         image: Some(DEV_CARD),
+        share: None,
     },
     Page {
         path: "developers/usecases",
@@ -130,6 +152,7 @@ pub const PAGES: &[Page] = &[
         schema: "TechArticle",
         index: true,
         image: Some(DEV_CARD),
+        share: None,
     },
     Page {
         path: "developers/api",
@@ -140,6 +163,7 @@ pub const PAGES: &[Page] = &[
         schema: "APIReference",
         index: true,
         image: Some(DEV_CARD),
+        share: None,
     },
     Page {
         path: "developers/x402",
@@ -152,6 +176,7 @@ pub const PAGES: &[Page] = &[
         schema: "TechArticle",
         index: true,
         image: Some(DEV_CARD),
+        share: None,
     },
     Page {
         path: "developers/limits",
@@ -162,6 +187,7 @@ pub const PAGES: &[Page] = &[
         schema: "TechArticle",
         index: true,
         image: Some(DEV_CARD),
+        share: None,
     },
     Page {
         path: "developers/network",
@@ -172,6 +198,7 @@ pub const PAGES: &[Page] = &[
         schema: "WebPage",
         index: false,
         image: Some(DEV_CARD),
+        share: None,
     },
     Page {
         path: "developers/roadmap",
@@ -182,6 +209,7 @@ pub const PAGES: &[Page] = &[
         schema: "WebPage",
         index: true,
         image: Some(DEV_CARD),
+        share: None,
     },
     Page {
         path: "developers/createauction",
@@ -192,6 +220,7 @@ pub const PAGES: &[Page] = &[
         schema: "HowTo",
         index: true,
         image: Some(DEV_CARD),
+        share: None,
     },
     Page {
         path: "protocol",
@@ -202,6 +231,7 @@ pub const PAGES: &[Page] = &[
         schema: "TechArticle",
         index: true,
         image: None,
+        share: None,
     },
     Page {
         path: "mempool",
@@ -212,6 +242,7 @@ pub const PAGES: &[Page] = &[
         schema: "TechArticle",
         index: true,
         image: None,
+        share: None,
     },
     Page {
         path: "auction",
@@ -222,6 +253,7 @@ pub const PAGES: &[Page] = &[
         schema: "TechArticle",
         index: true,
         image: None,
+        share: None,
     },
     Page {
         path: "execution",
@@ -232,6 +264,7 @@ pub const PAGES: &[Page] = &[
         schema: "TechArticle",
         index: true,
         image: None,
+        share: None,
     },
     Page {
         path: "philosophy",
@@ -242,6 +275,7 @@ pub const PAGES: &[Page] = &[
         schema: "Article",
         index: true,
         image: None,
+        share: None,
     },
     Page {
         path: "create",
@@ -252,6 +286,7 @@ pub const PAGES: &[Page] = &[
         schema: "WebPage",
         index: true,
         image: None,
+        share: None,
     },
     Page {
         path: "auctions",
@@ -261,6 +296,7 @@ pub const PAGES: &[Page] = &[
         schema: "WebPage",
         index: false,
         image: None,
+        share: None,
     },
     Page {
         path: "app",
@@ -271,6 +307,7 @@ pub const PAGES: &[Page] = &[
         schema: "WebPage",
         index: false,
         image: None,
+        share: None,
     },
 ];
 
