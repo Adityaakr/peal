@@ -41,6 +41,109 @@ pub fn count(app: &App, kind: &str) {
     );
 }
 
+/// Where a request was served from, without ever handling an address.
+///
+/// The edge that terminated TLS already knows roughly where the caller is, and
+/// says so in a header. Reading that is the whole implementation: no IP is
+/// parsed, no IP is stored, no GeoIP database is consulted and no third party
+/// is asked. The resolution is a handful of metros rather than a city, which is
+/// the right resolution for "who is using this" and the wrong one for following
+/// anybody.
+///
+/// The alternative, resolving x-forwarded-for against a GeoIP database, would
+/// mean the coordinator handling visitor addresses to draw a chart. On a
+/// product whose entire claim is that it cannot read what you send it, that is
+/// not a trade worth making for a nicer map.
+fn region_of(headers: &axum::http::HeaderMap) -> String {
+    // cf-ipcountry first, so putting Cloudflare in front upgrades this to real
+    // country resolution with no code change.
+    if let Some(cc) = headers.get("cf-ipcountry").and_then(|v| v.to_str().ok()) {
+        let cc = cc.trim().to_uppercase();
+        if cc.len() == 2 && cc.chars().all(|c| c.is_ascii_alphabetic()) {
+            return cc;
+        }
+    }
+    for name in ["x-railway-edge", "x-vercel-ip-country", "fly-region"] {
+        if let Some(v) = headers.get(name).and_then(|v| v.to_str().ok()) {
+            let v: String = v
+                .trim()
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+                .take(16)
+                .collect();
+            if !v.is_empty() {
+                return v.to_lowercase();
+            }
+        }
+    }
+    "unknown".to_string()
+}
+
+/// Which part of the API a path belongs to, for the endpoint breakdown.
+///
+/// A family rather than a route: `/v1/rounds/{id}/seals` counts as seals, and
+/// ids never enter a counter key. A key built from a path with an id in it
+/// would be an unbounded set of rows and a record of which specific round
+/// somebody read.
+fn family_of(path: &str) -> Option<&'static str> {
+    let rest = path
+        .strip_prefix("/v1/x402/")
+        .or_else(|| path.strip_prefix("/v1/"))
+        .or_else(|| path.strip_prefix("/v0/"))?;
+    let head = rest.split('/').next().unwrap_or_default();
+    // Reading the dashboard is not using the API. Without this the activity
+    // page's own polling, every fifteen seconds per open tab, becomes the
+    // busiest endpoint on the chart it is drawing.
+    const OBSERVABILITY: [&str; 5] = ["activity", "stats", "healthz", "x402", "skill-installs"];
+    if OBSERVABILITY.contains(&head) {
+        return None;
+    }
+    // A fixed set, so a caller cannot mint counter rows by inventing paths.
+    const FAMILIES: [&str; 10] = [
+        "rounds",
+        "seals",
+        "auctions",
+        "parameters",
+        "currencies",
+        "names",
+        "intents",
+        "conditions",
+        "ciphertexts",
+        "committees",
+    ];
+    if rest.is_empty() {
+        return Some("service");
+    }
+    FAMILIES.into_iter().find(|f| *f == head)
+}
+
+/// Counts a call and where it came from. Nothing else about the request.
+pub async fn observe(
+    State(app): State<App>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    if req.method() == axum::http::Method::OPTIONS {
+        return next.run(req).await;
+    }
+    let family = family_of(req.uri().path());
+    let region = family.map(|_| region_of(req.headers()));
+    let res = next.run(req).await;
+
+    if let (Some(family), Some(region)) = (family, region) {
+        // Errors are counted apart from work. A developer hammering a 400 is
+        // doing something, and a chart that hides it is hiding the thing most
+        // worth fixing.
+        let ok = res.status().as_u16() < 400;
+        count(&app, &format!("call:{family}"));
+        if !ok {
+            count(&app, &format!("err:{family}"));
+        }
+        count(&app, &format!("region:{region}"));
+    }
+    res
+}
+
 /// GET /v1/activity
 pub async fn get_activity(
     State(app): State<App>,
@@ -102,6 +205,14 @@ pub async fn get_activity(
                 |r| r.get(0),
             )
             .unwrap_or(0);
+        let calls: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(count), 0) FROM counters
+                  WHERE kind LIKE 'call:%' AND day = ?1",
+                [&day],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
         let installs: i64 = conn
             .query_row(
                 "SELECT COALESCE(SUM(count), 0) FROM counters WHERE kind = 'skill_install' AND day = ?1",
@@ -117,6 +228,7 @@ pub async fn get_activity(
             "opened": opened,
             "skill_installs": installs,
             "paid_calls": paid,
+            "calls": calls,
         }));
     }
 
@@ -148,6 +260,52 @@ pub async fn get_activity(
         let idx = (((timings.len() - 1) as f64) * p).round() as usize;
         json!(timings[idx])
     };
+
+    // ---- where calls came from, and which part of the API they hit ---------
+    //
+    // Summed over the window from the same counters table. Both are keyed by a
+    // fixed vocabulary, so the row count is bounded no matter what anyone sends.
+    let since_day = crate::pages::day_of(since);
+    let sum_prefix = |prefix: &str| -> Vec<(String, i64)> {
+        let mut stmt = match conn.prepare(
+            "SELECT kind, SUM(count) FROM counters
+              WHERE kind LIKE ?1 AND day >= ?2
+              GROUP BY kind ORDER BY SUM(count) DESC LIMIT 40",
+        ) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        stmt.query_map(rusqlite::params![format!("{prefix}%"), &since_day], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        })
+        .map(|rows| {
+            rows.filter_map(Result::ok)
+                .map(|(k, n)| (k[prefix.len()..].to_string(), n))
+                .collect()
+        })
+        .unwrap_or_default()
+    };
+
+    let regions: Vec<Value> = sum_prefix("region:")
+        .into_iter()
+        .map(|(code, calls)| json!({ "code": code, "calls": calls }))
+        .collect();
+
+    let errors: std::collections::HashMap<String, i64> = sum_prefix("err:").into_iter().collect();
+    let endpoints: Vec<Value> = sum_prefix("call:")
+        .into_iter()
+        .map(|(family, calls)| {
+            json!({
+                "family": family.clone(),
+                "calls": calls,
+                "errors": errors.get(&family).copied().unwrap_or(0),
+            })
+        })
+        .collect();
+    let calls_total: i64 = endpoints
+        .iter()
+        .filter_map(|e| e.get("calls").and_then(Value::as_i64))
+        .sum();
 
     // ---- what is being built ----------------------------------------------
     let mut stmt = conn
@@ -181,7 +339,14 @@ pub async fn get_activity(
             "p50": pct(0.5), "p90": pct(0.9), "p99": pct(0.99),
             "samples": timings.len(),
         },
+        // The raw samples, so the page can draw the shape rather than only three
+        // numbers from it. Capped: past a couple of thousand points a histogram
+        // does not get more truthful, only heavier to send.
+        "timings": timings.iter().rev().take(2000).collect::<Vec<_>>(),
         "tags": tags,
+        "regions": regions,
+        "endpoints": endpoints,
+        "calls": calls_total,
         "counts_note": "Work, not people. There are no accounts on this network, so nothing here counts visitors, sessions or addresses.",
     })))
 }
