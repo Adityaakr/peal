@@ -131,9 +131,9 @@ pub const PAGES: &[Page] = &[
     Page {
         path: "developers/network",
         route: "#/developers/network",
-        title: "Live activity on the Peal network.",
+        title: "Activity on the Peal network.",
         description:
-            "Conditions, payloads sealed, reveals performed and the median time to open, aggregated from the coordinator's own tables, with a board of what is being built.",
+            "Rounds created, payloads sealed, batches opened, how long opening takes and how often the agent skill is installed, counted from the coordinator's own tables. No visitor tracking: there are no accounts on this network to count.",
         schema: "WebPage",
         index: false,
     },

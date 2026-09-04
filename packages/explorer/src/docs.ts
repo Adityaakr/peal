@@ -72,7 +72,7 @@ export const DOCS_NAV: DocsGroup[] = [
   {
     label: 'The network',
     items: [
-      { label: 'Live activity', href: '#/developers/network' },
+      { label: 'Activity', href: '#/developers/network' },
       { label: 'Roadmap', href: '#/developers/roadmap' },
     ],
   },
