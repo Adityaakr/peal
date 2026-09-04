@@ -215,6 +215,7 @@ export const network: DocsPage = {
     that endpoint, and nobody is being followed to find out whether they were the same person
     twice.</p>
     <div class="act-panel">
+      <div class="act-total" id="act-install-total"></div>
       <div class="act-chart" id="act-installs"><p class="muted">loading…</p></div>
     </div>
 
@@ -419,18 +420,33 @@ export const network: DocsPage = {
         if (active.size > 0) bindHover(lines, a);
       }
 
+      // The running total, which is the number people actually want, above a
+      // chart that only ever shows the selected window. Without it the section
+      // could read "none" while the real count was climbing, which is exactly
+      // what it did.
+      const total = el('#act-install-total');
+      const inWindow = windowed(a, 'skill_installs');
+      if (total) {
+        total.innerHTML = `
+          <strong>${nf.format(a.totals.skill_installs)}</strong>
+          <span>install${a.totals.skill_installs === 1 ? '' : 's'} all time</span>
+          <em>${nf.format(inWindow)} in the last ${a.days} days</em>`;
+      }
+
       const installs = el('#act-installs');
       if (installs) {
-        const any = a.series.some((d) => d.skill_installs > 0);
         // An all-zero bar chart is an empty white box, which reads as broken
-        // rather than as nothing having happened yet. Say which it is.
-        installs.innerHTML = any
+        // rather than as nothing having happened yet. Say which it is, and say
+        // it differently depending on whether the total is zero too.
+        installs.innerHTML = inWindow > 0
           ? installBars(a)
-          : `<p class="act-empty">No installs counted in this window.
-             <span>Counting started when this page shipped, so anything installed before
-             then is not in here. Run
-             <code>curl -fsSL https://peal.network/skill/install.sh | sh</code>
-             and this fills in within about fifteen seconds.</span></p>`;
+          : a.totals.skill_installs > 0
+            ? `<p class="act-empty">None in the last ${a.days} days.
+               <span>The running total above is every install ever counted. Widen the range
+               above to find them.</span></p>`
+            : `<p class="act-empty">Nothing counted yet.
+               <span>Run <code>curl -fsSL https://peal.network/skill/install.sh | sh</code>
+               and this fills in within about fifteen seconds.</span></p>`;
       }
 
       // ---- donut: what the network is used for ----

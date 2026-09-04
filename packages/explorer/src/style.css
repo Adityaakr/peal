@@ -8726,3 +8726,39 @@ body.docs-page main {
   font-size: 12px;
   white-space: nowrap;
 }
+
+/* The running total above a windowed chart. The number people came for is the
+   cumulative one; the chart below it only ever shows the selected range. */
+.act-total {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.act-total strong {
+  font-size: 32px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.act-total span {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.act-total em {
+  margin-left: auto;
+  font: 400 13px var(--mono);
+  font-style: normal;
+  color: var(--muted-soft);
+}
+
+.act-total:empty {
+  display: none;
+}
