@@ -318,20 +318,33 @@ export function renderDocs(root: HTMLElement, page: DocsPage, activeHref: string
     }, 1600);
   });
 
-  // Copy buttons on every code block, read from the <code> itself so a snippet
-  // cannot be copied in a stale form.
-  for (const block of Array.from(root.querySelectorAll<HTMLElement>('pre.doc-code, pre.dev-code'))) {
-    if (block.querySelector('.dev-copy')) continue;
+  // A copy button on every code block and every response pane.
+  //
+  // The text is read at click time from the block itself rather than captured
+  // when the button is made, so a pane whose contents were replaced by a run
+  // copies what is on screen rather than what used to be.
+  const COPYABLE = 'pre.doc-code, pre.dev-code, pre.api-out, pre.dev-out';
+
+  const addCopy = (block: HTMLElement): void => {
+    if (block.querySelector(':scope > .dev-copy')) return;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'dev-copy';
     button.textContent = 'copy';
     button.addEventListener('click', async () => {
+      // The button is inside the block, so its own label would be copied along
+      // with the code. Take the <code> when there is one, and otherwise the
+      // block's text minus this button's.
+      const code = block.querySelector('code');
+      const text = code
+        ? (code.textContent ?? '')
+        : (block.textContent ?? '').replace(button.textContent ?? '', '').trimEnd();
       try {
-        await navigator.clipboard.writeText(block.querySelector('code')?.textContent ?? '');
+        await navigator.clipboard.writeText(text);
         button.textContent = 'copied';
         button.classList.add('is-copied');
       } catch {
+        // Blocked by the browser: say so rather than claiming success.
         button.textContent = 'select it';
       }
       window.setTimeout(() => {
@@ -340,7 +353,21 @@ export function renderDocs(root: HTMLElement, page: DocsPage, activeHref: string
       }, 1600);
     });
     block.appendChild(button);
-  }
+  };
+
+  for (const block of Array.from(root.querySelectorAll<HTMLElement>(COPYABLE))) addCopy(block);
+
+  // A response pane is filled by assigning textContent, which replaces every
+  // child including the button. Watching for that is what keeps copy working
+  // on the panes people most want to copy from.
+  const copyWatch = new MutationObserver((records) => {
+    for (const record of records) {
+      const target = record.target as HTMLElement;
+      const block = target.closest?.(COPYABLE) as HTMLElement | null;
+      if (block) addCopy(block);
+    }
+  });
+  copyWatch.observe(root, { childList: true, subtree: true });
 
   // The enter transition. One frame with the content low and transparent, then
   // released, so moving between pages reads as movement rather than a redraw.
@@ -353,6 +380,7 @@ export function renderDocs(root: HTMLElement, page: DocsPage, activeHref: string
   }
 
   return () => {
+    copyWatch.disconnect();
     for (const done of cleanups) done();
     document.body.classList.remove('docs-page');
     document.title = previousTitle;

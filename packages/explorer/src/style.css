@@ -6087,45 +6087,6 @@ textarea.live-input {
   position: relative;
 }
 
-.dev-copy {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  padding: 4px 10px;
-  border: 1px solid rgba(232, 227, 218, 0.28);
-  border-radius: 7px;
-  background: rgba(232, 227, 218, 0.08);
-  color: #cfc8bd;
-  font-family: var(--mono);
-  font-size: 11.5px;
-  line-height: 1.4;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
-}
-
-.dev-code:hover .dev-copy,
-.dev-copy:focus-visible {
-  opacity: 1;
-}
-
-.dev-copy:hover {
-  color: #fff;
-  border-color: rgba(232, 227, 218, 0.55);
-}
-
-.dev-copy.is-copied {
-  opacity: 1;
-  color: #7fd39b;
-  border-color: rgba(127, 211, 155, 0.5);
-}
-
-/* Touch has no hover, so there the button is simply always visible. */
-@media (hover: none) {
-  .dev-copy {
-    opacity: 1;
-  }
-}
 
 /* The auction rules. Each one is a decision with a reason, so they read as
    prose with a bolded claim rather than as a feature list. */
@@ -6456,6 +6417,13 @@ textarea.live-input {
   position: relative;
 }
 
+/* The copy button on every code block and response pane.
+ *
+ * Always visible, not revealed on hover. The reveal rule used to name only
+ * .dev-code, so on .doc-code, which is what every documentation page uses, the
+ * button was created, positioned, and left at zero opacity for ever. A control
+ * nobody can find is the same as one that is not there, and hover is not a
+ * thing a reader knows to try. */
 .dev-copy {
   position: absolute;
   top: 8px;
@@ -6469,11 +6437,15 @@ textarea.live-input {
   font-size: 11.5px;
   line-height: 1.4;
   cursor: pointer;
-  opacity: 0;
+  opacity: 0.62;
   transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
+.doc-code:hover .dev-copy,
 .dev-code:hover .dev-copy,
+.api-out:hover .dev-copy,
+.dev-out:hover .dev-copy,
+.dev-copy:hover,
 .dev-copy:focus-visible {
   opacity: 1;
 }
@@ -6489,11 +6461,30 @@ textarea.live-input {
   border-color: rgba(127, 211, 155, 0.5);
 }
 
-/* Touch has no hover, so there the button is simply always visible. */
-@media (hover: none) {
-  .dev-copy {
-    opacity: 1;
-  }
+/* The response panes are light, so the dark-on-dark button would vanish. */
+.api-out .dev-copy,
+.dev-out .dev-copy {
+  border-color: var(--border);
+  background: #fff;
+  color: var(--muted);
+}
+
+.api-out .dev-copy:hover,
+.dev-out .dev-copy:hover {
+  color: var(--accent-strong);
+  border-color: var(--accent-border);
+}
+
+.api-out .dev-copy.is-copied,
+.dev-out .dev-copy.is-copied {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+/* A pane wide enough to scroll would otherwise slide its button out of view. */
+.api-out,
+.dev-out {
+  position: relative;
 }
 
 /* The auction rules. Each one is a decision with a reason, so they read as
