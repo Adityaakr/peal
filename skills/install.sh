@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://peal.network/skill/install.sh | sh
 #
-# Downloads seven markdown files into .claude/skills/peal/ in the current
+# Downloads eight markdown files into .claude/skills/peal/ in the current
 # directory. It writes nothing else, runs nothing else, and needs no account.
 #
 # On success it posts an empty request to /v0/skill-installs, which adds 1 to a
@@ -22,7 +22,8 @@ mkdir -p "$DEST/reference"
 
 for f in SKILL.md \
          reference/recipes.md reference/time.md reference/verify.md \
-         reference/api.md reference/auctions.md reference/errors.md; do
+         reference/api.md reference/auctions.md reference/errors.md \
+         reference/payments.md; do
   curl -fsSL "$BASE/$f" -o "$DEST/$f"
   echo "  $f"
 done
