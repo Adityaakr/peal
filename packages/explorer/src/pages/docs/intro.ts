@@ -8,16 +8,20 @@ export const intro: DocsPage = {
   lede: 'One API to collect encrypted bids, offers, votes, commitments and agent intents, then reveal them only when predefined conditions are met.',
   html: `
     <h2 id="what-peal-is">What Peal is</h2>
-    <p>Everything arrives sealed. Nothing is readable before the deadline, not by the other
-    participants, not by you, not by us. When the moment comes the whole set opens at once.</p>
+    <p>Peal is a programmable confidentiality layer for time-bound digital markets. Bids, offers,
+    votes, commitments and agent intents arrive encrypted and remain unreadable until a
+    predefined condition is met. When that moment arrives, the entire set is revealed
+    together.</p>
 
-    <blockquote class="doc-quote">If your product has a deadline, it probably has this bug.
-    Anywhere people submit something that others must not see yet, whoever runs the server can
-    see it. You can promise you do not look. You cannot prove it, and your users cannot
-    check.</blockquote>
+    <blockquote class="doc-quote">Most products with a submission deadline have a hidden trust
+    problem: the operator can see what participants submit before everyone else. They can promise
+    not to look, but participants have no way to verify that promise.</blockquote>
 
-    <p>That single fact is why sealed bids get run over email, why fair launches get front run,
-    and why every commit and reveal scheme leaks a way for the loser to simply never reveal.</p>
+    <p>This information asymmetry enables front running, selective disclosure and unfair price
+    discovery. Traditional commit and reveal systems only move the problem: participants must
+    return to reveal, allowing losing bidders to disappear strategically. Peal makes disclosure
+    automatic and coordinated, without giving any single participant or operator early
+    access.</p>
 
     <h2 id="what-is-hard-about-it">What is actually hard about it</h2>
     <p>The encryption was never the hard part. It is that somebody has to hold the key until the
