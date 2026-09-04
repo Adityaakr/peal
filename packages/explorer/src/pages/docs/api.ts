@@ -123,7 +123,7 @@ export const apiReference: DocsPage = {
   "title":  "invalid request",
   "status": 400,
   "code":   "invalid_tag",
-  "detail": "a tag is up to 32 characters of a-z, 0-9, colon, hyphen or underscore",
+  "detail": "a tag is up to 32 characters of a-z 0-9 : - _",
   "field":  "tag"
 }</code></pre>
         <p>Codes you can expect: <code>missing_deadline</code>, <code>opens_in_past</code>,

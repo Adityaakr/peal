@@ -172,6 +172,9 @@ export function renderMarkdown(md: string): string {
 export function renderDocs(root: HTMLElement, page: DocsPage, activeHref: string): () => void {
   const previousTitle = document.title;
   document.title = `${page.title} · Peal for developers`;
+  // Unclamps <main>, which the rest of the site holds at 960px. Without this
+  // the sidebar, the content and the contents rail share about 350px each.
+  document.body.classList.add('docs-page');
   const body = page.html ?? renderMarkdown(page.markdown ?? '');
 
   const flat = flatNav();
@@ -342,6 +345,7 @@ export function renderDocs(root: HTMLElement, page: DocsPage, activeHref: string
 
   return () => {
     for (const done of cleanups) done();
+    document.body.classList.remove('docs-page');
     document.title = previousTitle;
   };
 }

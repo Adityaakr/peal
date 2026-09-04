@@ -28,7 +28,8 @@ export const roadmap: DocsPage = {
         <p>Or with the client, which does the encryption:</p>
         <pre class="dev-code"><code>import { peal } from '${shown}/peal.js';
 
-const { id, proof_url } = await peal.sealUntil('the agent\'s bid', '2026-09-12T18:00:00Z');
+const until = '2026-09-12T18:00:00Z';
+const { id, proof_url } = await peal.sealUntil('the bid', until);
 const proof = await peal.getProof(id);</code></pre>
 
         <p class="dev-note"><strong>There is no field that takes a plaintext.</strong> Encrypting
@@ -43,14 +44,14 @@ const proof = await peal.getProof(id);</code></pre>
         could open it. Before the round opens, the reveal fields are <code>null</code> rather than
         <code>false</code>, because "not yet" and "no" are different answers.</p>
         <pre class="dev-code"><code>{
-  "seal_id":                    "4f858dc3…",   // recompute it from your own copy
-  "position":                   3,             // from the ciphertext hashes, not arrival order
-  "ordering_root":              "0x…",
-  "ordering_committed_at":      1788490917,
-  "merkle_root":                "0x…",
-  "revealed_at":                1788494517,
+  "seal_id":       "4f858dc3…",   // recompute it yourself
+  "position":      3,             // from the hashes, not arrival
+  "ordering_root": "0x…",
+  "ordering_committed_at": 1788490917,
+  "merkle_root":   "0x…",
+  "revealed_at":   1788494517,
   "commitment_precedes_reveal": true,
-  "threshold":                  "3 of 5 operators are required to open a batch"
+  "threshold":     "3 of 5 operators open a batch"
 }</code></pre>
 
         <h3>What is built, and what is not</h3>

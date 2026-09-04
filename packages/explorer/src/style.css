@@ -6750,13 +6750,22 @@ textarea.live-input {
    Spacing is deliberately loose. The section this replaced was one page with
    nine headings in it, and the complaint about that page was that everything
    ran together. */
+/* <main> is clamped to 960px for the rest of the site, which left the three
+   columns fighting over about 350px each: the title wrapped onto three lines
+   while two thirds of the window sat empty. The landing page unclamps it the
+   same way. */
+body.docs-page main {
+  max-width: none;
+  padding: 0;
+}
+
 .doc-shell {
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr) 216px;
-  gap: 56px;
-  max-width: 1320px;
+  grid-template-columns: 244px minmax(0, 1fr) 228px;
+  gap: 64px;
+  max-width: 1500px;
   margin: 0 auto;
-  padding: 32px 32px 120px;
+  padding: 34px 40px 128px;
   align-items: start;
 }
 
@@ -6856,7 +6865,9 @@ textarea.live-input {
 /* The content column enters from slightly low and transparent, so moving
    between pages reads as movement rather than a redraw. */
 .doc-main {
-  max-width: 760px;
+  /* A comfortable measure for reading, but no longer the thing deciding the
+     page width: the column can now breathe inside a full-width shell. */
+  max-width: 860px;
   opacity: 1;
   transform: none;
   transition: opacity 260ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -6965,6 +6976,8 @@ textarea.live-input {
   overflow-x: auto;
 }
 
+.doc-body pre code,
+.doc-body pre code *,
 .doc-code code,
 .doc-code code * {
   padding: 0;
@@ -7053,7 +7066,15 @@ textarea.live-input {
   text-transform: uppercase;
 }
 
+#doc-toc-links {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 .doc-toc button {
+  display: block;
+  width: 100%;
   padding: 6px 0;
   border: 0;
   background: none;

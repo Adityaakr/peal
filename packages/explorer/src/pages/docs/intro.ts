@@ -34,8 +34,8 @@ export const intro: DocsPage = {
     <pre class="doc-code"><code>import { peal } from '${esc(shown)}/peal.js';
 
 const { id } = await peal.createRound({ opens_in: 3600, tag: 'my-app' });
-await peal.seal(userSubmission, id);       // encrypted here, unreadable from now on
-const payloads = await peal.getPayloads(id);  // all of them, at the deadline</code></pre>
+await peal.seal(userSubmission, id);    // sealed from here on
+const payloads = await peal.getPayloads(id);  // all of them, at the close</code></pre>
 
     <h2 id="where-to-go-next">Where to go next</h2>
     <ul class="doc-list">
