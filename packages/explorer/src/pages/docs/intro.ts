@@ -4,8 +4,8 @@ import { shown } from './runner';
 import { esc } from '../../util';
 
 export const intro: DocsPage = {
-  title: 'Private submissions. Programmable reveal.',
-  lede: 'One API for collecting encrypted bids, offers, votes and commitments, then opening them only when the rules say.',
+  title: 'The programmable confidentiality layer for digital markets.',
+  lede: 'One API to collect encrypted bids, offers, votes, commitments and agent intents, then reveal them only when predefined conditions are met.',
   html: `
     <h2 id="what-peal-is">What Peal is</h2>
     <p>Everything arrives sealed. Nothing is readable before the deadline, not by the other

@@ -47,9 +47,9 @@ pub const PAGES: &[Page] = &[
     Page {
         path: "",
         route: "#/",
-        title: "Peal Network. Private submissions, programmable reveal.",
+        title: "Peal. The programmable confidentiality layer for digital markets.",
         description:
-            "One API for collecting encrypted bids, votes and commitments, then opening them all at once when the deadline arrives. Nobody can read a submission early, including the operators. No wallet or gas for the people submitting.",
+            "One API to collect encrypted bids, offers, votes, commitments and agent intents, then reveal them only when predefined conditions are met. Nobody can read a submission early, including the operators. No wallet or gas for the people submitting.",
         // WebPage, not WebSite: the site-level WebSite node is declared once
         // beside it, and two nodes of the same type with different ids is a
         // graph a parser has to guess at.
