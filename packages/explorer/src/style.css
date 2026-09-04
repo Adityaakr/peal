@@ -4693,7 +4693,7 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
   font-size: 15px;
   color: var(--muted);
   background: transparent;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 6px 8px;
   cursor: pointer;
@@ -4919,7 +4919,7 @@ p.ak-status.ak-error { background: var(--red-weak); border: 1px solid var(--red-
 .live-totals {
   margin-top: 18px;
   padding-top: 14px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--border);
 }
 
 .live-total-main {
@@ -5384,4 +5384,230 @@ textarea.live-input {
   height: 16px;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+/* ---- developer section (#/developers) -------------------------------------
+   Reuses the protocol article's shell so the two read as one publication. Only
+   what the runnable examples and the leaderboard actually need is new. */
+
+.dev-demo {
+  margin: 22px 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.dev-demo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dev-demo-head h4 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.dev-run {
+  flex: none;
+}
+
+.dev-note {
+  margin: 8px 0 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.dev-code {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #2b2825;
+  color: #e8e3da;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+/* The real response, kept visually distinct from the code that produced it so
+   nobody mistakes one for the other. */
+.dev-out {
+  margin: 10px 0 0;
+  padding: 12px 16px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.dev-uses {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.dev-use {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.dev-use h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.dev-use p {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.dev-use-how {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.dev-endpoints {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.dev-ep {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.dev-ep p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.dev-ep-sig {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px !important;
+  font-family: var(--mono);
+}
+
+.dev-verb {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.dev-post {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.dev-ranks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dev-rank {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 92px 78px 72px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.dev-rank-head {
+  color: var(--muted);
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.dev-rank-n {
+  color: var(--muted);
+}
+
+.dev-rank-tag {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-rank-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.dev-rank-when {
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+.dev-limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.dev-limits > div {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.dev-limits span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.dev-limits strong {
+  display: block;
+  margin: 4px 0 6px;
+  font-size: 22px;
+}
+
+.dev-limits p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* The paragraph that says what this does NOT protect you from. Marked so it is
+   read rather than skimmed past, because it is the most important one here. */
+.dev-caveat {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-left: 3px solid var(--red-border);
+  border-radius: 0 10px 10px 0;
+  background: var(--red-weak);
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .dev-rank {
+    grid-template-columns: 22px minmax(0, 1fr) 62px 58px;
+  }
+
+  .dev-rank-when {
+    display: none;
+  }
 }

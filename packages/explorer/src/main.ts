@@ -17,6 +17,7 @@ import { renderMempool } from './pages/mempool';
 import { renderMempoolLanding } from './pages/mempool-landing';
 import { renderPhilosophy } from './pages/philosophy';
 import { renderProtocol } from './pages/protocol';
+import { renderDevelopers } from './pages/developers';
 import { renderSealView } from './pages/seal-view';
 
 type Cleanup = () => void;
@@ -199,6 +200,8 @@ function route(): void {
     cleanup = renderMempool(root);
   } else if (hash === '#/protocol') {
     cleanup = renderProtocol(root);
+  } else if (hash === '#/developers') {
+    cleanup = renderDevelopers(root);
   } else if (hash === '#/philosophy') {
     cleanup = renderPhilosophy(root);
   } else if (isLanding) {
