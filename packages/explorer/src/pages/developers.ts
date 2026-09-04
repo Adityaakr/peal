@@ -110,14 +110,26 @@ export function renderDevelopers(root: HTMLElement): () => void {
   method: 'POST',
   headers: { 'content-type': 'application/json',
              'idempotency-key': crypto.randomUUID() },
-  body: JSON.stringify({ opens_in: 3600, tag: 'my-app' }),
+  body: JSON.stringify({
+    opens_in: 3600,
+    tag: 'my-app',
+    title: 'Signed tour poster',
+    description: 'One of a kind, ships worldwide.',
+    image_url: 'https://images.example.com/poster.jpg',
+  }),
 });
-const round = await res.json();   // { id, status: 'open', opens_at, … }`,
+const round = await res.json();   // { id, status: 'open', title, image_url, … }`,
       run: async (log, state) => {
         const res = await fetch(`${base}/v1/rounds`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() },
-          body: JSON.stringify({ opens_in: 60, tag: 'docs:try' }),
+          body: JSON.stringify({
+            opens_in: 60,
+            tag: 'docs:try',
+            title: 'Signed tour poster',
+            description: 'One of a kind, ships worldwide.',
+            image_url: 'https://images.example.com/poster.jpg',
+          }),
         });
         const body = (await res.json()) as { id?: string };
         log(JSON.stringify(body, null, 2));
@@ -329,6 +341,42 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
           read the payload, and opening it takes three operators acting together.</figcaption>
         </figure>
 
+        <div class="dev-life">
+          <div class="dev-life-step is-now">
+            <span class="dev-pill dev-pill-open">open</span>
+            <p>Anyone can seal. Nothing is readable, including the count of what is inside.</p>
+          </div>
+          <div class="dev-life-step">
+            <span class="dev-pill dev-pill-closing">closing</span>
+            <p>The deadline passed. The batch is frozen and padded; operators are producing
+            shares.</p>
+          </div>
+          <div class="dev-life-step">
+            <span class="dev-pill dev-pill-opened">opened</span>
+            <p>Every payload is public in the same instant, with a merkle root over the set.</p>
+          </div>
+        </div>
+
+        <p>A round can also say what it is, so somebody deciding whether to take part can see it
+        before anything opens. That part is public from the moment the round exists, which is
+        exactly the opposite of the payloads sealed to it:</p>
+
+        <div class="dev-roundcard">
+          <div class="dev-roundcard-img" aria-hidden="true">
+            <svg viewBox="0 0 120 96"><rect width="120" height="96" rx="8" />
+              <path d="M14 74 L44 40 L66 62 L84 48 L106 74 Z" class="dev-roundcard-hill" />
+              <circle cx="88" cy="28" r="9" class="dev-roundcard-sun" />
+            </svg>
+            <span>image_url</span>
+          </div>
+          <div class="dev-roundcard-body">
+            <p class="dev-roundcard-title">Signed tour poster <span class="dev-pill dev-pill-open">open</span></p>
+            <p class="dev-roundcard-desc">One of a kind, ships worldwide.</p>
+            <p class="dev-roundcard-meta"><code>opens_at</code> 2026-09-12T18:00:00Z ·
+            <code>seals</code> 14 · <code>tag</code> my-app</p>
+          </div>
+        </div>
+
         <p>Two details worth knowing. Every batch is padded to 64 with decoys the coordinator seals
         to itself, so a round with three submissions does not announce that it had three; decoys
         come back flagged <code>is_dummy</code>. And slot positions are derived from the ciphertext
@@ -447,7 +495,10 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
             <p class="dev-ep-sig"><span class="dev-verb dev-post">POST</span> <code>/v1/rounds</code></p>
             <p>Open a round. One of <code>opens_in</code> (seconds), <code>opens_at</code> (RFC 3339
             or unix seconds) or <code>opens_at_block</code> (<code>chain_id</code> +
-            <code>height</code>), plus an optional <code>tag</code>. Send an
+            <code>height</code>), plus an optional <code>tag</code>. <code>title</code>,
+            <code>description</code> and <code>image_url</code> describe the round publicly and
+            come back on every read, including the list, so a gallery needs one request rather than
+            one per tile. <code>image_url</code> must be https. Send an
             <code>Idempotency-Key</code> header and a retry returns the same round with 200 instead
             of creating a second one. 201 and a <code>Location</code> on success.</p>
           </div>
@@ -667,19 +718,30 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
       board.innerHTML = '<p class="muted">nobody has tagged a condition yet. be first.</p>';
       return;
     }
-    const rows = s.tags.map((t, i) => `
-      <li class="dev-rank">
+    // A bar against the busiest tag. Fourteen numbers in a column are a table
+    // nobody reads; the same numbers with a length are a shape you take in at a
+    // glance, and the figures stay beside them for anyone who wants them.
+    const top = Math.max(1, ...s.tags.map((t) => t.conditions));
+    const rows = s.tags.map((t, i) => {
+      const share = Math.max(2, Math.round((t.conditions / top) * 100));
+      const live = t.recent > 0;
+      return `
+      <li class="dev-rank${live ? ' is-live' : ''}">
         <span class="dev-rank-n mono">${i + 1}</span>
-        <span class="dev-rank-tag mono">${esc(t.tag)}</span>
-        <span class="dev-rank-num" title="conditions created">${nf.format(t.conditions)}</span>
+        <span class="dev-rank-tag mono">${esc(t.tag)}${
+          live ? `<span class="dev-live" title="${nf.format(t.recent)} in the last 24 hours">active</span>` : ''}</span>
+        <span class="dev-rank-bar" aria-hidden="true"><i style="width:${share}%"></i></span>
+        <span class="dev-rank-num" title="rounds created">${nf.format(t.conditions)}</span>
         <span class="dev-rank-num" title="payloads sealed by callers">${nf.format(t.ciphertexts)}</span>
         <span class="dev-rank-when">${esc(ago(t.last_seen, s.as_of))}</span>
-      </li>`).join('');
+      </li>`;
+    }).join('');
     board.innerHTML = `
       <ol class="dev-ranks">
         <li class="dev-rank dev-rank-head">
           <span class="dev-rank-n"></span><span class="dev-rank-tag">tag</span>
-          <span class="dev-rank-num">conditions</span><span class="dev-rank-num">sealed</span>
+          <span class="dev-rank-bar"></span>
+          <span class="dev-rank-num">rounds</span><span class="dev-rank-num">sealed</span>
           <span class="dev-rank-when">last</span>
         </li>
         ${rows}

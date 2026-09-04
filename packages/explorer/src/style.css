@@ -5540,7 +5540,7 @@ textarea.live-input {
 
 .dev-rank {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 92px 78px 72px;
+  grid-template-columns: 28px minmax(0, 1fr) 90px 72px 66px 62px;
   align-items: center;
   gap: 10px;
   padding: 9px 4px;
@@ -5620,12 +5620,44 @@ textarea.live-input {
   font-size: 14px;
 }
 
+/* Proportion, so the board reads as a shape rather than a column of digits. */
+.dev-rank-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.dev-rank-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-border);
+}
+
+.dev-rank.is-live .dev-rank-bar i {
+  background: var(--accent);
+}
+
+.dev-live {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--green-weak);
+  color: var(--green);
+  font-family: 'Satoshi', system-ui, sans-serif;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 640px) {
   .dev-rank {
-    grid-template-columns: 22px minmax(0, 1fr) 62px 58px;
+    grid-template-columns: 22px minmax(0, 1fr) 58px 54px;
   }
 
-  .dev-rank-when {
+  .dev-rank-when,
+  .dev-rank-bar {
     display: none;
   }
 }
@@ -5858,4 +5890,139 @@ textarea.live-input {
 .sk-dots .sk-on {
   fill: var(--green);
   stroke: var(--green);
+}
+
+/* The three states of a round, as a strip rather than a sentence. */
+.dev-life {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 22px 0;
+}
+
+.dev-life-step {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.dev-life-step.is-now {
+  border-color: var(--accent-border);
+  background: var(--accent-weak);
+}
+
+.dev-life-step p {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.dev-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+}
+
+.dev-pill-open {
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+}
+
+.dev-pill-closing {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.dev-pill-opened {
+  background: var(--green-weak);
+  border: 1px solid var(--green);
+  color: var(--green);
+}
+
+/* What a round looks like to somebody deciding whether to take part. */
+.dev-roundcard {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin: 18px 0 20px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.dev-roundcard-img {
+  position: relative;
+  flex: none;
+  width: 120px;
+}
+
+.dev-roundcard-img svg {
+  display: block;
+  width: 120px;
+  height: 96px;
+}
+
+.dev-roundcard-img rect {
+  fill: var(--surface);
+  stroke: var(--border);
+}
+
+.dev-roundcard-hill {
+  fill: var(--accent-border);
+}
+
+.dev-roundcard-sun {
+  fill: var(--accent);
+  opacity: 0.35;
+}
+
+.dev-roundcard-img span {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.dev-roundcard-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.dev-roundcard-title .dev-pill {
+  margin-left: 8px;
+  vertical-align: 2px;
+}
+
+.dev-roundcard-desc {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.dev-roundcard-meta {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--muted-soft);
+}
+
+@media (max-width: 560px) {
+  .dev-roundcard {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dev-roundcard-img,
+  .dev-roundcard-img svg {
+    width: 100%;
+  }
 }
