@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS conditions (
     height       INTEGER,                    -- at_block
     status       TEXT NOT NULL DEFAULT 'pending',  -- pending|frozen|revealed|stalled
     tag          TEXT,                       -- optional client label (round:bid, capsule, ...)
+    -- Public presentation, shown before anything opens: what this round is for.
+    -- Never secret, unlike the payloads sealed to it.
+    title        TEXT,
+    description  TEXT,
+    image_url    TEXT,
     created_at   INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS ciphertexts (
@@ -83,6 +88,11 @@ pub fn open(path: &str) -> Result<Connection> {
     // Migration for databases created before the tag column existed.
     conn.execute("ALTER TABLE conditions ADD COLUMN tag TEXT", [])
         .ok();
+    // Migration for databases created before a round could describe itself.
+    for column in ["title TEXT", "description TEXT", "image_url TEXT"] {
+        conn.execute(&format!("ALTER TABLE conditions ADD COLUMN {column}"), [])
+            .ok();
+    }
     // Migration for databases created before short share codes existed. Rows
     // predating this keep code NULL; their long-form share links still resolve
     // without the code, so there is nothing to backfill.
