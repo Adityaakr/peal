@@ -68,6 +68,18 @@ CREATE TABLE IF NOT EXISTS idempotency (
     response_json TEXT NOT NULL,
     created_at    INTEGER NOT NULL
 );
+-- Auction rules for a round: what a bid means and what can win. The bids
+-- themselves are ordinary ciphertexts and are not here.
+CREATE TABLE IF NOT EXISTS auctions (
+    condition_id       TEXT PRIMARY KEY REFERENCES conditions(id),
+    currency           TEXT NOT NULL,
+    decimals           INTEGER NOT NULL,
+    reserve_minor      INTEGER,
+    maximum_minor      INTEGER,
+    -- The seller's PUBLIC half only. The private key never reaches this server;
+    -- if it did, we could read every contact detail bidders sealed to it.
+    contact_public_key TEXT
+);
 CREATE TABLE IF NOT EXISTS reveals (
     condition_id  TEXT PRIMARY KEY REFERENCES conditions(id),
     revealed_at   INTEGER NOT NULL,

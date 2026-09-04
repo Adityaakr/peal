@@ -1711,3 +1711,201 @@ async fn v1_seal_proof_shows_the_commitment_preceding_the_reveal() {
     assert_eq!(status, 404);
     assert_eq!(missing["code"], "not_found");
 }
+
+// ---------------------------------------------------------------- auctions --
+
+impl Harness {
+    /// Encode a bid exactly as peal.js does, so the test exercises the wire
+    /// format rather than a convenient stand-in.
+    fn bid_record(&self, auction_id: &str, amount_minor: u64, name: &str) -> Vec<u8> {
+        let mut out = vec![0u8; 320];
+        out[0] = 3;
+        out[1..9].copy_from_slice(&amount_minor.to_be_bytes());
+        let id = auction_id.as_bytes();
+        out[9] = id.len() as u8;
+        out[10..10 + id.len()].copy_from_slice(id);
+        let n = name.as_bytes();
+        out[10 + id.len()] = n.len() as u8;
+        out[11 + id.len()..11 + id.len() + n.len()].copy_from_slice(n);
+        out
+    }
+
+    async fn place_bid(&self, auction_id: &str, amount_minor: u64, name: &str) {
+        let mut rng = bte_crypto::os_rng();
+        let ct = seal(
+            &self.params,
+            &self.bid_record(auction_id, amount_minor, name),
+            &mut rng,
+        )
+        .unwrap();
+        let (status, body) = self
+            .post(
+                &format!("/v1/auctions/{auction_id}/bids"),
+                json!({"ciphertext_b64": B64.encode(ct.to_bytes())}),
+            )
+            .await;
+        assert_eq!(status, 201, "{body}");
+    }
+}
+
+/// The rules that decide what a bid means, which is the whole reason an auction
+/// endpoint exists rather than being left to each caller.
+#[tokio::test]
+async fn auction_ranks_bids_and_enforces_reserve_and_maximum() {
+    let h = harness().await;
+    let (status, auction) = h
+        .post(
+            "/v1/auctions",
+            json!({
+                "title": "Signed tour poster", "closes_in": 1, "currency": "USD",
+                "decimals": 2, "reserve_minor": 1000, "maximum_minor": 50_000, "tag": "shop"
+            }),
+        )
+        .await;
+    assert_eq!(status, 201, "{auction}");
+    let id = auction["id"].as_str().unwrap().to_string();
+    assert_eq!(auction["currency"], "USD");
+    assert_eq!(auction["reserve_minor"], 1000);
+    // An auction closes to bidding; it does not "open" for it.
+    assert!(auction["closes_at"].as_str().unwrap().ends_with('Z'));
+    assert!(auction.get("opens_at").is_none());
+
+    h.place_bid(&id, 12_500, "ana").await;
+    h.place_bid(&id, 9_000, "bo").await;
+    h.place_bid(&id, 500, "under").await;
+    h.place_bid(&id, 99_900, "joke").await;
+
+    // Nothing is readable while it is open, and the endpoint says so rather
+    // than returning an empty board that looks like "no bids".
+    let (_, early) = h.get(&format!("/v1/auctions/{id}/results")).await;
+    assert_eq!(early["status"], "open");
+    assert_eq!(early["bids"], Value::Null);
+
+    h.drive_to_reveal(&id).await;
+
+    let (status, results) = h.get(&format!("/v1/auctions/{id}/results")).await;
+    assert_eq!(status, 200, "{results}");
+    let bids = results["bids"].as_array().unwrap();
+    // Ranked by amount, every readable bid present whether or not it can win.
+    assert_eq!(
+        bids.iter()
+            .map(|b| b["name"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["joke", "ana", "bo", "under"]
+    );
+    assert_eq!(bids[0]["within_maximum"], json!(false));
+    assert_eq!(bids[3]["meets_reserve"], json!(false));
+
+    // The queue is only what the rules allow to win, and it is a queue rather
+    // than a winner because nothing is escrowed.
+    assert_eq!(
+        results["queue"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["name"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["ana", "bo"]
+    );
+    assert_eq!(results["winner"]["name"], "ana");
+    assert_eq!(results["winner"]["amount_minor"], 12_500);
+    // B is 4 in this harness and there are exactly 4 bids, so the batch is
+    // full and needs no padding. The count is still reported, because a caller
+    // showing "n bids" must not read a padded slot as a participant.
+    assert_eq!(results["decoys"], json!(0));
+    assert!(results["discarded"].as_array().unwrap().is_empty());
+}
+
+/// A ciphertext is not bound to a condition, so a bid posted to one auction can
+/// be replayed into another and will decrypt to the same bytes. The auction id
+/// inside the record is what makes that detectable.
+#[tokio::test]
+async fn auction_discards_a_bid_replayed_from_another_auction() {
+    let h = harness().await;
+    let (_, a) = h
+        .post("/v1/auctions", json!({"closes_in": 1, "currency": "USD"}))
+        .await;
+    let (_, b) = h
+        .post("/v1/auctions", json!({"closes_in": 1, "currency": "USD"}))
+        .await;
+    let a_id = a["id"].as_str().unwrap().to_string();
+    let b_id = b["id"].as_str().unwrap().to_string();
+
+    h.place_bid(&a_id, 5_000, "honest").await;
+
+    // The same sealed bytes, made for auction A, posted into auction B.
+    let mut rng = bte_crypto::os_rng();
+    let ct = seal(
+        &h.params,
+        &h.bid_record(&a_id, 99_000, "replayed"),
+        &mut rng,
+    )
+    .unwrap();
+    h.post(
+        &format!("/v1/auctions/{b_id}/bids"),
+        json!({"ciphertext_b64": B64.encode(ct.to_bytes())}),
+    )
+    .await;
+    h.place_bid(&b_id, 1_000, "real").await;
+
+    h.drive_to_reveal(&b_id).await;
+    let (_, results) = h.get(&format!("/v1/auctions/{b_id}/results")).await;
+
+    // The replay does not win, and does not appear as a bid at all.
+    assert_eq!(results["winner"]["name"], "real", "{results}");
+    let discarded = results["discarded"].as_array().unwrap();
+    assert_eq!(discarded.len(), 1, "{results}");
+    assert_eq!(discarded[0]["reason"], "other-auction");
+}
+
+/// Bad rules are refused at creation, where the seller can still fix them,
+/// rather than at the close on an auction that is already running.
+#[tokio::test]
+async fn auction_refuses_rules_that_cannot_be_satisfied() {
+    let h = harness().await;
+    for (payload, code) in [
+        (json!({"closes_in": 60, "decimals": 9}), "invalid_decimals"),
+        (json!({"closes_in": 60, "currency": ""}), "invalid_currency"),
+        (
+            json!({"closes_in": 60, "reserve_minor": -5}),
+            "invalid_reserve",
+        ),
+        // A maximum under the reserve makes an auction nobody can win.
+        (
+            json!({"closes_in": 60, "reserve_minor": 5000, "maximum_minor": 100}),
+            "invalid_maximum",
+        ),
+        // And the round rules still apply underneath.
+        (json!({"currency": "USD"}), "missing_deadline"),
+    ] {
+        let (_, body) = h.post("/v1/auctions", payload.clone()).await;
+        assert_eq!(body["code"], code, "for {payload}: {body}");
+    }
+}
+
+/// One unreadable payload must not stop the board being computed for everybody
+/// else in the batch.
+#[tokio::test]
+async fn auction_survives_a_payload_that_is_not_a_bid() {
+    let h = harness().await;
+    let (_, a) = h
+        .post("/v1/auctions", json!({"closes_in": 1, "currency": "USD"}))
+        .await;
+    let id = a["id"].as_str().unwrap().to_string();
+
+    h.place_bid(&id, 7_000, "ana").await;
+    let mut rng = bte_crypto::os_rng();
+    let junk = seal(&h.params, b"not a bid record at all", &mut rng).unwrap();
+    h.post(
+        &format!("/v1/auctions/{id}/bids"),
+        json!({"ciphertext_b64": B64.encode(junk.to_bytes())}),
+    )
+    .await;
+
+    h.drive_to_reveal(&id).await;
+    let (_, results) = h.get(&format!("/v1/auctions/{id}/results")).await;
+    assert_eq!(results["winner"]["name"], "ana", "{results}");
+    assert_eq!(results["discarded"][0]["reason"], "unreadable");
+    // Two real payloads in a batch of four, so the coordinator padded the rest.
+    assert_eq!(results["decoys"], json!(2), "{results}");
+}

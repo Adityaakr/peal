@@ -290,6 +290,69 @@ export class Peal {
     }
   }
 
+  /** Open a sealed bid auction. Everything /#/create does, in one call. */
+  async createAuction(opts: {
+    title?: string;
+    description?: string;
+    imageUrl?: string;
+    closesIn?: number;
+    closesAt?: Date | string | number;
+    currency?: string;
+    decimals?: number;
+    reserveMinor?: number;
+    maximumMinor?: number;
+    /** The seller's PUBLIC key. Generate the pair yourself and keep the private
+     * half; sending it here would let this server read every contact detail. */
+    contactPublicKey?: string;
+    tag?: string;
+  } = {}): Promise<Auction> {
+    return this.request('/v1/auctions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: opts.title,
+        description: opts.description,
+        image_url: opts.imageUrl,
+        closes_in: opts.closesIn,
+        closes_at:
+          opts.closesAt instanceof Date ? opts.closesAt.toISOString() : opts.closesAt,
+        currency: opts.currency,
+        decimals: opts.decimals,
+        reserve_minor: opts.reserveMinor,
+        maximum_minor: opts.maximumMinor,
+        contact_public_key: opts.contactPublicKey,
+        tag: opts.tag,
+      }),
+    });
+  }
+
+  async getAuction(id: string): Promise<Auction> {
+    return this.request(`/v1/auctions/${encodeURIComponent(id)}`);
+  }
+
+  /**
+   * Place a sealed bid.
+   *
+   * The amount is encoded into a fixed-width record and encrypted here, so what
+   * reaches the network is 320 bytes regardless of the number inside it. Two
+   * bids are indistinguishable on the wire until the auction opens.
+   */
+  async bid(auctionId: string, opts: BidOptions): Promise<Seal> {
+    const params = await this.encryptor();
+    const ciphertext_b64 = bytesToB64(params.seal(encodeBid(auctionId, opts)));
+    return this.request(`/v1/auctions/${encodeURIComponent(auctionId)}/bids`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ciphertext_b64 }),
+    });
+  }
+
+  /** The board once the auction has opened: every bid ranked, the queue the
+   * rules allow to win, and anything discarded, with the reason. */
+  async results(auctionId: string): Promise<AuctionResults> {
+    return this.request(`/v1/auctions/${encodeURIComponent(auctionId)}/results`);
+  }
+
   /** The public parameters, plus the committee shape. */
   async parameters(): Promise<{
     id: string;
@@ -357,6 +420,100 @@ export class Peal {
       );
     }
   }
+}
+
+// -------------------------------------------------------------- auctions ---
+
+/** The fixed-width bid record, version 3. Mirrors packages/live/src/record.ts
+ * and the decoder in the coordinator.
+ *
+ * Fixed width is the point: the ciphertext body is a keystream XOR, so a record
+ * that changed size with the bid would put the bid's magnitude on the wire from
+ * the moment it was submitted. Every bid is 320 bytes whether it is five
+ * dollars or five hundred thousand, and whether or not it carries a contact. */
+const BID_RECORD_V3 = 3;
+const BID_RECORD_BYTES = 320;
+const BID_ORIGIN_AT = BID_RECORD_BYTES - 12;
+const MAX_BID_NAME_BYTES = 48;
+
+export interface BidOptions {
+  /** Integer MINOR units of the auction's currency: 12.50 in a 2 decimal
+   * currency is 1250. Money in a float is a rounding error waiting to happen. */
+  amountMinor: number;
+  /** What to call this bidder on the board. Never unique, never trusted. */
+  name?: string;
+  /** Already encrypted to the auction's contact_public_key. Encrypt it before
+   * it gets here: this record is published in full when the batch opens. */
+  sealedContact?: Uint8Array;
+}
+
+function encodeBid(auctionId: string, opts: BidOptions): Uint8Array {
+  const { amountMinor } = opts;
+  if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
+    throw new PealError('amountMinor must be a positive whole number', 'invalid_amount', 0);
+  }
+  const enc = new TextEncoder();
+  const id = enc.encode(auctionId);
+  const name = enc.encode((opts.name ?? '').slice(0, 24));
+  const contact = opts.sealedContact ?? null;
+  if (name.length > MAX_BID_NAME_BYTES) {
+    throw new PealError('that name is too long', 'invalid_name', 0);
+  }
+  const used = 10 + id.length + 1 + name.length + 1 + (contact?.length ?? 0);
+  if (used > BID_ORIGIN_AT) {
+    throw new PealError('the bid does not fit the record', 'bid_too_large', 0);
+  }
+
+  const out = new Uint8Array(BID_RECORD_BYTES);
+  const view = new DataView(out.buffer);
+  out[0] = BID_RECORD_V3;
+  view.setBigUint64(1, BigInt(amountMinor), false);
+  out[9] = id.length;
+  out.set(id, 10);
+  out[10 + id.length] = name.length;
+  out.set(name, 11 + id.length);
+  const contactAt = 11 + id.length + name.length;
+  out[contactAt] = contact ? contact.length : 0;
+  if (contact) out.set(contact, contactAt + 1);
+  return out;
+}
+
+export interface Auction extends Omit<Round, 'seals' | 'opens_at' | 'opens_at_unix'> {
+  closes_at: string | null;
+  closes_at_unix?: number;
+  bids: number;
+  currency: string;
+  decimals: number;
+  reserve_minor: number | null;
+  maximum_minor: number | null;
+  contact_public_key: string | null;
+  bids_url: string;
+  results_url: string;
+}
+
+export interface AuctionBid {
+  ct_hash: string;
+  position: number;
+  name: string;
+  amount_minor: number;
+  meets_reserve: boolean;
+  within_maximum: boolean;
+  sealed_contact_b64: string | null;
+  bid_in: { currency: string; amount_minor: number; decimals: number } | null;
+}
+
+export interface AuctionResults {
+  auction_id: string;
+  status: RoundStatus;
+  currency?: string;
+  decimals?: number;
+  /** Every readable bid, ranked. */
+  bids: AuctionBid[] | null;
+  /** Only the ones the rules allow to win, in order. */
+  queue?: AuctionBid[];
+  winner?: AuctionBid | null;
+  decoys?: number;
+  discarded?: { ct_hash: string; reason: string }[];
 }
 
 /** Ready to use against peal.network. `new Peal({ url })` for anywhere else. */

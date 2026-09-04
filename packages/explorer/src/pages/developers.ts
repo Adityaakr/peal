@@ -19,6 +19,7 @@ const sections = [
   ['how', 'How it works'],
   ['calls', 'The three calls'],
   ['uses', 'What to build'],
+  ['auctions', 'Sealed bid auctions'],
   ['reference', 'API reference'],
   ['next', 'Peal Commit'],
   ['identify', 'Name your app'],
@@ -541,6 +542,67 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
         </div>
       </section>
 
+      <section id="auctions" class="scroll-reveal">
+        <h2>Sealed bid auctions</h2>
+        <p>Everything the <a href="#/create">create page</a> does, as three calls. The rounds API
+        gives you submissions that open together; an auction is that plus the rules that decide
+        what a bid <em>means</em>, and those rules are the reason this exists rather than being
+        left to every caller to get subtly wrong.</p>
+
+        <pre class="dev-code"><code>import { peal } from '${shown}/peal.js';
+
+// 1. open it
+const auction = await peal.createAuction({
+  title:        'Signed tour poster',
+  description:  'One of a kind, ships worldwide.',
+  imageUrl:     'https://images.example.com/poster.jpg',
+  closesIn:     3600,          // or closesAt: '2026-09-12T18:00:00Z'
+  currency:     'USD',
+  decimals:     2,             // 0 for yen, 3 for a dinar
+  reserveMinor: 10_00,         // nothing below this can win
+  maximumMinor: 500_00,        // nothing above this can win
+  tag:          'my-shop',
+});
+
+// 2. a bid, encrypted here, 320 bytes on the wire whatever the number
+await peal.bid(auction.id, { amountMinor: 125_00, name: 'ana' });
+
+// 3. after it closes
+const { winner, queue, bids, discarded } = await peal.results(auction.id);</code></pre>
+
+        <h3>The rules, and why each one is there</h3>
+        <ul class="dev-rules">
+          <li><strong>Amounts are integers of minor units.</strong> <code>12.50</code> in a two
+          decimal currency is <code>1250</code>. Money in a float is a rounding error waiting for
+          a big enough auction.</li>
+          <li><strong>Every bid is the same size on the wire.</strong> The record is padded to 320
+          bytes before encryption, so a bid of five and a bid of five hundred thousand are
+          indistinguishable until the auction opens. Without this the ciphertext length ranks the
+          bids for anyone watching.</li>
+          <li><strong>A reserve and a maximum, both optional.</strong> Nothing is escrowed, so a
+          bid is cheap talk. The maximum is what stops a joke bid of ninety nine million taking
+          your auction.</li>
+          <li><strong>The result is a queue, not just a winner.</strong> For the same reason: if
+          the top bidder does not pay, the seller works down the list rather than losing the
+          sale.</li>
+          <li><strong>Ties break on batch position, which comes from the ciphertext hashes</strong>
+          rather than arrival order. So a tie cannot be won by bidding earlier, and the coordinator
+          cannot reorder a batch to choose a winner.</li>
+          <li><strong>A bid naming a different auction is discarded</strong>, with the reason. A
+          ciphertext is not bound to a round, so the same sealed bytes can be replayed into another
+          auction; the id inside the record is what makes that detectable.</li>
+          <li><strong>Contact details are encrypted to the seller.</strong> Everything in a bid is
+          published when the batch opens, so a plain contact field would be readable by every other
+          bidder. Generate a keypair, pass the public half as
+          <code>contactPublicKey</code>, and keep the private half: send it here and we could read
+          them.</li>
+        </ul>
+
+        <p class="dev-note">The board is computed from payloads the network has already published,
+        so anyone can recompute it and check the answer. Nothing here sees a bid before the
+        auction opens.</p>
+      </section>
+
       <section id="reference" class="scroll-reveal">
         <h2>API reference</h2>
         <p>Base URL <code>${esc(shown)}</code>. Everything is JSON. Nothing here needs a key.</p>
@@ -584,6 +646,25 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
           <div class="dev-ep">
             <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v1/seals/{id}</code></p>
             <p>One seal, with its payload once the round has opened.</p>
+          </div>
+          <div class="dev-ep">
+            <p class="dev-ep-sig"><span class="dev-verb dev-post">POST</span> <code>/v1/auctions</code></p>
+            <p>A round with auction rules: <code>currency</code>, <code>decimals</code>,
+            <code>reserve_minor</code>, <code>maximum_minor</code>, <code>contact_public_key</code>,
+            plus the round's own <code>closes_in</code>/<code>closes_at</code>, title, description
+            and picture. Rules that cannot be satisfied, like a maximum below the reserve, are
+            refused here rather than at the close.</p>
+          </div>
+          <div class="dev-ep">
+            <p class="dev-ep-sig"><span class="dev-verb dev-post">POST</span> <code>/v1/auctions/{id}/bids</code></p>
+            <p>A bid is a seal: <code>{ ciphertext_b64 }</code> holding the fixed width record. Same
+            validation and the same closed check as any other seal.</p>
+          </div>
+          <div class="dev-ep">
+            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v1/auctions/{id}/results</code></p>
+            <p>Every readable bid ranked, the queue the rules allow to win, the winner, the count of
+            decoys, and anything discarded with its reason. Before the close, <code>bids</code> is
+            null rather than an empty list, so "not open yet" cannot be read as "no bids".</p>
           </div>
           <div class="dev-ep">
             <p class="dev-ep-sig"><span class="dev-verb dev-post">POST</span> <code>/v1/seals</code></p>
@@ -719,10 +800,11 @@ const proof = await peal.getProof(id);</code></pre>
             <em>pay per call in a request, no account; the devnet is free and unmetered</em></li>
           <li><span class="dev-st dev-st-planned">planned</span>typed SDKs for TypeScript, Python
             and Go <em>peal.js and plain HTTP cover it today</em></li>
-          <li><span class="dev-st dev-st-planned">planned</span>auction rules in the API: reserve,
-            maximum, ranking and the winner <em>the sealing and the timed reveal are live and are
-            the hard part; deciding who won from opened payloads is your code today, or read
-            packages/live in the repo, which does all of it for Peal Live</em></li>
+          <li><span class="dev-st dev-st-live">live</span>sealed bid auctions
+            <em>reserve, maximum, ranking, the queue, replay rejection and encrypted contact
+            details</em></li>
+          <li><span class="dev-st dev-st-next">shipping next</span>currency conversion in the API
+            <em>bidders in another currency; peal-live does it client side today</em></li>
         </ul>
         <p class="dev-note">An agent cannot sign up for anything: it cannot accept terms, hold an
         API key it did not earn, or expense a subscription. It can pay for one request. That is why

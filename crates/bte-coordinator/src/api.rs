@@ -54,6 +54,7 @@ pub fn router(app: App) -> Router {
         .nest("/v0", api)
         .nest("/v1", crate::intents::routes())
         .nest("/v1", crate::v1::routes())
+        .nest("/v1", crate::auction::routes())
         // The app shell for a short link, with that auction's own preview meta
         // written into it. Caddy rewrites `/{name}` onto this; the browser's
         // address bar keeps the pretty path. See names.rs.

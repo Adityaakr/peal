@@ -93,7 +93,7 @@ pub struct Problem {
 }
 
 impl Problem {
-    fn new(status: StatusCode, code: &'static str, detail: impl Into<String>) -> Self {
+    pub(crate) fn new(status: StatusCode, code: &'static str, detail: impl Into<String>) -> Self {
         Self {
             status,
             code,
@@ -102,16 +102,16 @@ impl Problem {
         }
     }
 
-    fn field(mut self, field: &'static str) -> Self {
+    pub(crate) fn field(mut self, field: &'static str) -> Self {
         self.field = Some(field);
         self
     }
 
-    fn invalid(code: &'static str, detail: impl Into<String>) -> Self {
+    pub(crate) fn invalid(code: &'static str, detail: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, code, detail)
     }
 
-    fn missing(what: &str) -> Self {
+    pub(crate) fn missing(what: &str) -> Self {
         Self::new(
             StatusCode::NOT_FOUND,
             "not_found",
@@ -119,7 +119,7 @@ impl Problem {
         )
     }
 
-    fn internal(e: impl std::fmt::Display) -> Self {
+    pub(crate) fn internal(e: impl std::fmt::Display) -> Self {
         tracing::error!(error = %e, "v1 internal error");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -163,7 +163,7 @@ fn title_for(status: StatusCode) -> &'static str {
     }
 }
 
-type Result<T> = std::result::Result<T, Problem>;
+pub(crate) type Result<T> = std::result::Result<T, Problem>;
 
 // ------------------------------------------------------------ service root --
 
@@ -335,6 +335,66 @@ fn validate_presentation(req: &CreateRound) -> Result<Presentation> {
 struct OpensAtBlock {
     chain_id: i64,
     height: i64,
+}
+
+/// What another module needs to open a round. The auction layer builds one of
+/// these rather than a second copy of the validation.
+pub(crate) struct RoundSpec {
+    pub opens_at: Option<Value>,
+    pub opens_in: Option<i64>,
+    pub tag: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub image_url: Option<String>,
+}
+
+pub(crate) async fn create_round_inner(
+    app: &App,
+    headers: HeaderMap,
+    spec: RoundSpec,
+) -> Result<Value> {
+    let res = create_round(
+        State(app.clone()),
+        headers,
+        Json(CreateRound {
+            opens_at: spec.opens_at,
+            opens_in: spec.opens_in,
+            opens_at_block: None,
+            tag: spec.tag,
+            title: spec.title,
+            description: spec.description,
+            image_url: spec.image_url,
+        }),
+    )
+    .await?;
+    body_json(res).await
+}
+
+/// Submitting a bid is submitting a seal. Shared so an auction cannot drift
+/// from a round on validation, the closed check, or idempotency.
+pub(crate) async fn create_seal_inner(app: &App, round_id: &str, body: Value) -> Result<Response> {
+    let req: CreateSeal = serde_json::from_value(body).map_err(|_| {
+        Problem::invalid("invalid_body", "expected { ciphertext_b64 }").field("ciphertext_b64")
+    })?;
+    create_seal(State(app.clone()), Path(round_id.to_string()), Json(req)).await
+}
+
+/// One round as JSON, for a module that presents it differently.
+pub(crate) fn round_value(app: &App, id: &str) -> Result<Value> {
+    load_round(app, id)
+}
+
+/// The revealed slots of a round, or None while it is closed.
+pub(crate) fn reveal_slots(app: &App, round_id: &str) -> Option<Vec<Value>> {
+    let conn = app.0.db.lock().unwrap();
+    let blob: String = conn
+        .query_row(
+            "SELECT payloads_blob FROM reveals WHERE condition_id = ?1",
+            [round_id],
+            |r| r.get(0),
+        )
+        .ok()?;
+    serde_json::from_str(&blob).ok()
 }
 
 /// POST /v1/rounds

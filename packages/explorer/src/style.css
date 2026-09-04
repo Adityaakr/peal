@@ -6126,3 +6126,20 @@ textarea.live-input {
     opacity: 1;
   }
 }
+
+/* The auction rules. Each one is a decision with a reason, so they read as
+   prose with a bolded claim rather than as a feature list. */
+.dev-rules {
+  margin: 16px 0 18px;
+  padding-left: 20px;
+}
+
+.dev-rules li {
+  margin-bottom: 10px;
+  font-size: 14.5px;
+  color: var(--muted);
+}
+
+.dev-rules strong {
+  color: var(--text);
+}

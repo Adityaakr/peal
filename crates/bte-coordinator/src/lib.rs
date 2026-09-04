@@ -2,6 +2,7 @@
 //! in-process integration tests.
 
 pub mod api;
+pub mod auction;
 pub mod db;
 pub mod eip712;
 pub mod engine;
