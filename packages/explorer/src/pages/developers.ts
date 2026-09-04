@@ -344,7 +344,7 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
             <text class="sk-tag sk-end" x="424" y="232">unreadable by anyone, including us</text>
 
             <!-- the condition, underneath -->
-            <path class="sk-arrow sk-dash" d="M469 180 L469 226" marker-end="url(#dv-arrow)" />
+            <path class="sk-arrow sk-dash" d="M469 178 L469 214" marker-end="url(#dv-arrow)" />
             <g class="sk-node">
               <path class="sk-box sk-box-cue"
                     d="M334 264 q -2 -12 10 -13 l 250 -2 q 12 0 12.5 11 l 1 58 q 0 12 -11 12.5 l -251 1.5 q -12 0 -12.5 -11 z" />
