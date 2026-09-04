@@ -7858,3 +7858,280 @@ body.docs-page main {
     font-size: 23px;
   }
 }
+
+/* -------------------------------------------------------------------- x402 --
+   The metered mode switch on the API reference, and the receipt each paid call
+   leaves under its run button. Same white card on blue as the endpoints it
+   sits above, so turning payment on does not feel like a different product. */
+
+.x402-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin: 22px 0 30px;
+  padding: 14px 18px;
+  border: 1px solid var(--accent-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff, var(--accent-weak));
+  box-shadow: 0 1px 2px rgb(37 99 235 / 5%), 0 8px 24px -16px rgb(37 99 235 / 22%);
+}
+
+.x402-bar-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.x402-bar-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.x402-bar-text strong {
+  font-size: 14px;
+  font-weight: 620;
+  color: var(--text);
+}
+
+.x402-bar-text span {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.x402-switch {
+  flex: none;
+  width: 46px;
+  height: 26px;
+  padding: 3px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+  transition: background 200ms ease, border-color 200ms ease;
+}
+
+.x402-switch i {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--muted-soft);
+  /* The same curve the docs pages enter on, so the site has one motion. */
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), background 200ms ease;
+}
+
+.x402-switch.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.x402-switch.is-on i {
+  background: #fff;
+  transform: translateX(20px);
+}
+
+.x402-wallet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.x402-k {
+  font: 600 10.5px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+
+.x402-wallet b {
+  margin-right: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.x402-r-note {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.x402-spin {
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border: 2px solid var(--accent-border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  display: inline-block;
+  vertical-align: -1px;
+  animation: x402-turn 700ms linear infinite;
+}
+
+@keyframes x402-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Someone who does not want motion still needs to know it is working, so the
+   spinner stops turning rather than disappearing. */
+@media (prefers-reduced-motion: reduce) {
+  .x402-spin {
+    animation: none;
+  }
+
+  .x402-switch i {
+    transition: none;
+  }
+}
+
+.x402-receipt {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 11px;
+  border: 1px solid var(--green-weak);
+  border-radius: 9px;
+  background: var(--green-weak);
+  font-size: 12.5px;
+}
+
+.x402-receipt[hidden] {
+  display: none;
+}
+
+.x402-paid {
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--green);
+  color: #fff;
+  font: 600 10.5px/1.5 var(--mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.x402-receipt a {
+  color: var(--accent-strong);
+  font-size: 12px;
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-border);
+}
+
+.x402-receipt a:hover {
+  border-bottom-color: var(--accent);
+}
+
+/* The demonstration on the metered calls page: a run button, then the steps of
+   the handshake as they actually happen. */
+.x402-demo {
+  margin: 18px 0 30px;
+  padding: 18px 20px;
+  border: 1px solid var(--accent-border);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(37 99 235 / 5%), 0 8px 24px -16px rgb(37 99 235 / 22%);
+}
+
+.x402-demo-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.x402-steps {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.x402-steps:empty {
+  margin: 0;
+}
+
+.x402-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 400 13px/1.5 var(--mono);
+  color: var(--muted);
+}
+
+/* A finished step gets a tick and a done step gets its colour, so the list is
+   readable at a glance without reading it. */
+.x402-step.is-done::before {
+  content: '✓';
+  color: var(--green);
+  font-weight: 700;
+}
+
+.x402-step.is-done {
+  color: var(--text);
+}
+
+.x402-step.is-failed::before {
+  content: '×';
+  color: var(--red);
+  font-weight: 700;
+}
+
+.x402-step.is-failed {
+  color: var(--red-text);
+}
+
+.x402-step a {
+  color: var(--accent-strong);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-border);
+}
+
+.x402-demo .api-out {
+  margin-top: 14px;
+}
+
+.doc-steps {
+  margin: 14px 0 22px;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.doc-steps li {
+  line-height: 1.6;
+}
+
+/* A callout for something the reader must not skim past: a limitation, or a
+   place where this implementation deliberately differs from a standard. */
+.doc-callout {
+  margin: 18px 0 24px;
+  padding: 15px 18px;
+  border: 1px solid var(--accent-border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent-weak);
+}
+
+.doc-callout p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.doc-callout p + p {
+  margin-top: 10px;
+}
