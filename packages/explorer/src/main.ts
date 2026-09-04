@@ -17,8 +17,17 @@ import { renderMempool } from './pages/mempool';
 import { renderMempoolLanding } from './pages/mempool-landing';
 import { renderPhilosophy } from './pages/philosophy';
 import { renderProtocol } from './pages/protocol';
-import { renderDevelopers } from './pages/developers';
 import { renderCreateAuctionDocs } from './pages/docs-create-auction';
+import { renderDocs } from './docs';
+import { intro } from './pages/docs/intro';
+import { quickstart } from './pages/docs/quickstart';
+import { howItWorks } from './pages/docs/howitworks';
+import { auctions as auctionDocs } from './pages/docs/auctions';
+import { useCases } from './pages/docs/usecases';
+import { apiReference } from './pages/docs/api';
+import { limits as limitsDocs } from './pages/docs/limits';
+import { network as networkDocs } from './pages/docs/network';
+import { roadmap } from './pages/docs/roadmap';
 import { renderSealView } from './pages/seal-view';
 
 type Cleanup = () => void;
@@ -138,8 +147,10 @@ function route(): void {
   // this is the half that makes the app render it. Kept in step with
   // crates/bte-coordinator/src/pages.rs, which owns the same list.
   const PAGE_PATHS = new Set([
-    'developers', 'developers/createauction', 'protocol', 'mempool', 'auction',
-    'auctions', 'execution', 'philosophy', 'create', 'app',
+    'developers', 'developers/quickstart', 'developers/howitworks',
+    'developers/auctions', 'developers/createauction', 'developers/usecases',
+    'developers/api', 'developers/limits', 'developers/network', 'developers/roadmap',
+    'protocol', 'mempool', 'auction', 'auctions', 'execution', 'philosophy', 'create', 'app',
   ]);
   const pagePath = location.pathname.replace(/^\/|\/$/g, '');
   if (PAGE_PATHS.has(pagePath)) {
@@ -228,7 +239,23 @@ function route(): void {
   } else if (hash === '#/protocol') {
     cleanup = renderProtocol(root);
   } else if (hash === '#/developers') {
-    cleanup = renderDevelopers(root);
+    cleanup = renderDocs(root, intro, '#/developers');
+  } else if (hash === '#/developers/quickstart') {
+    cleanup = renderDocs(root, quickstart, hash);
+  } else if (hash === '#/developers/howitworks') {
+    cleanup = renderDocs(root, howItWorks, hash);
+  } else if (hash === '#/developers/auctions') {
+    cleanup = renderDocs(root, auctionDocs, hash);
+  } else if (hash === '#/developers/usecases') {
+    cleanup = renderDocs(root, useCases, hash);
+  } else if (hash === '#/developers/api') {
+    cleanup = renderDocs(root, apiReference, hash);
+  } else if (hash === '#/developers/limits') {
+    cleanup = renderDocs(root, limitsDocs, hash);
+  } else if (hash === '#/developers/network') {
+    cleanup = renderDocs(root, networkDocs, hash);
+  } else if (hash === '#/developers/roadmap') {
+    cleanup = renderDocs(root, roadmap, hash);
   } else if (hash === '#/developers/createauction') {
     cleanup = renderCreateAuctionDocs(root);
   } else if (hash === '#/philosophy') {

@@ -1536,8 +1536,10 @@ async fn seo_sitemap_lists_every_indexable_page() {
         assert!(xml.contains(&loc), "sitemap is missing {}", page.path);
     }
     for page in pages::PAGES.iter().filter(|p| !p.index) {
+        // The FULL loc, not a suffix: "developers/auctions" ends with
+        // "/auctions</loc>" too, so a substring check reports the wrong page.
         assert!(
-            !xml.contains(&format!("/{}</loc>", page.path)),
+            !xml.contains(&format!("<loc>https://peal.network/{}</loc>", page.path)),
             "{} is a live view and should not be in the sitemap",
             page.path
         );

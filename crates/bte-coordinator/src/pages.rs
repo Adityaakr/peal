@@ -66,6 +66,78 @@ pub const PAGES: &[Page] = &[
         index: true,
     },
     Page {
+        path: "developers/quickstart",
+        route: "#/developers/quickstart",
+        title: "Peal quickstart. Three calls to seal data until a deadline.",
+        description:
+            "Open a round, seal an encrypted payload to it, and read it back when it opens. Runnable against the live network from the page, with no signup, no API key and no wallet.",
+        schema: "HowTo",
+        index: true,
+    },
+    Page {
+        path: "developers/howitworks",
+        route: "#/developers/howitworks",
+        title: "How Peal works. Batched threshold encryption, explained.",
+        description:
+            "The cue is a row that fires on its own, the encryption happens on the caller's machine, and three of five operators open a batch. What you can check afterwards, and why the batch is padded.",
+        schema: "TechArticle",
+        index: true,
+    },
+    Page {
+        path: "developers/auctions",
+        route: "#/developers/auctions",
+        title: "Sealed bid auctions API. Reserve, maximum, ranked results.",
+        description:
+            "Run a sealed bid auction in three calls. Every bid is the same size on the wire, a maximum stops joke bids, the result is a queue rather than only a winner, and replays are discarded.",
+        schema: "TechArticle",
+        index: true,
+    },
+    Page {
+        path: "developers/usecases",
+        route: "#/developers/usecases",
+        title: "What to build with timed disclosure. Peal.",
+        description:
+            "Sealed bid auctions, encrypted mempools, private voting, agent actions, procurement and quotes, prediction tournaments, bounty submissions and fair launches.",
+        schema: "TechArticle",
+        index: true,
+    },
+    Page {
+        path: "developers/api",
+        route: "#/developers/api",
+        title: "Peal API reference. Rounds, seals, auctions.",
+        description:
+            "Every endpoint with its parameters, the RFC 9457 error codes to branch on, the rate limit headers and the one-file client. Plain JSON over HTTP, no key.",
+        schema: "APIReference",
+        index: true,
+    },
+    Page {
+        path: "developers/limits",
+        route: "#/developers/limits",
+        title: "Peal API limits and errors.",
+        description:
+            "What the server enforces: payload caps, page sizes, rate limits, batch size, and the error codes returned when you cross one.",
+        schema: "TechArticle",
+        index: true,
+    },
+    Page {
+        path: "developers/network",
+        route: "#/developers/network",
+        title: "Live activity on the Peal network.",
+        description:
+            "Conditions, payloads sealed, reveals performed and the median time to open, aggregated from the coordinator's own tables, with a board of what is being built.",
+        schema: "WebPage",
+        index: false,
+    },
+    Page {
+        path: "developers/roadmap",
+        route: "#/developers/roadmap",
+        title: "Peal roadmap. Peal Commit and paid access.",
+        description:
+            "The one-call seal API, webhook delivery, an MCP tool, x402 paid access and typed SDKs, with what is live stated separately from what is not.",
+        schema: "WebPage",
+        index: true,
+    },
+    Page {
         path: "developers/createauction",
         route: "#/developers/createauction",
         title: "How to add sealed bid auctions to your app. Peal guide.",

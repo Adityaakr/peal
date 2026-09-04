@@ -530,6 +530,12 @@ export interface Auction extends Omit<Round, 'seals' | 'opens_at' | 'opens_at_un
    * browsers never send anywhere, so opening it tells nobody which auction it
    * is. Null when the auction has no title. */
   bid_url: string | null;
+  /** Eight speakable characters over the terms. A seller reads them out and a
+   * bidder checks them against their own screen: the only defence against a
+   * link that was swapped on the way. */
+  check_code: string | null;
+  /** sha256 over the same terms, for anchoring them onchain yourself. */
+  terms_hash: string | null;
 }
 
 // ------------------------------------------------- contact details --------
