@@ -404,148 +404,192 @@ export const network: DocsPage = {
         aria-label="agent skill installs per day">${grid}${bars}${xticks}</svg>`;
     };
 
+    /**
+     * Render one panel, and let it fail alone.
+     *
+     * paint() used to be one straight run, so a single panel throwing left
+     * every panel after it showing "loading" for ever. That happened for real:
+     * the server stopped sending a field, and browsers still holding the
+     * previous bundle read it, threw, and rendered a page of loading text with
+     * no error anywhere. A dashboard that cannot draw one number should still
+     * draw the other nine.
+     */
+    const panel = (id: string, draw: () => void): void => {
+      try {
+        draw();
+      } catch (err) {
+        const node = el<HTMLElement>(id);
+        if (node) {
+          node.innerHTML = '<p class="muted">this panel could not be drawn. '
+            + 'the rest of the page is unaffected.</p>';
+        }
+        // Left in the console on purpose: silent is how the original bug
+        // survived, and this is a page whose whole point is being checkable.
+        console.error(`activity: ${id} failed to render`, err);
+      }
+    };
+
     const paint = (a: Activity): void => {
       latest = a;
-      paintCards(a);
+      // A field the server has stopped sending, or has not started sending
+      // yet, must not be able to take the page down.
+      a.series ??= [];
+      a.tags ??= [];
+      a.endpoints ??= [];
+      panel('#act-cards', () => paintCards(a));
 
-      const asof = el('#act-asof');
-      if (asof) {
-        asof.textContent = `last ${a.days} days, as of ${new Date(a.as_of * 1000).toLocaleTimeString()}`;
-      }
-
-      const lines = el<HTMLElement>('#act-lines');
-      if (lines) {
-        lines.innerHTML =
-          active.size === 0 ? '<p class="muted">no series selected.</p>' : lineChart(a.series, active);
-        if (active.size > 0) bindHover(lines, a);
-      }
-
-      // The running total, which is the number people actually want, above a
-      // chart that only ever shows the selected window. Without it the section
-      // could read "none" while the real count was climbing, which is exactly
-      // what it did.
-      const total = el('#act-install-total');
-      const inWindow = windowed(a, 'skill_installs');
-      if (total) {
-        total.innerHTML = `
-          <strong>${nf.format(a.totals.skill_installs)}</strong>
-          <span>install${a.totals.skill_installs === 1 ? '' : 's'} all time</span>
-          <em>${nf.format(inWindow)} in the last ${a.days} days</em>`;
-      }
-
-      const installs = el('#act-installs');
-      if (installs) {
-        // An all-zero bar chart is an empty white box, which reads as broken
-        // rather than as nothing having happened yet. Say which it is, and say
-        // it differently depending on whether the total is zero too.
-        installs.innerHTML = inWindow > 0
-          ? installBars(a)
-          : a.totals.skill_installs > 0
-            ? `<p class="act-empty">None in the last ${a.days} days.
-               <span>The running total above is every install ever counted. Widen the range
-               above to find them.</span></p>`
-            : `<p class="act-empty">Nothing counted yet.
-               <span>Run <code>curl -fsSL https://peal.network/skill/install.sh | sh</code>
-               and this fills in within about fifteen seconds.</span></p>`;
-      }
-
-      // ---- donut: what the network is used for ----
-      const donutHost = el('#act-donut');
-      if (donutHost) {
-        const wheel = [
-          PALETTE.rounds, PALETTE.sealed, PALETTE.opened, PALETTE.installs,
-          PALETTE.calls, PALETTE.paid, PALETTE.muted,
-        ];
-        const top = a.tags.slice(0, 6);
-        const rest = a.tags.slice(6).reduce((sum, t) => sum + t.rounds, 0);
-        const slices: Slice[] = top.map((t, i) => ({
-          label: t.tag,
-          value: t.rounds,
-          colour: wheel[i] ?? PALETTE.muted,
-        }));
-        if (rest > 0) slices.push({ label: 'everything else', value: rest, colour: PALETTE.muted });
-        donutHost.innerHTML = donut(slices, 'rounds', nf.format(a.totals.rounds));
-      }
-
-      // ---- endpoints ----
-      const epHost = el('#act-endpoints');
-      if (epHost) {
-        const rows: BarRow[] = a.endpoints.map((e) => ({
-          label: e.family,
-          value: e.calls,
-          sub: e.errors > 0 ? `${nf.format(e.errors)} failed` : undefined,
-          colour: e.errors > 0 && e.errors / Math.max(1, e.calls) > 0.25 ? '#dc2626' : PALETTE.rounds,
-        }));
-        epHost.innerHTML = rows.length
-          ? barList(rows, ' calls')
-          : '<p class="muted">no calls counted in this window yet.</p>';
-      }
-
-      // ---- latency ----
-      const lat = el('#act-latency');
-      if (lat) {
-        const o = a.open_ms;
-        if (o.samples === 0) {
-          lat.innerHTML = '<p class="muted">no batch has been opened yet, so there is nothing to time.</p>';
-        } else {
-          const top = Math.max(1, o.p99 ?? 0, o.p90 ?? 0, o.p50 ?? 0);
-          const rows = ([
-            ['p50', o.p50, 'half of all opens finish inside this'],
-            ['p90', o.p90, 'nine in ten finish inside this'],
-            ['p99', o.p99, 'the slow tail'],
-          ] as const)
-            .map(([name, v, note]) => {
-              const pct = v === null ? 0 : Math.max(1.5, (v / top) * 100);
-              return `<li class="lat-row">
-                <span class="lat-name mono">${name}</span>
-                <span class="lat-bar"><i style="width:${pct.toFixed(1)}%"></i></span>
-                <span class="lat-val mono">${esc(dur(v))}</span>
-                <span class="lat-note">${note}</span>
-              </li>`;
-            })
-            .join('');
-          lat.innerHTML = `<ul class="lat">${rows}</ul>
-            ${a.timings?.length ? histogram(a.timings) : ''}
-            <p class="field-hint">Measured across ${nf.format(o.samples)} opened
-            batch${o.samples === 1 ? '' : 'es'}, from the moment the batch froze to the moment its
-            payloads were readable. It covers the committee's work, not the wait for the deadline
-            you set.</p>`;
+      panel('#act-asof', () => {
+        const asof = el('#act-asof');
+        if (asof) {
+          asof.textContent = `last ${a.days} days, as of ${new Date(a.as_of * 1000).toLocaleTimeString()}`;
         }
-      }
+      });
 
-      // ---- the board ----
-      const board = el('#dev-board');
-      if (board) {
-        if (a.tags.length === 0) {
-          board.innerHTML = '<p class="muted">nobody has tagged a round yet. be first.</p>';
-        } else {
-          const top = Math.max(1, ...a.tags.map((t) => t.rounds));
-          const rows = a.tags
-            .map((t, i) => {
-              const share = Math.max(2, Math.round((t.rounds / top) * 100));
-              const live = t.recent > 0;
-              return `
-              <li class="dev-rank${live ? ' is-live' : ''}">
-                <span class="dev-rank-n mono">${i + 1}</span>
-                <span class="dev-rank-tag mono"><span>${esc(t.tag)}</span>${live ? '<span class="dev-live">active</span>' : ''}</span>
-                <span class="dev-rank-bar" aria-hidden="true"><i style="width:${share}%"></i></span>
-                <span class="dev-rank-num">${nf.format(t.rounds)}</span>
-                <span class="dev-rank-num">${nf.format(t.recent)}</span>
-                <span class="dev-rank-when">${esc(ago(t.last_seen, a.as_of))}</span>
-              </li>`;
-            })
-            .join('');
-          board.innerHTML = `
-            <ol class="dev-ranks">
-              <li class="dev-rank dev-rank-head">
-                <span class="dev-rank-n"></span><span class="dev-rank-tag">tag</span>
-                <span class="dev-rank-bar"></span>
-                <span class="dev-rank-num">rounds</span><span class="dev-rank-num">in ${a.days}d</span>
-                <span class="dev-rank-when">last</span>
-              </li>${rows}
-            </ol>`;
+      panel('#act-lines', () => {
+        const lines = el<HTMLElement>('#act-lines');
+        if (lines) {
+          lines.innerHTML =
+            active.size === 0 ? '<p class="muted">no series selected.</p>' : lineChart(a.series, active);
+          if (active.size > 0) bindHover(lines, a);
         }
-      }
+      });
+
+      panel('#act-installs', () => {
+        // The running total, which is the number people actually want, above a
+        // chart that only ever shows the selected window. Without it the section
+        // could read "none" while the real count was climbing, which is exactly
+        // what it did.
+        const total = el('#act-install-total');
+        const inWindow = windowed(a, 'skill_installs');
+        if (total) {
+          total.innerHTML = `
+            <strong>${nf.format(a.totals.skill_installs)}</strong>
+            <span>install${a.totals.skill_installs === 1 ? '' : 's'} all time</span>
+            <em>${nf.format(inWindow)} in the last ${a.days} days</em>`;
+        }
+
+        const installs = el('#act-installs');
+        if (installs) {
+          // An all-zero bar chart is an empty white box, which reads as broken
+          // rather than as nothing having happened yet. Say which it is, and say
+          // it differently depending on whether the total is zero too.
+          installs.innerHTML = inWindow > 0
+            ? installBars(a)
+            : a.totals.skill_installs > 0
+              ? `<p class="act-empty">None in the last ${a.days} days.
+                 <span>The running total above is every install ever counted. Widen the range
+                 above to find them.</span></p>`
+              : `<p class="act-empty">Nothing counted yet.
+                 <span>Run <code>curl -fsSL https://peal.network/skill/install.sh | sh</code>
+                 and this fills in within about fifteen seconds.</span></p>`;
+        }
+      });
+
+      panel('#act-donut', () => {
+        // ---- donut: what the network is used for ----
+        const donutHost = el('#act-donut');
+        if (donutHost) {
+          const wheel = [
+            PALETTE.rounds, PALETTE.sealed, PALETTE.opened, PALETTE.installs,
+            PALETTE.calls, PALETTE.paid, PALETTE.muted,
+          ];
+          const top = a.tags.slice(0, 6);
+          const rest = a.tags.slice(6).reduce((sum, t) => sum + t.rounds, 0);
+          const slices: Slice[] = top.map((t, i) => ({
+            label: t.tag,
+            value: t.rounds,
+            colour: wheel[i] ?? PALETTE.muted,
+          }));
+          if (rest > 0) slices.push({ label: 'everything else', value: rest, colour: PALETTE.muted });
+          donutHost.innerHTML = donut(slices, 'rounds', nf.format(a.totals.rounds));
+        }
+      });
+
+      panel('#act-endpoints', () => {
+        // ---- endpoints ----
+        const epHost = el('#act-endpoints');
+        if (epHost) {
+          const rows: BarRow[] = a.endpoints.map((e) => ({
+            label: e.family,
+            value: e.calls,
+            sub: e.errors > 0 ? `${nf.format(e.errors)} failed` : undefined,
+            colour: e.errors > 0 && e.errors / Math.max(1, e.calls) > 0.25 ? '#dc2626' : PALETTE.rounds,
+          }));
+          epHost.innerHTML = rows.length
+            ? barList(rows, ' calls')
+            : '<p class="muted">no calls counted in this window yet.</p>';
+        }
+      });
+
+      panel('#act-latency', () => {
+        // ---- latency ----
+        const lat = el('#act-latency');
+        if (lat) {
+          const o = a.open_ms;
+          if (o.samples === 0) {
+            lat.innerHTML = '<p class="muted">no batch has been opened yet, so there is nothing to time.</p>';
+          } else {
+            const top = Math.max(1, o.p99 ?? 0, o.p90 ?? 0, o.p50 ?? 0);
+            const rows = ([
+              ['p50', o.p50, 'half of all opens finish inside this'],
+              ['p90', o.p90, 'nine in ten finish inside this'],
+              ['p99', o.p99, 'the slow tail'],
+            ] as const)
+              .map(([name, v, note]) => {
+                const pct = v === null ? 0 : Math.max(1.5, (v / top) * 100);
+                return `<li class="lat-row">
+                  <span class="lat-name mono">${name}</span>
+                  <span class="lat-bar"><i style="width:${pct.toFixed(1)}%"></i></span>
+                  <span class="lat-val mono">${esc(dur(v))}</span>
+                  <span class="lat-note">${note}</span>
+                </li>`;
+              })
+              .join('');
+            lat.innerHTML = `<ul class="lat">${rows}</ul>
+              ${a.timings?.length ? histogram(a.timings) : ''}
+              <p class="field-hint">Measured across ${nf.format(o.samples)} opened
+              batch${o.samples === 1 ? '' : 'es'}, from the moment the batch froze to the moment its
+              payloads were readable. It covers the committee's work, not the wait for the deadline
+              you set.</p>`;
+          }
+        }
+      });
+
+      panel('#dev-board', () => {
+        // ---- the board ----
+        const board = el('#dev-board');
+        if (board) {
+          if (a.tags.length === 0) {
+            board.innerHTML = '<p class="muted">nobody has tagged a round yet. be first.</p>';
+          } else {
+            const top = Math.max(1, ...a.tags.map((t) => t.rounds));
+            const rows = a.tags
+              .map((t, i) => {
+                const share = Math.max(2, Math.round((t.rounds / top) * 100));
+                const live = t.recent > 0;
+                return `
+                <li class="dev-rank${live ? ' is-live' : ''}">
+                  <span class="dev-rank-n mono">${i + 1}</span>
+                  <span class="dev-rank-tag mono"><span>${esc(t.tag)}</span>${live ? '<span class="dev-live">active</span>' : ''}</span>
+                  <span class="dev-rank-bar" aria-hidden="true"><i style="width:${share}%"></i></span>
+                  <span class="dev-rank-num">${nf.format(t.rounds)}</span>
+                  <span class="dev-rank-num">${nf.format(t.recent)}</span>
+                  <span class="dev-rank-when">${esc(ago(t.last_seen, a.as_of))}</span>
+                </li>`;
+              })
+              .join('');
+            board.innerHTML = `
+              <ol class="dev-ranks">
+                <li class="dev-rank dev-rank-head">
+                  <span class="dev-rank-n"></span><span class="dev-rank-tag">tag</span>
+                  <span class="dev-rank-bar"></span>
+                  <span class="dev-rank-num">rounds</span><span class="dev-rank-num">in ${a.days}d</span>
+                  <span class="dev-rank-when">last</span>
+                </li>${rows}
+              </ol>`;
+          }
+        }
+      });
     };
 
     /** An ellipsis reads as still loading when it means gave up. */
