@@ -78,6 +78,65 @@ export class PealError extends Error {
 
 const DEFAULT_URL = 'https://peal.network';
 
+/**
+ * Fixed widths a sealed payload is padded to.
+ *
+ * WHY THIS EXISTS. The ciphertext body is a keystream XOR over the plaintext,
+ * so a sealed blob is `69 + payload` bytes and its LENGTH is public from the
+ * moment it is submitted. Sealing a bid of "5" and a bid of "999999999999"
+ * produces ciphertexts of 100 and 116 base64 characters, measured against the
+ * live network. Anyone watching a round can therefore rank the bids by size
+ * before anything opens, which is most of what a sealed bid auction is for.
+ *
+ * Padding to a bucket makes every small payload the same length on the wire.
+ * It is a length policy over an existing cipher, not a new construction.
+ */
+const PAD_BUCKETS = [256, 1024, 4096, 16_384, 65_536];
+
+/** Envelope version, so a reader can tell a padded payload from a raw one. */
+const ENVELOPE_V1 = 1;
+const ENVELOPE_HEADER = 5;
+
+function padTo(payload: Uint8Array, requested?: number): Uint8Array {
+  const needed = payload.length + ENVELOPE_HEADER;
+  const width =
+    requested ??
+    PAD_BUCKETS.find((b) => b >= needed) ??
+    // Past the largest bucket, hiding the length would mean sending megabytes
+    // to conceal kilobytes. The caller keeps the exact size and knows it.
+    needed;
+  if (width < needed) {
+    throw new PealError(
+      `padTo ${width} is too small for a ${payload.length} byte payload`,
+      'pad_too_small',
+      0,
+    );
+  }
+  const out = new Uint8Array(width);
+  out[0] = ENVELOPE_V1;
+  new DataView(out.buffer).setUint32(1, payload.length, false);
+  out.set(payload, ENVELOPE_HEADER);
+  return out;
+}
+
+/**
+ * Undo the padding, or hand back what was there.
+ *
+ * A round can hold payloads sealed by other clients, including ones that never
+ * used this envelope. Those are returned untouched rather than rejected: one
+ * caller's format choice must not make somebody else's payload unreadable.
+ */
+function unpad(bytes: Uint8Array): Uint8Array {
+  if (bytes.length < ENVELOPE_HEADER || bytes[0] !== ENVELOPE_V1) return bytes;
+  const length = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(1, false);
+  if (ENVELOPE_HEADER + length > bytes.length) return bytes;
+  // The padding must be zero, or this is not an envelope this library wrote.
+  for (let i = ENVELOPE_HEADER + length; i < bytes.length; i++) {
+    if (bytes[i] !== 0) return bytes;
+  }
+  return bytes.slice(ENVELOPE_HEADER, ENVELOPE_HEADER + length);
+}
+
 export interface PealOptions {
   url?: string;
 }
@@ -143,10 +202,16 @@ export class Peal {
    * the ciphertext, so you can compute it yourself and never have to trust our
    * answer about which seal is yours.
    */
-  async seal(payload: string | Uint8Array, roundId: string): Promise<Seal> {
-    const bytes = typeof payload === 'string' ? new TextEncoder().encode(payload) : payload;
+  async seal(
+    payload: string | Uint8Array,
+    roundId: string,
+    opts: { padTo?: number } = {},
+  ): Promise<Seal> {
+    const raw = typeof payload === 'string' ? new TextEncoder().encode(payload) : payload;
     const params = await this.encryptor();
-    const ciphertext_b64 = bytesToB64(params.seal(bytes));
+    // Padded by default. A caller who does not think about length leaks should
+    // not get one; a caller who wants an exact width can ask for it.
+    const ciphertext_b64 = bytesToB64(params.seal(padTo(raw, opts.padTo)));
     return this.request(`/v1/rounds/${encodeURIComponent(roundId)}/seals`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -171,15 +236,15 @@ export class Peal {
   async sealUntil(
     payload: string | Uint8Array,
     until: Date | string | number,
-    opts: { tag?: string; title?: string } = {},
+    opts: { tag?: string; title?: string; padTo?: number } = {},
   ): Promise<{ id: string; round_id: string; unlock_at: string; proof_url: string }> {
-    const bytes = typeof payload === 'string' ? new TextEncoder().encode(payload) : payload;
+    const raw = typeof payload === 'string' ? new TextEncoder().encode(payload) : payload;
     const params = await this.encryptor();
     return this.request('/v1/seals', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        ciphertext_b64: bytesToB64(params.seal(bytes)),
+        ciphertext_b64: bytesToB64(params.seal(padTo(raw, opts.padTo))),
         unlock_at: until instanceof Date ? until.toISOString() : until,
         tag: opts.tag,
         title: opts.title,
@@ -203,7 +268,7 @@ export class Peal {
     const seals = await this.listSeals(roundId);
     return seals
       .filter((s) => s.payload_b64)
-      .map((s) => b64ToBytes(s.payload_b64 as string));
+      .map((s) => unpad(b64ToBytes(s.payload_b64 as string)));
   }
 
   /** Wait for a round to open, then return it. */

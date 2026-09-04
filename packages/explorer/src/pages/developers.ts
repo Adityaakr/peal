@@ -178,7 +178,12 @@ if (!res.ok) throw new Error(\`\${round.code}: \${round.detail}\`);
              happens on your machine. <code>peal.js</code> loads straight from this domain: one
              file, nothing to install. It fetches the public parameters, checks their digest
              against what it was served, encrypts locally and posts the ciphertext. The seal's id
-             is the SHA-256 of that ciphertext, so you can compute it yourself.`,
+             is the SHA-256 of that ciphertext, so you can compute it yourself.
+             <strong>Payloads are padded to a fixed width before encryption.</strong> The
+             ciphertext body is a keystream XOR, so its length is public from the moment it is
+             submitted: sealing "5" and "999999999999" produced 100 and 116 base64 characters,
+             which would let anyone rank a round's bids before it opened. Padding makes every small
+             payload identical on the wire.`,
       code: `import { peal } from '${shown}/peal.js';
 
 // Encrypts in this process. Only the ciphertext crosses the network,
@@ -714,6 +719,10 @@ const proof = await peal.getProof(id);</code></pre>
             <em>pay per call in a request, no account; the devnet is free and unmetered</em></li>
           <li><span class="dev-st dev-st-planned">planned</span>typed SDKs for TypeScript, Python
             and Go <em>peal.js and plain HTTP cover it today</em></li>
+          <li><span class="dev-st dev-st-planned">planned</span>auction rules in the API: reserve,
+            maximum, ranking and the winner <em>the sealing and the timed reveal are live and are
+            the hard part; deciding who won from opened payloads is your code today, or read
+            packages/live in the repo, which does all of it for Peal Live</em></li>
         </ul>
         <p class="dev-note">An agent cannot sign up for anything: it cannot accept terms, hold an
         API key it did not earn, or expense a subscription. It can pay for one request. That is why
