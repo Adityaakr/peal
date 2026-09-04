@@ -6,6 +6,11 @@
 //! string, no cookie: a page view is not counted because nothing counts one, and
 //! a number nobody can produce is worse than a missing one.
 //!
+//! There is no geography either. The only signal available without resolving a
+//! visitor's address was the edge that served the request, which reports where
+//! this server runs, so a panel built on it showed one city with every call
+//! against it. It was removed rather than left up looking like a finding.
+//!
 //! So "users" is not a column here and never will be. There are no accounts on
 //! this network, which is the point of it. What can be counted honestly is WORK:
 //! rounds opened, payloads sealed, batches opened, how long opening took, and
@@ -39,72 +44,6 @@ pub fn count(app: &App, kind: &str) {
          ON CONFLICT(kind, day) DO UPDATE SET count = count + 1",
         rusqlite::params![kind, day],
     );
-}
-
-/// Where a call came from, without ever handling an address.
-///
-/// Three sources, in the order they are trusted, and the answer is tagged with
-/// which one it came from so the page never presents one as the other:
-///
-///   cc:XX   a real country, from a CDN that resolved it at the edge
-///   tz:Zone the caller's own timezone, which browsers know about themselves
-///   edge:X  the edge that served the request
-///
-/// The edge is last because it is the least informative and was, on its own,
-/// actively misleading: a single region deployment answers every request from
-/// the same edge, so a panel built on it showed one city with every call
-/// against it and looked like a finding. It was measuring where this server
-/// runs.
-///
-/// What is deliberately not here is a lookup of x-forwarded-for against a
-/// geolocation database. That is the only way to place a server to server
-/// caller, and it means this coordinator handling visitor addresses in order to
-/// draw a chart. On a product whose whole claim is that it cannot read what you
-/// send it, that is not a trade worth making for a map. Callers that report
-/// nothing are counted as reporting nothing.
-fn region_of(headers: &axum::http::HeaderMap) -> String {
-    // A real country, resolved at a CDN edge. Nothing to configure here: put
-    // Cloudflare in front and this starts answering with countries.
-    for name in ["cf-ipcountry", "x-vercel-ip-country"] {
-        if let Some(cc) = headers.get(name).and_then(|v| v.to_str().ok()) {
-            let cc = cc.trim().to_uppercase();
-            if cc.len() == 2 && cc.chars().all(|c| c.is_ascii_alphabetic()) && cc != "XX" {
-                return format!("cc:{cc}");
-            }
-        }
-    }
-
-    // The caller's own timezone. A browser knows this about itself and it is
-    // not derived from an address: hundreds of zones, no identity, and the
-    // caller chooses to send it. It is the only signal here that says anything
-    // about where a person actually is.
-    if let Some(tz) = headers.get("x-peal-tz").and_then(|v| v.to_str().ok()) {
-        let tz: String = tz
-            .trim()
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '+'))
-            .take(40)
-            .collect();
-        // One slash, Area/Location, is what an IANA zone looks like. Anything
-        // else is a caller inventing keys, and a counter table is not the place
-        // to find out what they can make up.
-        if tz.matches('/').count() == 1 && tz.len() >= 5 {
-            return format!("tz:{tz}");
-        }
-    }
-
-    if let Some(v) = headers.get("x-railway-edge").and_then(|v| v.to_str().ok()) {
-        let v: String = v
-            .trim()
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-            .take(16)
-            .collect();
-        if !v.is_empty() {
-            return format!("edge:{}", v.to_lowercase());
-        }
-    }
-    "unknown".to_string()
 }
 
 /// Which part of the API a path belongs to, for the endpoint breakdown.
@@ -155,10 +94,9 @@ pub async fn observe(
         return next.run(req).await;
     }
     let family = family_of(req.uri().path());
-    let region = family.map(|_| region_of(req.headers()));
     let res = next.run(req).await;
 
-    if let (Some(family), Some(region)) = (family, region) {
+    if let Some(family) = family {
         // Errors are counted apart from work. A developer hammering a 400 is
         // doing something, and a chart that hides it is hiding the thing most
         // worth fixing.
@@ -167,7 +105,6 @@ pub async fn observe(
         if !ok {
             count(&app, &format!("err:{family}"));
         }
-        count(&app, &format!("region:{region}"));
     }
     res
 }
@@ -314,11 +251,6 @@ pub async fn get_activity(
         .unwrap_or_default()
     };
 
-    let regions: Vec<Value> = sum_prefix("region:")
-        .into_iter()
-        .map(|(code, calls)| json!({ "code": code, "calls": calls }))
-        .collect();
-
     let errors: std::collections::HashMap<String, i64> = sum_prefix("err:").into_iter().collect();
     let endpoints: Vec<Value> = sum_prefix("call:")
         .into_iter()
@@ -372,7 +304,6 @@ pub async fn get_activity(
         // does not get more truthful, only heavier to send.
         "timings": timings.iter().rev().take(2000).collect::<Vec<_>>(),
         "tags": tags,
-        "regions": regions,
         "endpoints": endpoints,
         "calls": calls_total,
         "counts_note": "Work, not people. There are no accounts on this network, so nothing here counts visitors, sessions or addresses.",
