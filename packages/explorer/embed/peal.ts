@@ -162,6 +162,37 @@ export class Peal {
     return body.data;
   }
 
+  /**
+   * Seal a payload until a moment, in one call.
+   *
+   * Encrypts here, creates a round holding just this seal, and returns its id
+   * and a proof URL. `until` takes a Date, an ISO string or unix seconds.
+   */
+  async sealUntil(
+    payload: string | Uint8Array,
+    until: Date | string | number,
+    opts: { tag?: string; title?: string } = {},
+  ): Promise<{ id: string; round_id: string; unlock_at: string; proof_url: string }> {
+    const bytes = typeof payload === 'string' ? new TextEncoder().encode(payload) : payload;
+    const params = await this.encryptor();
+    return this.request('/v1/seals', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ciphertext_b64: bytesToB64(params.seal(bytes)),
+        unlock_at: until instanceof Date ? until.toISOString() : until,
+        tag: opts.tag,
+        title: opts.title,
+      }),
+    });
+  }
+
+  /** What can be checked about one seal: the ordering commitment, the merkle
+   * root, and whether the commitment preceded the reveal. */
+  async getProof(sealId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/seals/${encodeURIComponent(sealId)}/proof`);
+  }
+
   /** One seal, with its payload once the round has opened. */
   async getSeal(id: string): Promise<Seal> {
     return this.request(`/v1/seals/${encodeURIComponent(id)}`);

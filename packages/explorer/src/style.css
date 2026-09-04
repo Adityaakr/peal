@@ -6026,3 +6026,57 @@ textarea.live-input {
     width: 100%;
   }
 }
+
+/* What is built and what is not, stated as a list rather than buried in prose.
+   A reader planning around this needs to see the edge of it at a glance. */
+.dev-status {
+  margin: 16px 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.dev-status li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.dev-status em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 13px;
+  flex: 1 1 240px;
+}
+
+.dev-st {
+  flex: none;
+  min-width: 96px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+.dev-st-live {
+  background: var(--green-weak);
+  border: 1px solid var(--green);
+  color: var(--green);
+}
+
+.dev-st-next {
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+}
+
+.dev-st-planned {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}

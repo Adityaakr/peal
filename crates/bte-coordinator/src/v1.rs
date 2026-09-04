@@ -74,7 +74,9 @@ pub fn routes() -> Router<App> {
         .route("/rounds", post(create_round).get(list_rounds))
         .route("/rounds/{id}", get(get_round))
         .route("/rounds/{id}/seals", post(create_seal).get(list_seals))
+        .route("/seals", post(create_lone_seal))
         .route("/seals/{id}", get(get_seal))
+        .route("/seals/{id}/proof", get(get_seal_proof))
 }
 
 // ---------------------------------------------------------------- errors ----
@@ -777,6 +779,155 @@ async fn get_seal(State(app): State<App>, Path(id): Path<String>) -> Result<Json
         json!({ "id": round_id, "status": round["status"] }),
     );
     Ok(Json(Value::Object(o)))
+}
+
+/// One sealed payload with its own deadline, in one call.
+///
+/// A round holding a single seal. Most callers, and nearly every agent, want
+/// exactly this: seal a thing until a time, get something back that proves it
+/// was sealed before it was opened. Doing it with the two-step API means
+/// creating a round and then posting to it, which is two round trips and two
+/// ids to keep.
+///
+/// THE PAYLOAD IS A CIPHERTEXT AND ONLY EVER A CIPHERTEXT. There is no
+/// convenience field that takes a plaintext and encrypts it here. That would
+/// move the encryption to the wrong side of the network and quietly delete the
+/// only property this product has: use peal.js, or any client that speaks the
+/// wire format, and encrypt where your data already is.
+#[derive(Deserialize)]
+struct CreateLoneSeal {
+    ciphertext_b64: String,
+    /// When it opens: RFC 3339, or unix seconds.
+    unlock_at: Option<Value>,
+    /// Or relative seconds.
+    unlock_in: Option<i64>,
+    tag: Option<String>,
+    title: Option<String>,
+}
+
+async fn create_lone_seal(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(req): Json<CreateLoneSeal>,
+) -> Result<Response> {
+    let round_req = CreateRound {
+        opens_at: req.unlock_at.clone(),
+        opens_in: req.unlock_in,
+        opens_at_block: None,
+        tag: req.tag.clone(),
+        title: req.title.clone(),
+        description: None,
+        image_url: None,
+    };
+    // Reuse the round path wholesale rather than reimplementing validation, so
+    // a rule can never hold on one endpoint and not the other.
+    let created = create_round(State(app.clone()), headers, Json(round_req)).await?;
+    let round: Value = body_json(created).await?;
+    let round_id = round["id"].as_str().unwrap_or_default().to_string();
+
+    let sealed = create_seal(
+        State(app.clone()),
+        Path(round_id.clone()),
+        Json(CreateSeal {
+            ciphertext_b64: req.ciphertext_b64,
+        }),
+    )
+    .await?;
+    let seal: Value = body_json(sealed).await?;
+    let id = seal["id"].as_str().unwrap_or_default().to_string();
+
+    let body = json!({
+        "id": id,
+        "round_id": round_id,
+        "status": "sealed",
+        "unlock_at": round["opens_at"],
+        "unlock_at_unix": round["opens_at_unix"],
+        "proof_url": format!("/v1/seals/{id}/proof"),
+    });
+    let mut res = (StatusCode::CREATED, Json(body)).into_response();
+    if let Ok(v) = header::HeaderValue::from_str(&format!("/v1/seals/{id}")) {
+        res.headers_mut().insert(header::LOCATION, v);
+    }
+    Ok(res)
+}
+
+/// Read a JSON body back out of a response we just built.
+async fn body_json(res: Response) -> Result<Value> {
+    let bytes = axum::body::to_bytes(res.into_body(), 1 << 20)
+        .await
+        .map_err(Problem::internal)?;
+    serde_json::from_slice(&bytes).map_err(Problem::internal)
+}
+
+/// GET /v1/seals/{id}/proof
+///
+/// What can actually be checked about one seal, and nothing that cannot.
+///
+/// The load-bearing claim is `ordering_committed_at`: the coordinator writes
+/// the batch's ordering root at freeze, BEFORE any operator is handed work, so
+/// a commitment timestamp earlier than the reveal is evidence the set and its
+/// order were fixed before anybody could open it. `id` is the SHA-256 of the
+/// ciphertext, so the caller checks that themselves rather than believing us.
+async fn get_seal_proof(State(app): State<App>, Path(id): Path<String>) -> Result<Json<Value>> {
+    let conn = app.0.db.lock().unwrap();
+    let (round_id, position): (String, Option<i64>) = conn
+        .query_row(
+            "SELECT condition_id, position FROM ciphertexts WHERE ct_hash = ?1 AND is_dummy = 0",
+            [&id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|_| Problem::missing("seal"))?;
+
+    let commitment: Option<(String, i64, i64)> = conn
+        .query_row(
+            "SELECT ordering_root, committed_at, batch_size FROM batch_commitments
+              WHERE condition_id = ?1 ORDER BY committed_at ASC LIMIT 1",
+            [&round_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .ok();
+
+    let reveal: Option<(String, i64)> = conn
+        .query_row(
+            "SELECT merkle_root, revealed_at FROM reveals WHERE condition_id = ?1",
+            [&round_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .ok();
+    drop(conn);
+
+    let round = load_round(&app, &round_id)?;
+    let (ordering_root, committed_at, batch_size) = match &commitment {
+        Some((root, at, size)) => (json!(root), json!(at), json!(size)),
+        None => (Value::Null, Value::Null, Value::Null),
+    };
+    let (merkle_root, revealed_at) = match &reveal {
+        Some((root, at)) => (json!(root), json!(at)),
+        None => (Value::Null, Value::Null),
+    };
+
+    // Only true when both timestamps exist and fall the right way round. Absent
+    // is null, not false: "not yet" and "no" are different answers.
+    let precedes = match (&commitment, &reveal) {
+        (Some((_, c, _)), Some((_, r))) => json!(c <= r),
+        _ => Value::Null,
+    };
+
+    Ok(Json(json!({
+        "seal_id": id,
+        "seal_id_is": "sha256 of the ciphertext; recompute it from your own copy",
+        "round_id": round_id,
+        "round_status": round["status"],
+        "position": position,
+        "position_is": "derived from the ciphertext hashes, not from arrival order",
+        "ordering_root": ordering_root,
+        "ordering_committed_at": committed_at,
+        "batch_size": batch_size,
+        "merkle_root": merkle_root,
+        "revealed_at": revealed_at,
+        "commitment_precedes_reveal": precedes,
+        "threshold": "3 of 5 operators are required to open a batch",
+    })))
 }
 
 // ----------------------------------------------------------------- shared ---

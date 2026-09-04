@@ -1624,3 +1624,90 @@ async fn seo_page_paths_and_auction_names_do_not_collide() {
     assert!(pages::find("nepal-relief").is_none());
     assert!(pages::find("").is_some(), "the empty path is the home page");
 }
+
+/// The one-call form: seal a payload until a time and get back something that
+/// can be checked later.
+#[tokio::test]
+async fn v1_seal_until_creates_a_round_of_one() {
+    let h = harness().await;
+    let mut rng = bte_crypto::os_rng();
+    let ct = seal(&h.params, b"the agent's bid", &mut rng).unwrap();
+
+    let (status, body) = h
+        .post(
+            "/v1/seals",
+            json!({"ciphertext_b64": B64.encode(ct.to_bytes()), "unlock_in": 1, "tag": "agent"}),
+        )
+        .await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(body["id"], hex::encode(ct.hash()));
+    assert_eq!(body["status"], "sealed");
+    assert!(body["unlock_at"].as_str().unwrap().ends_with('Z'));
+    assert_eq!(
+        body["proof_url"],
+        format!("/v1/seals/{}/proof", body["id"].as_str().unwrap())
+    );
+
+    let round_id = body["round_id"].as_str().unwrap().to_string();
+    let (_, round) = h.get(&format!("/v1/rounds/{round_id}")).await;
+    assert_eq!(round["seals"], 1);
+    assert_eq!(round["tag"], "agent");
+
+    // It validates exactly as the two-step form does, because it is the same
+    // code path rather than a second copy of the rules.
+    let (_, bad) = h
+        .post(
+            "/v1/seals",
+            json!({"ciphertext_b64": B64.encode(ct.to_bytes())}),
+        )
+        .await;
+    assert_eq!(bad["code"], "missing_deadline", "{bad}");
+    let (_, junk) = h
+        .post(
+            "/v1/seals",
+            json!({"ciphertext_b64": "!!!", "unlock_in": 60}),
+        )
+        .await;
+    assert_eq!(junk["code"], "invalid_base64", "{junk}");
+}
+
+/// The proof says what can be checked and stays silent about what cannot.
+#[tokio::test]
+async fn v1_seal_proof_shows_the_commitment_preceding_the_reveal() {
+    let h = harness().await;
+    let mut rng = bte_crypto::os_rng();
+    let ct = seal(&h.params, b"provable", &mut rng).unwrap();
+    let (_, sealed) = h
+        .post(
+            "/v1/seals",
+            json!({"ciphertext_b64": B64.encode(ct.to_bytes()), "unlock_in": 1}),
+        )
+        .await;
+    let id = sealed["id"].as_str().unwrap().to_string();
+    let round_id = sealed["round_id"].as_str().unwrap().to_string();
+
+    // Before the round opens there is no reveal, so the answer is null rather
+    // than false: "not yet" and "no" are different answers.
+    let (status, before) = h.get(&format!("/v1/seals/{id}/proof")).await;
+    assert_eq!(status, 200, "{before}");
+    assert_eq!(before["seal_id"], id);
+    assert_eq!(before["merkle_root"], Value::Null);
+    assert_eq!(before["commitment_precedes_reveal"], Value::Null);
+
+    h.drive_to_reveal(&round_id).await;
+
+    let (_, after) = h.get(&format!("/v1/seals/{id}/proof")).await;
+    assert_eq!(after["round_status"], "opened", "{after}");
+    assert_ne!(after["merkle_root"], Value::Null);
+    assert_ne!(after["ordering_root"], Value::Null, "{after}");
+    // The claim that matters: the ordering was fixed before anyone could open
+    // the batch.
+    assert_eq!(after["commitment_precedes_reveal"], json!(true), "{after}");
+    assert!(
+        after["ordering_committed_at"].as_i64().unwrap() <= after["revealed_at"].as_i64().unwrap()
+    );
+
+    let (status, missing) = h.get("/v1/seals/deadbeef/proof").await;
+    assert_eq!(status, 404);
+    assert_eq!(missing["code"], "not_found");
+}
