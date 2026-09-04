@@ -243,7 +243,23 @@ export class Peal {
       }
       throw new PealError(detail, code, res.status, field);
     }
-    return (await res.json()) as T;
+    // A 200 is not proof of an answer: a static file server or a dev proxy that
+    // does not forward /v1 can return one with a page in it. Failing here with
+    // the status and the type says more than "unexpected end of JSON input".
+    const text = await res.text();
+    if (!text.trim()) {
+      throw new PealError(`${path} returned ${res.status} with an empty body`, 'empty_response', res.status);
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      const type = res.headers.get('content-type') ?? 'an unknown type';
+      throw new PealError(
+        `${path} returned ${res.status} as ${type}, not JSON: this server may not serve /v1`,
+        'not_json',
+        res.status,
+      );
+    }
   }
 }
 

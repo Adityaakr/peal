@@ -70,6 +70,31 @@ interface DemoState {
   ctHash?: string;
 }
 
+/**
+ * Read a response, or say what actually went wrong.
+ *
+ * `res.json()` on an empty body throws "unexpected end of JSON input", which
+ * tells a reader nothing about the cause: a 404 from a dev proxy that does not
+ * forward the route and a 405 from a static file server both look like that.
+ * The status and the content type are the diagnosis, so they go in the message.
+ */
+async function readJson(res: Response, what: string): Promise<unknown> {
+  const type = res.headers.get('content-type') ?? '';
+  const body = await res.text();
+  if (!body.trim()) {
+    throw new Error(
+      `${what} returned ${res.status} with an empty body.`
+      + (res.status === 404 || res.status === 405
+        ? ' this build is talking to a server that does not serve /v1 yet.'
+        : ''),
+    );
+  }
+  if (!type.includes('json')) {
+    throw new Error(`${what} returned ${res.status} as ${type || 'an unknown type'}, not JSON.`);
+  }
+  return JSON.parse(body);
+}
+
 function demoHtml(d: Demo): string {
   return `
     <div class="dev-demo" data-demo="${esc(d.id)}">
@@ -131,7 +156,7 @@ const round = await res.json();   // { id, status: 'open', title, image_url, …
             image_url: 'https://images.example.com/poster.jpg',
           }),
         });
-        const body = (await res.json()) as { id?: string };
+        const body = (await readJson(res, 'POST /v1/rounds')) as { id?: string };
         log(JSON.stringify(body, null, 2));
         if (body.id) {
           state.conditionId = body.id;
@@ -183,7 +208,7 @@ if (round.status === 'opened') {
           return;
         }
         const res = await fetch(`${base}/v1/rounds/${encodeURIComponent(id)}`);
-        const round = (await res.json()) as {
+        const round = (await readJson(res, 'GET /v1/rounds/{id}')) as {
           status?: string; seals?: number; opens_at_unix?: number; slots_including_decoys?: number;
         };
         log(JSON.stringify(round, null, 2));
