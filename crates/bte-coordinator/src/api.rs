@@ -114,7 +114,7 @@ async fn rate_limit(
         })
         .unwrap_or_else(|| "local".to_string());
 
-    let allowed = {
+    let (allowed, remaining) = {
         let cfg = &app.0.cfg;
         let mut buckets = app.0.buckets.lock().unwrap();
         let now = now_ms();
@@ -123,9 +123,9 @@ async fn rate_limit(
         *last = now;
         if *tokens >= 1.0 {
             *tokens -= 1.0;
-            true
+            (true, *tokens)
         } else {
-            false
+            (false, 0.0)
         }
     };
     if !allowed {
@@ -137,13 +137,45 @@ async fn rate_limit(
         if request.uri().path().starts_with("/link/") {
             return crate::names::plain_shell();
         }
-        return (
+        let mut res = (
             StatusCode::TOO_MANY_REQUESTS,
             Json(json!({"error": "rate limited"})),
         )
             .into_response();
+        rate_headers(res.headers_mut(), &app, 0.0);
+        return res;
     }
-    next.run(request).await
+    let mut res = next.run(request).await;
+    // On every response, not only the rejections. A client that can only learn
+    // its budget by being refused has to be refused to learn it.
+    rate_headers(res.headers_mut(), &app, remaining);
+    res
+}
+
+/// IETF draft ratelimit headers, plus the X- spellings most clients already
+/// read. Cheap, and it turns "am I about to be throttled" into a lookup.
+fn rate_headers(headers: &mut axum::http::HeaderMap, app: &App, remaining: f64) {
+    use axum::http::HeaderValue;
+    let limit = app.0.cfg.rate_burst as i64;
+    let left = remaining.floor().max(0.0) as i64;
+    // Seconds until the bucket is full again at the configured refill rate.
+    let reset = if app.0.cfg.rate_rps > 0.0 {
+        (((app.0.cfg.rate_burst - remaining).max(0.0)) / app.0.cfg.rate_rps).ceil() as i64
+    } else {
+        0
+    };
+    for (name, value) in [
+        ("ratelimit-limit", limit),
+        ("ratelimit-remaining", left),
+        ("ratelimit-reset", reset),
+        ("x-ratelimit-limit", limit),
+        ("x-ratelimit-remaining", left),
+        ("x-ratelimit-reset", reset),
+    ] {
+        if let Ok(v) = HeaderValue::from_str(&value.to_string()) {
+            headers.insert(axum::http::HeaderName::from_static(name), v);
+        }
+    }
 }
 
 #[derive(Deserialize)]
