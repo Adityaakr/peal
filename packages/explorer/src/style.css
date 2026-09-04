@@ -5742,3 +5742,120 @@ textarea.live-input {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Sketch diagram on /developers.
+   Excalidraw's readability without its handwriting: the boxes are drawn with
+   slightly-off quadratic corners so no two are identical, but the type stays
+   the site's own. A comic face here would undercut the page it sits on. */
+.dev-figure {
+  margin: 24px 0 20px;
+}
+
+.dev-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  color: var(--text);
+}
+
+.dev-figure figcaption {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.sk-box {
+  fill: #fff;
+  stroke: var(--text);
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+}
+
+.sk-box-you {
+  fill: var(--accent-weak);
+  stroke: var(--accent);
+}
+
+.sk-box-cue {
+  fill: var(--surface);
+  stroke-dasharray: 7 5;
+}
+
+.sk-box-open {
+  fill: var(--green-weak);
+  stroke: var(--green);
+}
+
+.sk-title {
+  font-family: 'Satoshi', system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  fill: var(--text);
+}
+
+.sk-line {
+  font-family: 'Satoshi', system-ui, sans-serif;
+  font-size: 14px;
+  fill: var(--muted);
+}
+
+.sk-strong {
+  font-family: 'Satoshi', system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  fill: var(--accent);
+}
+
+.sk-tag {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  fill: var(--muted);
+}
+
+.sk-mid {
+  text-anchor: middle;
+}
+
+.sk-end {
+  text-anchor: end;
+}
+
+/* A halo, so a label crossing a rule stays readable instead of being sliced by
+   it. paint-order draws the stroke first and the fill over it. */
+.dev-figure text {
+  paint-order: stroke fill;
+  stroke: #fff;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.sk-arrow {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+.sk-dash {
+  stroke-dasharray: 6 6;
+  stroke: var(--muted);
+}
+
+.sk-brace {
+  fill: none;
+  stroke: var(--muted-soft);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 3 7;
+}
+
+.sk-dots circle {
+  fill: #fff;
+  stroke: var(--text);
+  stroke-width: 1.6;
+}
+
+.sk-dots .sk-on {
+  fill: var(--green);
+  stroke: var(--green);
+}
