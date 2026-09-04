@@ -3,148 +3,237 @@
  *
  *   import { peal } from 'https://peal.network/peal.js';
  *
- * There is nothing to install and no package to trust. Two of the three calls
- * here are plain HTTP you could make with curl; the third does the encryption,
- * and it does it in the caller's process, which is why it needs code at all.
+ * Nothing to install. Two nouns: a ROUND is a moment and everything sealed to
+ * it, a SEAL is one encrypted payload inside a round.
  *
- * Everything is namespaced under one object so a script tag and an import both
- * read the same way.
+ * The encryption runs here, in the caller's process. That is the only reason
+ * this file exists rather than a page of fetch calls: everything else is plain
+ * HTTP against /v1, and you can do it with curl.
  */
-import { BteClient } from 'bte-sdk';
+import { ensureWasm, b64ToBytes, bytesToB64 } from 'bte-sdk/wasm';
 
-export interface SealResult {
-  /** The coordinator's name for this ciphertext. Yours to keep: it is how you
-   * find your own submission in the reveal. */
-  ctHash: string;
-  /** The ciphertext itself, exactly as it was sent. Keep it if you want to
-   * recompute the hash yourself rather than take ours. */
-  sealedB64: string;
+export type RoundStatus = 'open' | 'closing' | 'opened' | 'stalled';
+
+export interface Round {
+  id: string;
+  status: RoundStatus;
+  tag: string | null;
+  opens_at: string | null;
+  opens_at_unix?: number;
+  opens_at_block?: { chain_id: number; height: number };
+  seals: number;
+  slots_including_decoys: number;
+  created_at: string;
+  created_at_unix: number;
+  opened_at: string | null;
 }
 
-export interface RevealSlot {
-  position: number;
-  ct_hash: string;
-  payload_b64: string;
-  /** True for the decoys the coordinator adds to fill a batch, so a round with
-   * three submissions does not announce that it had three. */
-  is_dummy: boolean;
+export interface Seal {
+  id: string;
+  round_id: string;
+  position: number | null;
+  status: 'sealed' | 'opened';
+  payload_b64?: string;
 }
 
-export interface Reveal {
-  condition_id: string;
-  slots: RevealSlot[];
-  merkle_root: string;
-}
-
-export interface ConditionOptions {
+export interface CreateRoundOptions {
   /** Open this many seconds from now. */
-  in_secs?: number;
-  /** Or open at this absolute unix second. */
-  fires_at?: number;
-  /** Or open at a block height: pass kind 'at_block' with chain_id + height. */
-  kind?: 'at_time' | 'at_block';
-  chain_id?: number;
-  height?: number;
-  /** Your app's label. Not interpreted by the network; it is how you find your
-   * own conditions, and how your app appears on the public board. */
+  opensIn?: number;
+  /** Or at an exact moment: a Date, an ISO string, or unix seconds. */
+  opensAt?: Date | string | number;
+  /** Or at a block height on a chain the network watches. */
+  opensAtBlock?: { chainId: number; height: number };
+  /** Your app\'s label: up to 32 chars of a-z 0-9 : _ -. It is how you list
+   * your own rounds later, and it puts your app on the public board. */
   tag?: string;
+  /** Retry safety. Send the same key twice and you get the same round back
+   * rather than a second one. */
+  idempotencyKey?: string;
 }
 
-export interface PealOptions {
-  /** Where the network lives. Defaults to the origin this file was served
-   * from, which is the right answer whenever you loaded it from peal.network. */
-  url?: string;
+/** An error carrying the API\'s own machine-readable code. */
+export class PealError extends Error {
+  readonly code: string;
+  readonly status: number;
+  readonly field?: string;
+
+  constructor(message: string, code: string, status: number, field?: string) {
+    super(message);
+    this.name = 'PealError';
+    this.code = code;
+    this.status = status;
+    this.field = field;
+  }
 }
 
 const DEFAULT_URL = 'https://peal.network';
 
+export interface PealOptions {
+  url?: string;
+}
+
 export class Peal {
   readonly url: string;
-  private client: BteClient;
+  private params: Promise<{ seal(bytes: Uint8Array): Uint8Array }> | null = null;
 
   constructor(opts: PealOptions = {}) {
     this.url = (opts.url ?? DEFAULT_URL).replace(/\/$/, '');
-    this.client = new BteClient({ url: this.url });
   }
 
   /** Name the moment things open. Nothing is encrypted yet. */
-  async createCondition(opts: ConditionOptions = {}): Promise<{ id: string; fires_at?: number }> {
-    const body: ConditionOptions = { ...opts };
-    if (body.in_secs === undefined && body.fires_at === undefined && body.kind !== 'at_block') {
-      body.in_secs = 3600;
+  async createRound(opts: CreateRoundOptions = {}): Promise<Round> {
+    const body: Record<string, unknown> = {};
+    if (opts.opensIn !== undefined) body.opens_in = opts.opensIn;
+    if (opts.opensAt !== undefined) {
+      body.opens_at =
+        opts.opensAt instanceof Date ? opts.opensAt.toISOString() : opts.opensAt;
     }
-    const res = await fetch(`${this.url}/v0/conditions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(await errorText(res, 'could not create the condition'));
-    return (await res.json()) as { id: string; fires_at?: number };
+    if (opts.opensAtBlock) {
+      body.opens_at_block = {
+        chain_id: opts.opensAtBlock.chainId,
+        height: opts.opensAtBlock.height,
+      };
+    }
+    if (body.opens_in === undefined && body.opens_at === undefined && !body.opens_at_block) {
+      body.opens_in = 3600;
+    }
+    if (opts.tag) body.tag = opts.tag;
+
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (opts.idempotencyKey) headers['idempotency-key'] = opts.idempotencyKey;
+
+    return this.request<Round>('/v1/rounds', { method: 'POST', headers, body: JSON.stringify(body) });
+  }
+
+  /** Your rounds, newest first. Pass a tag to see only your own. */
+  async listRounds(
+    opts: { tag?: string; status?: RoundStatus; limit?: number; cursor?: string } = {},
+  ): Promise<{ data: Round[]; next_cursor: string | null; has_more: boolean }> {
+    const q = new URLSearchParams();
+    if (opts.tag) q.set('tag', opts.tag);
+    if (opts.status) q.set('status', opts.status);
+    if (opts.limit) q.set('limit', String(opts.limit));
+    if (opts.cursor) q.set('cursor', opts.cursor);
+    const qs = q.toString();
+    return this.request(`/v1/rounds${qs ? `?${qs}` : ''}`);
+  }
+
+  /** One round, at whatever stage it has reached. */
+  async getRound(id: string): Promise<Round> {
+    return this.request(`/v1/rounds/${encodeURIComponent(id)}`);
   }
 
   /**
    * Encrypt a payload and hand over the ciphertext.
    *
-   * The encryption happens here, in your process. The plaintext never crosses
-   * the network, so there is no point at which the coordinator, the operators
-   * or anyone watching the wire could read it.
+   * The plaintext never crosses the network. The returned id is the SHA-256 of
+   * the ciphertext, so you can compute it yourself and never have to trust our
+   * answer about which seal is yours.
    */
-  async seal(payload: string | Uint8Array, conditionId: string): Promise<SealResult> {
-    const { ctHash, sealedB64 } = await this.client.seal(payload, conditionId);
-    return { ctHash, sealedB64 };
+  async seal(payload: string | Uint8Array, roundId: string): Promise<Seal> {
+    const bytes = typeof payload === 'string' ? new TextEncoder().encode(payload) : payload;
+    const params = await this.encryptor();
+    const ciphertext_b64 = bytesToB64(params.seal(bytes));
+    return this.request(`/v1/rounds/${encodeURIComponent(roundId)}/seals`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ciphertext_b64 }),
+    });
   }
 
-  /** Where a condition has got to. */
-  async getCondition(id: string): Promise<Record<string, unknown>> {
-    const res = await fetch(`${this.url}/v0/conditions/${encodeURIComponent(id)}`);
-    if (!res.ok) throw new Error(await errorText(res, 'no such condition'));
-    return (await res.json()) as Record<string, unknown>;
+  /** Every seal in a round: ids while it is open, payloads once it has opened. */
+  async listSeals(roundId: string): Promise<Seal[]> {
+    const body = await this.request<{ data: Seal[] }>(
+      `/v1/rounds/${encodeURIComponent(roundId)}/seals`,
+    );
+    return body.data;
   }
 
-  /** Everything sealed to a condition, or null while it is still closed. */
-  async getReveal(conditionId: string): Promise<Reveal | null> {
-    const res = await fetch(`${this.url}/v0/reveals/${encodeURIComponent(conditionId)}`);
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(await errorText(res, 'could not read the reveal'));
-    return (await res.json()) as Reveal;
+  /** One seal, with its payload once the round has opened. */
+  async getSeal(id: string): Promise<Seal> {
+    return this.request(`/v1/seals/${encodeURIComponent(id)}`);
   }
 
-  /** The payloads only, decoys dropped and bytes decoded. */
-  async getPayloads(conditionId: string): Promise<Uint8Array[]> {
-    const reveal = await this.getReveal(conditionId);
-    if (!reveal) return [];
-    return reveal.slots
-      .filter((s) => !s.is_dummy)
-      .sort((a, b) => a.position - b.position)
-      .map((s) => Uint8Array.from(atob(s.payload_b64), (c) => c.charCodeAt(0)));
+  /** The opened payloads as bytes, in order, decoys already dropped. */
+  async getPayloads(roundId: string): Promise<Uint8Array[]> {
+    const seals = await this.listSeals(roundId);
+    return seals
+      .filter((s) => s.payload_b64)
+      .map((s) => b64ToBytes(s.payload_b64 as string));
   }
 
-  /** Wait for a condition to open. Polls; resolves with the reveal. */
-  async waitForReveal(
-    conditionId: string,
+  /** Wait for a round to open, then return it. */
+  async waitForOpen(
+    roundId: string,
     opts: { timeoutMs?: number; everyMs?: number } = {},
-  ): Promise<Reveal> {
+  ): Promise<Round> {
     const timeoutMs = opts.timeoutMs ?? 300_000;
     const everyMs = Math.max(1000, opts.everyMs ?? 2000);
     const until = Date.now() + timeoutMs;
     for (;;) {
-      const reveal = await this.getReveal(conditionId);
-      if (reveal) return reveal;
-      if (Date.now() >= until) throw new Error('timed out waiting for the reveal');
+      const round = await this.getRound(roundId);
+      if (round.status === 'opened') return round;
+      if (round.status === 'stalled') {
+        throw new PealError(`round ${roundId} stalled`, 'round_stalled', 200);
+      }
+      if (Date.now() >= until) throw new PealError('timed out waiting', 'timeout', 0);
       await new Promise((r) => setTimeout(r, everyMs));
     }
   }
-}
 
-async function errorText(res: Response, fallback: string): Promise<string> {
-  try {
-    const body = (await res.json()) as { error?: string };
-    return body.error ?? `${fallback} (${res.status})`;
-  } catch {
-    return `${fallback} (${res.status})`;
+  /** The public parameters, plus the committee shape. */
+  async parameters(): Promise<{
+    id: string;
+    digest: string;
+    parameters_b64: string;
+    operators: number;
+    threshold: number;
+    batch_size: number;
+  }> {
+    return this.request('/v1/parameters');
+  }
+
+  /** Fetch the parameters once, verify their digest, and keep the encryptor. */
+  private encryptor(): Promise<{ seal(bytes: Uint8Array): Uint8Array }> {
+    this.params ??= (async () => {
+      const [wasm, body] = await Promise.all([ensureWasm(), this.parameters()]);
+      const params = new wasm.Params(b64ToBytes(body.parameters_b64));
+      const info = params.info() as { digest: string };
+      // The digest is checked against the one served alongside the bytes, so a
+      // coordinator handing out parameters that do not match what it claims
+      // fails here rather than producing ciphertexts nobody can open.
+      if (info.digest !== body.digest) {
+        throw new PealError(
+          'the coordinator served parameters that do not match their digest',
+          'parameters_mismatch',
+          200,
+        );
+      }
+      return params as unknown as { seal(bytes: Uint8Array): Uint8Array };
+    })();
+    return this.params;
+  }
+
+  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const res = await fetch(`${this.url}${path}`, init);
+    if (!res.ok) {
+      let code = `http_${res.status}`;
+      let detail = `${init.method ?? 'GET'} ${path} failed with ${res.status}`;
+      let field: string | undefined;
+      try {
+        const problem = (await res.json()) as { code?: string; detail?: string; field?: string };
+        code = problem.code ?? code;
+        detail = problem.detail ?? detail;
+        field = problem.field;
+      } catch {
+        // A non-JSON error body is still an error; the status carries it.
+      }
+      throw new PealError(detail, code, res.status, field);
+    }
+    return (await res.json()) as T;
   }
 }
 
-/** Ready to use against peal.network. Call `new Peal({ url })` for another. */
+/** Ready to use against peal.network. `new Peal({ url })` for anywhere else. */
 export const peal = new Peal();
 export default peal;
