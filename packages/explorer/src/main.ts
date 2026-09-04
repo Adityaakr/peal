@@ -28,6 +28,7 @@ import { useCases } from './pages/docs/usecases';
 import { apiReference } from './pages/docs/api';
 import { limits as limitsDocs } from './pages/docs/limits';
 import { network as networkDocs } from './pages/docs/network';
+import { x402Page } from './pages/docs/x402';
 import { roadmap } from './pages/docs/roadmap';
 import { renderSealView } from './pages/seal-view';
 
@@ -150,7 +151,8 @@ function route(): void {
   const PAGE_PATHS = new Set([
     'developers', 'developers/quickstart', 'developers/agents', 'developers/howitworks',
     'developers/auctions', 'developers/createauction', 'developers/usecases',
-    'developers/api', 'developers/limits', 'developers/network', 'developers/roadmap',
+    'developers/api', 'developers/x402', 'developers/limits', 'developers/network',
+    'developers/roadmap',
     'protocol', 'mempool', 'auction', 'auctions', 'execution', 'philosophy', 'create', 'app',
   ]);
   const pagePath = location.pathname.replace(/^\/|\/$/g, '');
@@ -255,6 +257,8 @@ function route(): void {
     cleanup = renderDocs(root, apiReference, hash);
   } else if (hash === '#/developers/limits') {
     cleanup = renderDocs(root, limitsDocs, hash);
+  } else if (hash === '#/developers/x402') {
+    cleanup = renderDocs(root, x402Page, hash);
   } else if (hash === '#/developers/network') {
     cleanup = renderDocs(root, networkDocs, hash);
   } else if (hash === '#/developers/roadmap') {

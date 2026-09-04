@@ -120,6 +120,17 @@ pub const PAGES: &[Page] = &[
         index: true,
     },
     Page {
+        path: "developers/x402",
+        route: "#/developers/x402",
+        title: "Metered API calls with x402 on Peal.",
+        description:
+            "Charge per sealed action with HTTP 402: the server quotes a price, the caller pays on \
+             Tempo, and the response carries the transaction hash. No account, no API key, no \
+             invoice. The free API is unchanged.",
+        schema: "TechArticle",
+        index: true,
+    },
+    Page {
         path: "developers/limits",
         route: "#/developers/limits",
         title: "Peal API limits and errors.",
