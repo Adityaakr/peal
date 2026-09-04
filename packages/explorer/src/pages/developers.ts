@@ -286,11 +286,11 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
         batch at once, and everyone reads the same result.</p>
 
         <figure class="dev-figure">
-          <svg viewBox="0 0 920 366" role="img" class="sketch"
+          <svg viewBox="0 0 920 352" role="img" class="sketch"
                aria-label="Your app encrypts a payload locally and sends only ciphertext to the coordinator, which stores it unreadable until the condition fires, when three of five operators open the whole batch at once for everyone.">
             <defs>
               <marker id="dv-arrow" viewBox="0 0 10 10" refX="9" refY="5"
-                      markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                      markerWidth="8" markerHeight="8" orient="auto-start-reverse">
                 <path d="M0.5 1 L9 5 L0.5 9" fill="none" stroke="currentColor"
                       stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
               </marker>
@@ -344,16 +344,16 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
             <text class="sk-tag sk-end" x="424" y="232">unreadable by anyone, including us</text>
 
             <!-- the condition, underneath -->
-            <path class="sk-arrow sk-dash" d="M470 192 q 4 32 0 62" marker-end="url(#dv-arrow)" />
+            <path class="sk-arrow sk-dash" d="M469 180 L469 226" marker-end="url(#dv-arrow)" />
             <g class="sk-node">
               <path class="sk-box sk-box-cue"
-                    d="M330 262 q -2 -12 10 -13 l 250 -2 q 12 0 12.5 11 l 1 58 q 0 12 -11 12.5 l -251 1.5 q -12 0 -12.5 -11 z" />
-              <text class="sk-title" x="354" y="296">the condition fires</text>
-              <text class="sk-line" x="354" y="318">a time, or a block height</text>
+                    d="M334 264 q -2 -12 10 -13 l 250 -2 q 12 0 12.5 11 l 1 58 q 0 12 -11 12.5 l -251 1.5 q -12 0 -12.5 -11 z" />
+              <text class="sk-title" x="358" y="298">the condition fires</text>
+              <text class="sk-line" x="358" y="320">a time, or a block height</text>
             </g>
 
             <!-- reveal -->
-            <path class="sk-arrow" d="M606 302 q 58 -4 106 -2" marker-end="url(#dv-arrow)" />
+            <path class="sk-arrow" d="M614 290 L710 290" marker-end="url(#dv-arrow)" />
             <g class="sk-node">
               <path class="sk-box sk-box-open"
                     d="M716 256 q -2 -12 10 -13 l 174 -2 q 12 0 12.5 11 l 1 74 q 0 12 -11 12.5 l -175 1.5 q -12 0 -12.5 -11 z" />
