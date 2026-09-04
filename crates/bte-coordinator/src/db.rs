@@ -71,6 +71,16 @@ CREATE TABLE IF NOT EXISTS counters (
     PRIMARY KEY (kind, day)
 );
 
+-- Payments redeemed by the x402 gateway. The hash is the primary key because
+-- redemption IS the insert: a transaction that has bought a call cannot buy a
+-- second one, and two requests racing on the same hash cannot both win.
+CREATE TABLE IF NOT EXISTS x402_payments (
+    tx_hash     TEXT PRIMARY KEY,
+    payer       TEXT NOT NULL,
+    amount      TEXT NOT NULL,
+    redeemed_at INTEGER NOT NULL
+);
+
 -- Retry safety for POST /v1/rounds. Keyed by the caller's Idempotency-Key so a
 -- timed-out create returns the original round instead of making a second one.
 CREATE TABLE IF NOT EXISTS idempotency (
