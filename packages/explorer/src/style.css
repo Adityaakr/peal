@@ -8364,78 +8364,79 @@ body.docs-page main {
 }
 
 /* ------------------------------------------------------- the x402 scene ---
-   Three layers in space, connected by beams, with one packet moving between
-   them. CSS transforms on a perspective container: no library, no canvas, and
-   it reads as depth at the cost of a few transforms. */
+   Three parties, stacked in depth, with the message in flight moving between
+   them.
+
+   Depth comes from translateZ under a perspective, and from nothing else. The
+   first version also rotated the planes, which looked three dimensional in a
+   thumbnail and fell apart at full size: a 1px border foreshortened along one
+   axis renders thick on one side and hairline on the other, type sat on a
+   slant, and the packet was squashed into a crescent. Moving a card along Z
+   alone gives real perspective scaling with every edge square to the pixel
+   grid, so the whole thing stays crisp and still recedes. */
 
 .x3 {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(260px, 0.95fr);
-  gap: 28px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.95fr);
+  gap: 34px;
   align-items: center;
-  margin: 18px 0 8px;
+  margin: 20px 0 8px;
 }
 
 .x3-stage {
   position: relative;
-  height: 330px;
-  perspective: 1100px;
-  perspective-origin: 50% 45%;
+  height: 340px;
+  perspective: 900px;
+  perspective-origin: 50% 50%;
   transform-style: preserve-3d;
 }
 
-/* The three slabs. Each sits at its own depth and vertical offset, tilted just
-   enough to read as a plane rather than a rectangle. */
 .x3-layer {
   position: absolute;
   left: 50%;
   top: 50%;
   width: 300px;
-  margin: -46px 0 0 -150px;
-  transform-style: preserve-3d;
-  transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  margin: -42px 0 0 -150px;
+  transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* A shared tilt, gentle enough that the labels stay readable.
- *
- * The first version laid the slabs flat in isometric, which looked like a
- * diagram and read like nothing: at 58 degrees the type is skewed past the
- * point a person will bother with. Depth here comes from translateZ and the
- * perspective, not from lying the planes down. */
-.x3-layer {
-  --tilt: rotateX(5deg) rotateY(-19deg);
-}
-
+/* Staggered sideways as well as in depth, so three cards of the same size read
+   as three places rather than one card with a drop shadow. */
 .x3-you {
-  transform: translate3d(-26px, -116px, 46px) var(--tilt);
+  transform: translate3d(-38px, -122px, 60px);
 }
 
 .x3-api {
-  transform: translate3d(0, 0, 0) var(--tilt);
+  transform: translate3d(0, 0, 0);
 }
 
 .x3-chain {
-  transform: translate3d(26px, 116px, -46px) var(--tilt);
+  transform: translate3d(38px, 122px, -60px);
 }
 
 .x3-slab {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 15px 18px;
+  gap: 4px;
+  padding: 16px 20px;
   height: 84px;
   justify-content: center;
   border: 1px solid var(--accent-border);
   border-radius: 14px;
-  background: linear-gradient(135deg, #fff, var(--accent-weak));
-  box-shadow: 0 18px 34px -22px rgb(37 99 235 / 45%);
-  transition: box-shadow 320ms ease, border-color 320ms ease, background 320ms ease;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(37 99 235 / 6%), 0 16px 30px -20px rgb(37 99 235 / 34%);
+  transition: box-shadow 300ms ease, border-color 300ms ease, background 300ms ease;
 }
 
+/* Active is a lift and a wash, not an outline. A saturated border on a card
+   this size is the only thing you see afterwards. */
 .x3-layer.is-active .x3-slab {
-  border-color: var(--accent);
-  background: linear-gradient(135deg, #fff, #dbeafe);
-  box-shadow: 0 22px 40px -20px rgb(37 99 235 / 60%);
+  border-color: #93b4fb;
+  background: linear-gradient(180deg, #fff, var(--accent-weak));
+  box-shadow:
+    0 0 0 4px rgb(37 99 235 / 8%),
+    0 1px 2px rgb(37 99 235 / 8%),
+    0 20px 36px -18px rgb(37 99 235 / 42%);
 }
 
 .x3-layer-title {
@@ -8444,53 +8445,47 @@ body.docs-page main {
 }
 
 .x3-layer-sub {
-  font-size: 11.5px;
-  line-height: 1.3;
+  font-size: 12px;
+  line-height: 1.35;
   color: var(--muted);
 }
 
-/* The beams joining the slabs. Thin, and lit only while something is crossing
-   them, so a still frame of this diagram is not a lie about activity. */
+/* The connectors, behind the cards and square to the grid. */
 .x3-beam {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 2px;
-  height: 118px;
-  margin-left: -1px;
+  width: 1px;
+  height: 38px;
   background: linear-gradient(180deg, transparent, var(--accent-border), transparent);
-  transform-origin: 50% 50%;
 }
 
-/* Down the left edge of the stack, not across it. The first placement ran the
-   connector straight through the card labels, which is worse than no connector:
-   it reads as a strikethrough. */
 .x3-beam-up {
-  transform: translate3d(-186px, -54px, 23px) rotateX(5deg) rotateY(-19deg);
+  transform: translate3d(-19px, -80px, 30px);
 }
 
 .x3-beam-down {
-  transform: translate3d(-160px, 54px, -23px) rotateX(5deg) rotateY(-19deg);
+  transform: translate3d(19px, 42px, -30px);
 }
 
-/* The packet. One element, moved between the three depths, carrying the name of
-   whatever message is in flight. */
+/* The message in flight. Square to the viewer, so the label inside it is
+   readable at every depth. */
 .x3-packet {
   position: absolute;
   left: 50%;
   top: 50%;
-  margin: -13px 0 0 -34px;
-  padding: 4px 10px;
+  padding: 5px 12px;
   border-radius: 999px;
   background: var(--accent);
   color: #fff;
-  font: 600 11px/1.6 var(--mono);
+  font: 600 11px/1.5 var(--mono);
+  letter-spacing: 0.02em;
   white-space: nowrap;
   opacity: 0;
-  box-shadow: 0 8px 20px -6px rgb(37 99 235 / 70%);
+  box-shadow: 0 10px 22px -8px rgb(37 99 235 / 65%);
   transition:
-    transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 260ms ease;
+    transform 640ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 240ms ease;
   transform: translate3d(0, 0, 0);
 }
 
@@ -8498,16 +8493,17 @@ body.docs-page main {
   opacity: 1;
 }
 
+/* Parked just off the right edge of whichever card it has reached. */
 .x3-packet[data-at='you'] {
-  transform: translate3d(76px, -112px, 70px);
+  transform: translate3d(78px, -134px, 60px);
 }
 
 .x3-packet[data-at='api'] {
-  transform: translate3d(100px, 4px, 24px);
+  transform: translate3d(116px, -12px, 0);
 }
 
 .x3-packet[data-at='chain'] {
-  transform: translate3d(124px, 120px, -22px);
+  transform: translate3d(154px, 110px, -60px);
 }
 
 /* ---- the step list beside the stage ---- */
@@ -8518,22 +8514,22 @@ body.docs-page main {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .x3-step {
   display: grid;
   grid-template-columns: 20px 62px minmax(0, 1fr);
   align-items: baseline;
-  gap: 10px;
-  padding: 7px 10px;
+  gap: 12px;
+  padding: 8px 12px;
   border-radius: 9px;
   transition: background 220ms ease, opacity 220ms ease;
-  opacity: 0.45;
+  opacity: 0.5;
 }
 
 .x3-step.is-done {
-  opacity: 0.85;
+  opacity: 0.88;
 }
 
 .x3-step.is-on {
@@ -8557,14 +8553,14 @@ body.docs-page main {
 }
 
 .x3-detail {
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.45;
   color: var(--muted);
 }
 
-/* Real values land here as they happen: a block number, a hash, a price. */
 .x3-value {
   grid-column: 2 / -1;
+  padding-top: 2px;
   font: 500 11.5px var(--mono);
   color: var(--accent-strong);
   overflow: hidden;
@@ -8583,16 +8579,13 @@ body.docs-page main {
   background: var(--red-weak);
 }
 
-/* Nothing has been pressed yet, so the loop is marked as illustration: the
-   value column stays empty and the packet is dimmed. A diagram that animates
-   identically whether or not anything ran would look like proof. */
 .x3.is-idle .x3-packet {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
 .x3.is-idle .x3-steps::after {
   content: 'illustration, until you run it';
-  padding: 6px 10px;
+  padding: 8px 12px;
   font: 400 11.5px var(--mono);
   color: var(--muted-soft);
 }
@@ -8600,10 +8593,11 @@ body.docs-page main {
 @media (max-width: 900px) {
   .x3 {
     grid-template-columns: 1fr;
+    gap: 20px;
   }
 
   .x3-stage {
-    height: 300px;
+    height: 320px;
   }
 }
 
