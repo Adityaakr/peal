@@ -234,6 +234,99 @@ struct CreateRound {
     /// Open on a chain height instead of a clock.
     opens_at_block: Option<OpensAtBlock>,
     tag: Option<String>,
+    /// What this round is, for anyone who sees it before it opens.
+    title: Option<String>,
+    description: Option<String>,
+    /// An https picture. Public from the moment the round is created.
+    image_url: Option<String>,
+}
+
+/// Public presentation. Separated from the request struct because it is
+/// validated as a unit and travels as a unit.
+#[derive(Clone, Default)]
+struct Presentation {
+    title: Option<String>,
+    description: Option<String>,
+    image_url: Option<String>,
+}
+
+/// What a round may say about itself.
+///
+/// PUBLIC, AND THE NAMES SAY SO. A payload is sealed; this is not. It is
+/// readable by anyone who has the round id from the moment the round is
+/// created, which is the point: it is what a bidder reads to decide what they
+/// are bidding on. Putting anything sensitive here would be putting it in the
+/// clear, so the field names avoid any word that might suggest otherwise.
+const MAX_TITLE_CHARS: usize = 120;
+const MAX_DESCRIPTION_CHARS: usize = 2000;
+const MAX_IMAGE_URL_CHARS: usize = 500;
+
+fn validate_presentation(req: &CreateRound) -> Result<Presentation> {
+    let text = |v: &Option<String>,
+                cap: usize,
+                field: &'static str,
+                code: &'static str|
+     -> Result<Option<String>> {
+        let Some(raw) = v else { return Ok(None) };
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        if trimmed.chars().count() > cap {
+            return Err(
+                Problem::invalid(code, format!("{field} exceeds {cap} characters")).field(field),
+            );
+        }
+        Ok(Some(trimmed.to_string()))
+    };
+
+    let image_url = match req
+        .image_url
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        None => None,
+        Some(url) => {
+            // https only. An http picture makes the whole page insecure for
+            // whoever renders it, and a javascript: or data: URL is not a
+            // picture at all: it is markup pointed at whoever displays the
+            // round. Refused rather than sanitised, because the caller can fix
+            // it and we cannot guess what they meant.
+            if !url.starts_with("https://") {
+                return Err(Problem::invalid(
+                    "invalid_image_url",
+                    "image_url must be an https address",
+                )
+                .field("image_url"));
+            }
+            if url.chars().count() > MAX_IMAGE_URL_CHARS {
+                return Err(Problem::invalid(
+                    "invalid_image_url",
+                    format!("image_url exceeds {MAX_IMAGE_URL_CHARS} characters"),
+                )
+                .field("image_url"));
+            }
+            if url.contains(char::is_whitespace) {
+                return Err(
+                    Problem::invalid("invalid_image_url", "image_url contains whitespace")
+                        .field("image_url"),
+                );
+            }
+            Some(url.to_string())
+        }
+    };
+
+    Ok(Presentation {
+        title: text(&req.title, MAX_TITLE_CHARS, "title", "invalid_title")?,
+        description: text(
+            &req.description,
+            MAX_DESCRIPTION_CHARS,
+            "description",
+            "invalid_description",
+        )?,
+        image_url,
+    })
 }
 
 #[derive(Deserialize)]
@@ -269,6 +362,7 @@ async fn create_round(
     }
 
     let tag = validate_tag(req.tag.as_deref())?;
+    let show = validate_presentation(&req)?;
     let committee_id = default_committee(&app).ok_or_else(|| {
         Problem::new(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -297,9 +391,20 @@ async fn create_round(
             }
             let conn = app.0.db.lock().unwrap();
             conn.execute(
-                "INSERT INTO conditions (id, committee_id, kind, chain_id, height, status, tag, created_at)
-                 VALUES (?1, ?2, 'at_block', ?3, ?4, 'pending', ?5, ?6)",
-                rusqlite::params![id, committee_id, block.chain_id, block.height, tag, now],
+                "INSERT INTO conditions
+                   (id, committee_id, kind, chain_id, height, status, tag, title, description, image_url, created_at)
+                 VALUES (?1, ?2, 'at_block', ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9)",
+                rusqlite::params![
+                    id,
+                    committee_id,
+                    block.chain_id,
+                    block.height,
+                    tag,
+                    show.title,
+                    show.description,
+                    show.image_url,
+                    now
+                ],
             )
             .map_err(Problem::internal)?;
             round_json(
@@ -308,6 +413,7 @@ async fn create_round(
                 None,
                 Some((block.chain_id, block.height)),
                 &tag,
+                &show,
                 now,
                 0,
                 0,
@@ -343,12 +449,15 @@ async fn create_round(
             }
             let conn = app.0.db.lock().unwrap();
             conn.execute(
-                "INSERT INTO conditions (id, committee_id, kind, fires_at, status, tag, created_at)
-                 VALUES (?1, ?2, 'at_time', ?3, 'pending', ?4, ?5)",
-                rusqlite::params![id, committee_id, at, tag, now],
+                "INSERT INTO conditions
+                   (id, committee_id, kind, fires_at, status, tag, title, description, image_url, created_at)
+                 VALUES (?1, ?2, 'at_time', ?3, 'pending', ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    id, committee_id, at, tag, show.title, show.description, show.image_url, now
+                ],
             )
             .map_err(Problem::internal)?;
-            round_json(&id, "open", Some(at), None, &tag, now, 0, 0, None)
+            round_json(&id, "open", Some(at), None, &tag, &show, now, 0, 0, None)
         }
     };
 
@@ -393,7 +502,8 @@ async fn list_rounds(State(app): State<App>, Query(q): Query<ListRounds>) -> Res
             "SELECT c.id, c.status, c.fires_at, c.chain_id, c.height, c.tag, c.created_at,
                     (SELECT COUNT(*) FROM ciphertexts x WHERE x.condition_id = c.id AND x.is_dummy = 0),
                     (SELECT COUNT(*) FROM ciphertexts x WHERE x.condition_id = c.id),
-                    (SELECT r.revealed_at FROM reveals r WHERE r.condition_id = c.id)
+                    (SELECT r.revealed_at FROM reveals r WHERE r.condition_id = c.id),
+                    c.title, c.description, c.image_url
                FROM conditions c
               WHERE (?1 IS NULL OR c.tag = ?1)
                 AND (?2 IS NULL OR c.status = ?2)
@@ -420,6 +530,11 @@ async fn list_rounds(State(app): State<App>, Query(q): Query<ListRounds>) -> Res
                         _ => None,
                     },
                     &r.get::<_, Option<String>>(5)?,
+                    &Presentation {
+                        title: r.get::<_, Option<String>>(10)?,
+                        description: r.get::<_, Option<String>>(11)?,
+                        image_url: r.get::<_, Option<String>>(12)?,
+                    },
                     r.get::<_, i64>(6)?,
                     r.get::<_, i64>(7)?,
                     r.get::<_, i64>(8)?,
@@ -800,6 +915,7 @@ fn round_json(
     opens_at: Option<i64>,
     block: Option<(i64, i64)>,
     tag: &Option<String>,
+    show: &Presentation,
     created_at: i64,
     seals: i64,
     slots: i64,
@@ -809,6 +925,10 @@ fn round_json(
     o.insert("id".into(), json!(id));
     o.insert("status".into(), json!(status));
     o.insert("tag".into(), json!(tag));
+    // Public from creation, unlike everything sealed to the round.
+    o.insert("title".into(), json!(show.title));
+    o.insert("description".into(), json!(show.description));
+    o.insert("image_url".into(), json!(show.image_url));
     match (opens_at, block) {
         (Some(at), _) => {
             o.insert("opens_at".into(), json!(iso(at)));
@@ -849,7 +969,8 @@ fn load_round(app: &App, id: &str) -> Result<Value> {
         "SELECT c.id, c.status, c.fires_at, c.chain_id, c.height, c.tag, c.created_at,
                 (SELECT COUNT(*) FROM ciphertexts x WHERE x.condition_id = c.id AND x.is_dummy = 0),
                 (SELECT COUNT(*) FROM ciphertexts x WHERE x.condition_id = c.id),
-                (SELECT r.revealed_at FROM reveals r WHERE r.condition_id = c.id)
+                (SELECT r.revealed_at FROM reveals r WHERE r.condition_id = c.id),
+                c.title, c.description, c.image_url
            FROM conditions c WHERE c.id = ?1",
         [id],
         |r| {
@@ -862,6 +983,11 @@ fn load_round(app: &App, id: &str) -> Result<Value> {
                     _ => None,
                 },
                 &r.get::<_, Option<String>>(5)?,
+                &Presentation {
+                    title: r.get::<_, Option<String>>(10)?,
+                    description: r.get::<_, Option<String>>(11)?,
+                    image_url: r.get::<_, Option<String>>(12)?,
+                },
                 r.get::<_, i64>(6)?,
                 r.get::<_, i64>(7)?,
                 r.get::<_, i64>(8)?,
