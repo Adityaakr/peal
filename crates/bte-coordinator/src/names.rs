@@ -264,7 +264,9 @@ fn page_html(shell: &str, page: &crate::pages::Page, canonical: Option<&str>) ->
                  <meta property=\"og:image:alt\" content=\"{t}\" />\n    \
                  <meta name=\"twitter:image\" content=\"{s}\" />\n    ",
                 s = esc(&src),
-                t = esc(page.title),
+                // The card's own title, not the document's: the alt describes
+                // the image somebody is looking at, which is the card.
+                t = esc(card_title),
             )
         }
         None => String::new(),
