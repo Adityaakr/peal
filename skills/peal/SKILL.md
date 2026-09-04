@@ -1,6 +1,6 @@
 ---
 name: peal
-description: Use when adding sealed submissions or timed disclosure to an application — data that is encrypted on the client, unreadable by anyone including the server, and opens by itself at a deadline. Covers sealed bid auctions, private voting, encrypted mempools, commit-reveal without the reveal step, and agent actions that must not be front run. Also use when the user mentions Peal, peal.network, sealed bids, or "open at a time". Do not use for encryption at rest or for hiding data permanently.
+description: Use when adding sealed submissions or timed disclosure to an application — data encrypted on the client, unreadable by anyone including the server, that opens by itself at a deadline. Covers sealed bid auctions on a marketplace, private voting, encrypted mempools, commit-reveal without the reveal step, and agent actions that must not be front run. Trigger on requests like "add auctions to my marketplace", "let people bid without seeing each other", "collect these privately until Friday", "sealed bids", "open at a time", or any mention of Peal or peal.network. Do not use for encryption at rest or for hiding data permanently.
 ---
 
 # Peal
@@ -8,145 +8,169 @@ description: Use when adding sealed submissions or timed disclosure to an applic
 Peal collects encrypted submissions and opens them all at the same moment.
 
 A caller encrypts a payload in their own process and sends only the ciphertext.
-Nobody can read it early — not the other participants, not the application
-owner, not the operators who run the network. When the deadline arrives, every
-submission opens at once.
+Nobody can read it early — not other participants, not the application owner,
+not the operators. At the deadline, every submission opens at once.
 
-**The reveal is not a participant's move.** In a commit-and-reveal scheme,
-whoever is losing can decline to reveal. Here the network opens the batch on its
-own when the condition fires, so there is nothing to withhold.
+**The reveal is not a participant's move.** In commit-and-reveal, whoever is
+losing can decline to reveal. Here the network opens the batch on its own, so
+there is nothing to withhold.
 
-## When this applies
+---
 
-Any flow where people submit something others must not see yet:
+## How to use this skill
 
-- sealed bid auctions and tenders
-- private voting, where a running tally would sway later voters
-- encrypted mempools, so a searcher cannot read the queue and jump it
-- procurement and quote rounds
-- prediction tournaments and bounty submissions
-- token allocations and fair launches
-- actions by autonomous agents that must not be front run
+The user will describe their application and what they want, not an API call.
+Something like:
 
-If the rule is "not before this moment, then everybody at once", it fits.
+> add sealed bid auctions to my marketplace for the vintage camera listing,
+> closing Monday at 6pm
 
-## Getting started
+Work in this order. Do not skip step 1: the integration shape depends entirely
+on what is already there.
 
-No signup, no API key, no payment, no wallet for the people submitting. The
-client is one file served from the site itself, so there is nothing to install.
+### 1. Survey the application first
 
-```js
-import { peal } from 'https://peal.network/peal.js';
+Find out what you are adding to before you write anything.
+
+- **What runs where.** Is there a server (Next.js route handlers, Express,
+  Django, Rails), or is this a static front end? This decides how you seal —
+  see "Choosing where the code runs" below, and get it wrong and nothing works.
+- **Where the items live.** A marketplace has a product or listing model. Find
+  it. The auction attaches to one of those, and its id is what you store.
+- **How state is stored.** You must persist the Peal auction id against your
+  own record. Find the database layer, the ORM, the schema or migration folder.
+- **Where users act.** The page or component with the buy button is where the
+  bid form goes.
+- **How time is handled.** Existing timezone conventions decide how you read
+  "Monday at 6pm".
+
+Say what you found before you build, in two or three lines. If the application
+has no server and no database, say so — it changes the design and the user
+needs to know.
+
+### 2. Turn the deadline into an exact instant
+
+Users say "Monday at 6pm". The API needs an unambiguous moment. Getting this
+wrong closes an auction at the wrong hour, which is not recoverable.
+
+Read `reference/time.md`. In short: resolve the phrase to a concrete date in
+the user's timezone, confirm it back to them in full, and pass a `Date` or an
+ISO string with an offset. A bare `'2026-09-12T18:00'` is refused, because it
+means a different instant in every timezone.
+
+### 3. Choose where the code runs
+
+This is the step that most often produces something that looks right and does
+not run.
+
+| Environment | Create and read | Sealing a bid |
+| --- | --- | --- |
+| Browser | `import { peal } from 'https://peal.network/peal.js'` | same import |
+| Node / Bun server | plain `fetch`, no client needed | vendor the file first, see below |
+| Python / Ruby / Go | plain HTTP | seal in the browser instead |
+
+**Node cannot import from a URL.** `import { peal } from 'https://…'` throws
+`ERR_UNSUPPORTED_ESM_URL_SCHEME`. If you need to seal server side, download it
+once and import the local file:
+
+```bash
+curl -fsSL -o lib/peal.js https://peal.network/peal.js
 ```
 
-Everything is also plain JSON over HTTP from any language. Two of the three
-calls work with `curl`; sealing needs code because that is where the encryption
-happens, on the caller's machine.
+Bids are usually sealed **in the browser** anyway — that is the point. The
+plaintext must never reach a server, including the user's own. Server code
+creates the auction and reads results; the browser seals.
 
-## The three calls
+### 4. Implement
 
-```js
-// 1. name the moment. Nothing is encrypted yet.
-const round = await peal.createRound({ opensIn: 3600, tag: 'my-app' });
+`reference/recipes.md` has working integrations for Next.js, Express, a static
+page, and a non-JavaScript backend. Use them rather than inventing a shape.
 
-// 2. encrypt locally and hand over the ciphertext
-const seal = await peal.seal('the submission', round.id);
-
-// 3. after the deadline, everything at once
-const payloads = await peal.getPayloads(round.id);
-```
-
-`GET /v1/rounds/{id}` answers 200 at every stage with a `status` of `open`,
-`closing`, `opened` or `stalled`. It carries an ETag: send `If-None-Match` while
-waiting and unchanged polls cost a 304.
-
-## Sealed bid auctions
-
-The most common thing built on this. Read
-`reference/auctions.md` before writing auction code — the money rules matter and
-are easy to get wrong.
+The minimum for a marketplace listing:
 
 ```js
-const auction = await peal.createAuction({
-  title: 'Signed tour poster',
-  closesIn: 3600,
-  currency: 'USD',           // decimals come with the code
-  reserveMinor: 10_00,       // nothing below this can win
-  maximumMinor: 500_00,      // nothing above this can win
-});
+// server: create the auction when the seller starts one, store the id
+const auction = await createAuction({ title, closesAt, currency, reserveMinor });
+await db.listing.update({ where: { id }, data: { pealAuctionId: auction.id } });
 
-await peal.bid(auction.id, { amountMinor: 125_00, name: 'ana' });
+// browser: the bid form
+await peal.bid(pealAuctionId, { amountMinor, name });
 
-const { winner, queue, bids, discarded } = await peal.results(auction.id);
+// server or browser, after the deadline: the ranked board
+const { winner, queue, bids } = await peal.results(pealAuctionId);
 ```
 
-Every auction with a title returns a `bid_url`: a hosted page where somebody can
-read the terms and bid, so a working auction needs no interface of your own.
+Store `auction.id` against your listing. Everything else is derivable.
 
-## Mistakes to avoid
+### 5. Verify before you say it is done
 
-These are the ones that produce code which looks right and is wrong.
+Do not report success on code that has not run. `reference/verify.md` is a
+script that creates a real auction with a short deadline, bids on it, waits for
+it to open, and checks the board. Run it. It takes about a minute and proves
+the integration end to end against the live network.
 
-1. **Never send a plaintext payload.** There is no API field that accepts one
-   and there never will be. Encrypting on the server would move the encryption
-   to the wrong side of the network and delete the only property Peal has.
+---
+
+## Mistakes that produce code which looks right and is wrong
+
+1. **Never send a plaintext payload.** No API field accepts one. Encrypting on
+   your server would move the encryption to the wrong side of the network and
+   delete the only property Peal has.
 
 2. **Money is integers of minor units.** `12.50` in a two decimal currency is
-   `1250`. Never a float. Pass a currency code and the decimals come with it;
-   the yen has none and the Kuwaiti dinar has three.
+   `1250`. Never a float. Pass a currency code and the decimals come with it:
+   the yen has none, the Kuwaiti dinar has three.
 
-3. **Pad payloads, or the length leaks the value.** The ciphertext body is a
+3. **Pad payloads or the length leaks the value.** The ciphertext body is a
    keystream over the plaintext, so a sealed blob's length is public the moment
-   it is submitted. `peal.js` pads for you. If you write your own client and
-   skip it, a sealed bid auction has its bids in order of size before anything
-   opens.
+   it is submitted. `peal.js` pads for you. Write your own client without
+   padding and a sealed bid auction has its bids in order of size before
+   anything opens.
 
-4. **The seller's contact private key never leaves their machine.** Pass the
-   public half as `contactPublicKey`. Sending the private half would let the
-   server read every contact detail. There is no recovery if it is lost, and
-   that is the point.
+4. **A `Date` in the wrong timezone.** `setHours(18)` uses the timezone the
+   code runs in, which on a server is usually UTC and not the seller's evening.
 
-5. **A time needs an offset.** `'2026-09-12T18:00'` means a different instant in
-   every timezone and is refused with `invalid_time`. Pass a `Date`, unix
-   seconds, or a string with `Z` or an offset.
+5. **The seller's contact private key never leaves their machine.** Pass the
+   public half as `contactPublicKey`. The private half is the only copy and
+   there is no recovery.
 
 6. **A picture must be `https://`.** `http:`, `javascript:` and `data:` are
    refused rather than sanitised.
 
 7. **A slot count is not a participant count.** Batches are padded to 64 with
-   decoys, so a quiet round does not announce how few took part. Decoys are
-   flagged `is_dummy` and excluded from `seals` and from auction results.
+   decoys so a quiet round does not announce how few took part.
 
 8. **404 before the deadline is correct.** For an auction, `bids` is `null`
    rather than an empty list, so "not open yet" cannot be read as "nobody bid".
 
-## Errors
+---
 
-Every failure is RFC 9457 problem+json with a stable `code` to branch on and a
-`field` when one input is at fault. Branch on `code`; `detail` is for people and
-its wording is not part of the contract.
+## What you get for free
 
-```json
-{ "type": "…", "title": "invalid request", "status": 400,
-  "code": "invalid_maximum", "detail": "…", "field": "maximum_minor" }
-```
-
-Full list in `reference/errors.md`.
+- **A hosted bidding page.** Every auction with a title returns `bid_url`,
+  where somebody can read the terms and bid. Useful before you have built a
+  form, and fine to keep. The auction rides in the URL fragment, which browsers
+  never send to a server.
+- **A check code.** Eight speakable characters over the terms. A seller reads
+  them out, a bidder compares them: the only defence against a swapped link.
+- **No wallet, no account, no gas** for the people bidding.
 
 ## Reference files
 
-- `reference/api.md` — every endpoint, parameters and responses
-- `reference/auctions.md` — auction integration, the money rules, contact details
+- `reference/recipes.md` — working integrations per stack
+- `reference/time.md` — natural deadlines into exact instants
+- `reference/verify.md` — the end to end check to run before reporting success
+- `reference/api.md` — every endpoint
+- `reference/auctions.md` — the auction rules in depth
 - `reference/errors.md` — error codes and limits
 
 ## The trust model, stated plainly
 
 Payloads are encrypted against the committee's public parameters, whose digest
 the client verifies before use. The coordinator stores ciphertexts and holds no
-key that opens one on its own. Opening a batch takes three of five operators;
-two cannot. Reveals are checkable afterwards: payloads come back with positions
-derived from the ciphertext hashes, plus a merkle root over the set, so a batch
-cannot be reordered or quietly edited.
+key that opens one alone. Opening a batch takes three of five operators; two
+cannot. Reveals are checkable: positions come from the ciphertext hashes and a
+merkle root covers the set, so a batch cannot be reordered or edited.
 
-Do not tell a user their data is unreadable by everyone forever. It is
+Do not tell a user their data is unreadable by everyone for ever. It is
 unreadable until the deadline, and then it is public. That is the product.
