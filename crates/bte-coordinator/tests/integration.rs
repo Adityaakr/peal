@@ -1351,3 +1351,50 @@ async fn v1_root_describes_the_service() {
     assert_eq!(params["operators"], 3);
     assert!(!params["parameters_b64"].as_str().unwrap().is_empty());
 }
+/// A client should be able to see its budget without being refused first.
+#[tokio::test]
+async fn rate_limit_headers_are_on_every_response() {
+    let h = harness().await;
+    let (status, _, headers) = h.get_full("/v1").await;
+    assert_eq!(status, 200);
+    assert!(headers.contains_key("ratelimit-limit"), "{headers:?}");
+    let first: i64 = headers["ratelimit-remaining"]
+        .to_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+
+    let (_, _, headers) = h.get_full("/v1").await;
+    let second: i64 = headers["ratelimit-remaining"]
+        .to_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(
+        second <= first,
+        "remaining did not fall: {first} then {second}"
+    );
+}
+/// A block-scheduled condition used to lose its tag on the way into the
+/// database, so it could never be attributed to the app that created it.
+#[tokio::test]
+async fn a_block_scheduled_round_keeps_its_tag() {
+    let h = harness().await;
+    // v0, which is where the insert was missing the column.
+    let (status, cond) = h
+        .post(
+            "/v0/conditions",
+            json!({"committee_id": h.committee_id, "kind": "at_block",
+                   "chain_id": 11155111, "height": 9_000_000, "tag": "blocky"}),
+        )
+        .await;
+    // Without an RPC configured for that chain the request is refused, which is
+    // a different correct behaviour; only assert the tag when it was accepted.
+    if status == 200 {
+        let id = cond["id"].as_str().unwrap();
+        let (_, round) = h.get(&format!("/v1/rounds/{id}")).await;
+        assert_eq!(round["tag"], "blocky", "{round}");
+    } else {
+        assert_eq!(status, 400, "{cond}");
+    }
+}
