@@ -15,6 +15,10 @@
     "./verify": {
       "types": "./dist/verify.d.ts",
       "default": "./dist/verify.js"
+    },
+    "./wasm": {
+      "types": "./dist/wasm.d.ts",
+      "default": "./dist/wasm.js"
     }
   },
   "files": [
