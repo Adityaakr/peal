@@ -3,7 +3,15 @@
 {$BTE_DOMAIN:localhost} {
 	encode gzip
 
+	# Both API versions reach the coordinator. /v1 was missing, so every v1
+	# route fell through to the static file server, which answers a POST with
+	# 405 and an empty body. The client then failed inside res.json() with
+	# "unexpected end of JSON input", which says nothing about the cause.
 	handle /v0/* {
+		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
+	}
+
+	handle /v1/* {
 		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
 	}
 
