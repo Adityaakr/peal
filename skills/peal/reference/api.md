@@ -11,9 +11,9 @@ hard-coding them from this file.
 
 Name a moment. One of:
 
-- `opens_in` — seconds from now, positive
-- `opens_at` — RFC 3339 with an offset (`2026-09-12T18:00:00Z`) or unix seconds
-- `opens_at_block` — `{ chain_id, height }`
+- `opens_in`: seconds from now, positive
+- `opens_at`: RFC 3339 with an offset (`2026-09-12T18:00:00Z`) or unix seconds
+- `opens_at_block`: `{ chain_id, height }`
 
 Plus optional `tag`, `title`, `description`, `image_url` (https only).
 
@@ -26,7 +26,7 @@ is a split auction.
 ### GET /v1/rounds
 
 Your rounds, newest first. `tag`, `status` (`open` `closing` `opened`
-`stalled`), `limit` (1–200, default 25), `cursor`. Returns
+`stalled`), `limit` (1 to 200, default 25), `cursor`. Returns
 `{ data, next_cursor, has_more }`.
 
 ### GET /v1/rounds/{id}
@@ -85,12 +85,12 @@ closed check as any seal.
 
 ## Everything else
 
-- `GET /v1` — the service description: payload cap, page sizes, rate limits
-- `GET /v1/parameters` — public key material with its digest
-- `GET /v1/currencies` — 56 currencies with their decimals, searchable with `q`
-- `GET /v1/names/{name}` — whether a short link is free. Checking only: claiming
+- `GET /v1`: the service description: payload cap, page sizes, rate limits
+- `GET /v1/parameters`: public key material with its digest
+- `GET /v1/currencies`: 56 currencies with their decimals, searchable with `q`
+- `GET /v1/names/{name}`: whether a short link is free. Checking only: claiming
   is a permanent onchain write done from your own key
-- `GET /peal.js` — the client, one ES module with the encryption compiled in
+- `GET /peal.js`: the client, one ES module with the encryption compiled in
 
 ## Rate limits
 

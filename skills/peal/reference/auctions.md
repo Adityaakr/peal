@@ -63,10 +63,10 @@ opens.
 const { winner, queue, bids, discarded } = await peal.results(auction.id);
 ```
 
-- `bids` — every readable bid, ranked, whether or not it can win
-- `queue` — only those inside the reserve and the maximum, in order
-- `winner` — the first of the queue, or null if nothing qualified
-- `discarded` — unreadable payloads, or bids naming another auction, with the reason
+- `bids`: every readable bid, ranked, whether or not it can win
+- `queue`: only those inside the reserve and the maximum, in order
+- `winner`: the first of the queue, or null if nothing qualified
+- `discarded`: unreadable payloads, or bids naming another auction, with the reason
 
 Before the close, `bids` is `null` rather than an empty list.
 
@@ -107,13 +107,13 @@ seller. Anything that let it be recovered would let us read them.
 
 Every auction with a title returns:
 
-- `bid_url` — a hosted page where somebody can read the terms and bid. The whole
+- `bid_url`: a hosted page where somebody can read the terms and bid. The whole
   auction rides in the URL fragment, which browsers never send to a server, so
   opening it tells nobody which auction it is.
-- `check_code` — eight speakable characters over the terms. A seller reads them
+- `check_code`: eight speakable characters over the terms. A seller reads them
   out and a bidder compares them against their own screen. It is the only
   defence against a link that was swapped on the way.
-- `terms_hash` — sha256 over the same terms, if you want to anchor them onchain
+- `terms_hash`: sha256 over the same terms, if you want to anchor them onchain
   yourself.
 
 ## Checklist

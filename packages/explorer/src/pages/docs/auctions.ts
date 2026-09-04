@@ -37,7 +37,7 @@ const demos: Demo[] = [
       state.auctionId = auction.id;
       state.bidders = 0;
       log(JSON.stringify(auction, null, 2));
-      log(`\ncheck code ${auction.check_code ?? '—'} · read it out, a bidder sees the same one.`);
+      log(`\ncheck code ${auction.check_code ?? 'none'} · read it out, a bidder sees the same one.`);
       log(`closes in about a minute. bid on it in step 2.`);
     },
   },

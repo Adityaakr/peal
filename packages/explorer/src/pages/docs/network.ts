@@ -64,7 +64,7 @@ export const network: DocsPage = {
     const paint = (s: Stats): void => {
       const facts = root.querySelector('#dev-facts');
       if (facts) {
-        const open = s.median_open_ms === null ? '—' : `${(s.median_open_ms / 1000).toFixed(1)}s`;
+        const open = s.median_open_ms === null ? 'n/a' : `${(s.median_open_ms / 1000).toFixed(1)}s`;
         facts.innerHTML = `
           <div><span>conditions</span><strong>${nf.format(s.totals.conditions)}</strong></div>
           <div><span>payloads sealed</span><strong>${nf.format(s.totals.sealed)}</strong></div>
@@ -109,7 +109,7 @@ export const network: DocsPage = {
     const unavailable = (): void => {
       const facts = root.querySelector('#dev-facts');
       if (facts?.textContent?.includes('…')) {
-        for (const strong of facts.querySelectorAll('strong')) strong.textContent = '—';
+        for (const strong of facts.querySelectorAll('strong')) strong.textContent = 'n/a';
       }
       const board = root.querySelector('#dev-board');
       if (board && board.textContent?.trim() === 'loading…') {

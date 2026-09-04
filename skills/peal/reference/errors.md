@@ -44,7 +44,7 @@ Creating a round or auction:
 Bidding and sealing:
 
 - `amountMinor` 1 to 1,000,000,000,000, a whole number
-- bidder `name` 48 **bytes** of UTF-8 — an emoji is four, so twelve is the limit
+- bidder `name` 48 **bytes** of UTF-8. An emoji is four, so twelve is the limit
 - sealed contact 157 bytes; up to 63 bytes of text inside it
 - every bid is 320 bytes before encryption, whatever it contains
 - a raw seal is padded to 256, 1024, 4096, 16384 or 65536 bytes, capped at 5 MB

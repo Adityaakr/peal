@@ -4,7 +4,7 @@ Pick the one that matches the application. Every snippet here has been run.
 
 ## The rule that decides the shape
 
-**Sealing happens where the plaintext already is** — normally the browser. The
+**Sealing happens where the plaintext already is**, normally the browser. The
 whole point is that a bid never reaches a server in the clear, including the
 seller's own. Server code creates auctions and reads results.
 
@@ -177,7 +177,7 @@ No client library on the server at all. Bids are sealed in the browser.
 ## A static page, no server
 
 Everything in the browser. Keep the auction id wherever the page already keeps
-state — a query parameter, `localStorage`, or your existing backend.
+state: a query parameter, `localStorage`, or your existing backend.
 
 ```html
 <script type="module">
@@ -247,7 +247,7 @@ sending a plaintext to the server would defeat the entire mechanism.
 
 ## Sealing on a Node server, when you really must
 
-Only when there is no browser in the flow — a scheduled job, an agent acting on
+Only when there is no browser in the flow: a scheduled job, an agent acting on
 its own behalf. Vendor the file; URL imports do not work in Node.
 
 ```bash

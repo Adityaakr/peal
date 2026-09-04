@@ -51,7 +51,7 @@ function atLocalTime(dateISO, hour, minute, timeZone) {
 }
 
 const closesAt = atLocalTime('2026-09-08', 18, 0, 'Europe/London');
-// 2026-09-08T17:00:00.000Z — 18:00 London, which is BST in September
+// 2026-09-08T17:00:00.000Z is 18:00 London, which is BST in September
 ```
 
 Confirm: "closing Monday 8 September at 18:00 London time (17:00 UTC)".
@@ -106,7 +106,7 @@ closesAt: listing.auctionEndsAt.toISOString()
 ```js
 const seconds = Math.round((closesAt.getTime() - Date.now()) / 1000);
 if (seconds <= 0) throw new Error('that deadline has already passed');
-if (seconds > 90 * 86400) throw new Error('more than 90 days away — confirm the year');
+if (seconds > 90 * 86400) throw new Error('more than 90 days away, confirm the year');
 ```
 
 A year typed wrong is the most common way a deadline ends up absurd, and it is

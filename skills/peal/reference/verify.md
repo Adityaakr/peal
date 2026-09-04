@@ -87,16 +87,16 @@ ok    nothing was discarded
 
 ## When something fails
 
-- **`ERR_UNSUPPORTED_ESM_URL_SCHEME`** — you imported from a URL in Node. Vendor
+- **`ERR_UNSUPPORTED_ESM_URL_SCHEME`**: you imported from a URL in Node. Vendor
   the file: `curl -fsSL -o /tmp/peal.js https://peal.network/peal.js`.
-- **`invalid_time`** — the deadline has no offset. See `time.md`.
-- **`opens_in_past`** — the deadline has already passed. Check the year.
-- **`invalid_decimals` or a wrong-looking amount** — you passed a float. Amounts
+- **`invalid_time`**: the deadline has no offset. See `time.md`.
+- **`opens_in_past`**: the deadline has already passed. Check the year.
+- **`invalid_decimals` or a wrong-looking amount**: you passed a float. Amounts
   are integer minor units.
-- **`round_closed`** — a bid arrived after the deadline. Correct behaviour.
-- **the winner is not who you expect** — check the reserve and the maximum, then
+- **`round_closed`**: a bid arrived after the deadline. Correct behaviour.
+- **the winner is not who you expect**: check the reserve and the maximum, then
   check whether a discarded entry explains it.
-- **`bids` is null after the deadline** — the batch has not finished opening.
+- **`bids` is null after the deadline**: the batch has not finished opening.
   Poll `status` until it reads `opened`, which `waitForOpen` does.
 
 ## Also check, in the application itself

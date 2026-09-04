@@ -69,21 +69,21 @@ for the vintage camera listing, closing Monday at 6pm, reserve $50</code></pre>
 
     <h2 id="whats-inside">What is inside</h2>
     <ul class="doc-list">
-      <li><strong>SKILL.md</strong> — the procedure above, the mistakes that produce code which
+      <li><strong>SKILL.md</strong>: the procedure above, the mistakes that produce code which
       looks right and is wrong, and the trust model stated plainly enough that an agent will not
       overclaim it to a user.</li>
-      <li><strong>reference/recipes.md</strong> — working integrations for Next.js, Express, a
+      <li><strong>reference/recipes.md</strong>: working integrations for Next.js, Express, a
       static page and a non-JavaScript backend, including the one that catches everybody: a URL
       import of the client works in a browser and throws in Node.</li>
-      <li><strong>reference/time.md</strong> — turning "Monday at 6pm" into an exact instant, with
+      <li><strong>reference/time.md</strong>: turning "Monday at 6pm" into an exact instant, with
       a timezone helper checked against daylight saving, a 45 minute offset and a negative
       one.</li>
-      <li><strong>reference/verify.md</strong> — the end to end script, and what each failure
+      <li><strong>reference/verify.md</strong>: the end to end script, and what each failure
       means when it does not pass.</li>
-      <li><strong>reference/api.md</strong> — every endpoint, its parameters and its responses.</li>
-      <li><strong>reference/auctions.md</strong> — the money rules, contact details and the check
+      <li><strong>reference/api.md</strong>: every endpoint, its parameters and its responses.</li>
+      <li><strong>reference/auctions.md</strong>: the money rules, contact details and the check
       code.</li>
-      <li><strong>reference/errors.md</strong> — every error code and every limit, as tables.</li>
+      <li><strong>reference/errors.md</strong>: every error code and every limit, as tables.</li>
     </ul>
 
     <h2 id="other-tools">Other tools</h2>

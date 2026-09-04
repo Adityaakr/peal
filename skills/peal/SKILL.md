@@ -1,6 +1,6 @@
 ---
 name: peal
-description: Use when adding sealed submissions or timed disclosure to an application — data encrypted on the client, unreadable by anyone including the server, that opens by itself at a deadline. Covers sealed bid auctions on a marketplace, private voting, encrypted mempools, commit-reveal without the reveal step, and agent actions that must not be front run. Trigger on requests like "add auctions to my marketplace", "let people bid without seeing each other", "collect these privately until Friday", "sealed bids", "open at a time", or any mention of Peal or peal.network. Do not use for encryption at rest or for hiding data permanently.
+description: Use when adding sealed submissions or timed disclosure to an application. Data encrypted on the client, unreadable by anyone including the server, that opens by itself at a deadline. Covers sealed bid auctions on a marketplace, private voting, encrypted mempools, commit-reveal without the reveal step, and agent actions that must not be front run. Trigger on requests like "add auctions to my marketplace", "let people bid without seeing each other", "collect these privately until Friday", "sealed bids", "open at a time", or any mention of Peal or peal.network. Do not use for encryption at rest or for hiding data permanently.
 ---
 
 # Peal
@@ -8,7 +8,7 @@ description: Use when adding sealed submissions or timed disclosure to an applic
 Peal collects encrypted submissions and opens them all at the same moment.
 
 A caller encrypts a payload in their own process and sends only the ciphertext.
-Nobody can read it early — not other participants, not the application owner,
+Nobody can read it early: not other participants, not the application owner,
 not the operators. At the deadline, every submission opens at once.
 
 **The reveal is not a participant's move.** In commit-and-reveal, whoever is
@@ -33,8 +33,8 @@ on what is already there.
 Find out what you are adding to before you write anything.
 
 - **What runs where.** Is there a server (Next.js route handlers, Express,
-  Django, Rails), or is this a static front end? This decides how you seal —
-  see "Choosing where the code runs" below, and get it wrong and nothing works.
+  Django, Rails), or is this a static front end? This decides how you seal.
+  See "Choosing where the code runs" below; get it wrong and nothing works.
 - **Where the items live.** A marketplace has a product or listing model. Find
   it. The auction attaches to one of those, and its id is what you store.
 - **How state is stored.** You must persist the Peal auction id against your
@@ -45,8 +45,8 @@ Find out what you are adding to before you write anything.
   "Monday at 6pm".
 
 Say what you found before you build, in two or three lines. If the application
-has no server and no database, say so — it changes the design and the user
-needs to know.
+has no server and no database, say so, because it changes the design and the
+user needs to know.
 
 ### 2. Turn the deadline into an exact instant
 
@@ -77,7 +77,7 @@ once and import the local file:
 curl -fsSL -o lib/peal.js https://peal.network/peal.js
 ```
 
-Bids are usually sealed **in the browser** anyway — that is the point. The
+Bids are usually sealed **in the browser** anyway, which is the point. The
 plaintext must never reach a server, including the user's own. Server code
 creates the auction and reads results; the browser seals.
 
@@ -157,12 +157,12 @@ the integration end to end against the live network.
 
 ## Reference files
 
-- `reference/recipes.md` — working integrations per stack
-- `reference/time.md` — natural deadlines into exact instants
-- `reference/verify.md` — the end to end check to run before reporting success
-- `reference/api.md` — every endpoint
-- `reference/auctions.md` — the auction rules in depth
-- `reference/errors.md` — error codes and limits
+- `reference/recipes.md`: working integrations per stack
+- `reference/time.md`: natural deadlines into exact instants
+- `reference/verify.md`: the end to end check to run before reporting success
+- `reference/api.md`: every endpoint
+- `reference/auctions.md`: the auction rules in depth
+- `reference/errors.md`: error codes and limits
 
 ## The trust model, stated plainly
 
