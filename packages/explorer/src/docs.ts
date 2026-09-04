@@ -43,6 +43,7 @@ export const DOCS_NAV: DocsGroup[] = [
     items: [
       { label: 'Introduction', href: '#/developers' },
       { label: 'Quickstart', href: '#/developers/quickstart' },
+      { label: 'Use it from an agent', href: '#/developers/agents' },
       { label: 'How it works', href: '#/developers/howitworks' },
     ],
   },

@@ -2205,3 +2205,25 @@ async fn auction_check_code_matches_peal_live_exactly() {
         "the check code no longer matches the page"
     );
 }
+
+/// The skill is how an agent integrates this without reading anything first, so
+/// llms.txt has to point at it: a model with web access and no skill installed
+/// finds that file, and the install line is the fastest correct path from there.
+#[tokio::test]
+async fn seo_llms_txt_points_agents_at_the_skill() {
+    let txt = bte_coordinator::pages::llms_txt("https://peal.network");
+    assert!(
+        txt.contains("curl -fsSL https://peal.network/skill/install.sh | sh"),
+        "{txt}"
+    );
+    assert!(txt.contains("https://peal.network/skill/SKILL.md"));
+    // And it names the traps, because a model quoting this file to somebody is
+    // the most likely way those get avoided.
+    assert!(txt.contains("integer minor units"));
+    assert!(txt.contains("padding"));
+
+    // The page exists and is indexable.
+    let page = bte_coordinator::pages::find("developers/agents").expect("the agents page");
+    assert_eq!(page.schema, "HowTo");
+    assert!(page.index);
+}

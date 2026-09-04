@@ -75,6 +75,15 @@ pub const PAGES: &[Page] = &[
         index: true,
     },
     Page {
+        path: "developers/agents",
+        route: "#/developers/agents",
+        title: "Add Peal from Claude Code or any coding agent. One skill.",
+        description:
+            "Install one skill and your agent can add sealed bids and timed disclosure to an application without reading the docs first. Four markdown files, no package, no registry, no account.",
+        schema: "HowTo",
+        index: true,
+    },
+    Page {
         path: "developers/howitworks",
         route: "#/developers/howitworks",
         title: "How Peal works. Batched threshold encryption, explained.",
@@ -399,6 +408,19 @@ pub fn llms_txt(origin: &str) -> String {
          \n\
          The client is one file with the encryption built in, loaded from the site itself:\n\
          `import {{ peal }} from '{origin}/peal.js'`\n\
+         \n\
+         ## For coding agents\n\
+         \n\
+         There is an installable skill, which is the fastest way to integrate this correctly. It \
+         carries the mistakes that produce code which looks right and is wrong: money as a float \
+         rather than integer minor units, sealing a bid without padding so its length leaks the \
+         value, and sending the seller private key that the scheme exists to keep away from us.\n\
+         \n\
+         ```\n\
+         curl -fsSL {origin}/skill/install.sh | sh\n\
+         ```\n\
+         \n\
+         Or read it directly: [{origin}/skill/SKILL.md]({origin}/skill/SKILL.md)\n\
          \n\
          ## Pages\n\
          \n\

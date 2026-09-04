@@ -21,6 +21,7 @@ import { renderCreateAuctionDocs } from './pages/docs-create-auction';
 import { renderDocs } from './docs';
 import { intro } from './pages/docs/intro';
 import { quickstart } from './pages/docs/quickstart';
+import { agents } from './pages/docs/agents';
 import { howItWorks } from './pages/docs/howitworks';
 import { auctions as auctionDocs } from './pages/docs/auctions';
 import { useCases } from './pages/docs/usecases';
@@ -147,7 +148,7 @@ function route(): void {
   // this is the half that makes the app render it. Kept in step with
   // crates/bte-coordinator/src/pages.rs, which owns the same list.
   const PAGE_PATHS = new Set([
-    'developers', 'developers/quickstart', 'developers/howitworks',
+    'developers', 'developers/quickstart', 'developers/agents', 'developers/howitworks',
     'developers/auctions', 'developers/createauction', 'developers/usecases',
     'developers/api', 'developers/limits', 'developers/network', 'developers/roadmap',
     'protocol', 'mempool', 'auction', 'auctions', 'execution', 'philosophy', 'create', 'app',
@@ -242,6 +243,8 @@ function route(): void {
     cleanup = renderDocs(root, intro, '#/developers');
   } else if (hash === '#/developers/quickstart') {
     cleanup = renderDocs(root, quickstart, hash);
+  } else if (hash === '#/developers/agents') {
+    cleanup = renderDocs(root, agents, hash);
   } else if (hash === '#/developers/howitworks') {
     cleanup = renderDocs(root, howItWorks, hash);
   } else if (hash === '#/developers/auctions') {
