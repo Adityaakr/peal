@@ -133,17 +133,24 @@ export function renderDevelopers(root: HTMLElement): () => void {
              from curl.`,
       code: `const res = await fetch('${shown}/v1/rounds', {
   method: 'POST',
-  headers: { 'content-type': 'application/json',
-             'idempotency-key': crypto.randomUUID() },
+  headers: {
+    'content-type': 'application/json',
+    // Retry-safe: the same key returns the same round, never a second one.
+    'idempotency-key': crypto.randomUUID(),
+  },
   body: JSON.stringify({
-    opens_in: 3600,
-    tag: 'my-app',
-    title: 'Signed tour poster',
+    opens_in: 3600,                // or opens_at: '2026-09-12T18:00:00Z'
+    tag: 'my-app',                 // how you list your own rounds later
+    title: 'Signed tour poster',   // public now; the sealed bids come in step 2
     description: 'One of a kind, ships worldwide.',
     image_url: 'https://images.example.com/poster.jpg',
   }),
 });
-const round = await res.json();   // { id, status: 'open', title, image_url, … }`,
+
+const round = await res.json();
+if (!res.ok) throw new Error(\`\${round.code}: \${round.detail}\`);
+
+// { id: 'cond_…', status: 'open', opens_at: '…', seals: 0, title, image_url }`,
       run: async (log, state) => {
         const res = await fetch(`${base}/v1/rounds`, {
           method: 'POST',
@@ -174,8 +181,12 @@ const round = await res.json();   // { id, status: 'open', title, image_url, …
              is the SHA-256 of that ciphertext, so you can compute it yourself.`,
       code: `import { peal } from '${shown}/peal.js';
 
-const seal = await peal.seal('my secret', round.id);
-// seal.id === sha256(ciphertext), computable without trusting us`,
+// Encrypts in this process. Only the ciphertext crosses the network,
+// so there is no moment at which anyone here holds your plaintext.
+const seal = await peal.seal('my sealed bid', round.id);
+
+// seal.id is the sha256 of that ciphertext: recompute it from your own
+// copy rather than taking our word for which seal is yours.`,
       run: async (log, state) => {
         if (!state.conditionId) {
           log('run step 1 first: this needs a round to seal to.');
@@ -196,10 +207,23 @@ const seal = await peal.seal('my secret', round.id);
              count; once it opens the same call reports <code>opened</code> and the payloads are
              available. Send <code>If-None-Match</code> with the ETag and you get 304s while you
              wait, so polling a deadline costs almost nothing.`,
-      code: `const round = await (await fetch(\`${shown}/v1/rounds/\${id}\`)).json();
-if (round.status === 'opened') {
-  const { data } = await (await fetch(\`${shown}/v1/rounds/\${id}/seals\`)).json();
-  // each entry now carries payload_b64
+      code: `// One URL, every stage, always 200. Send the ETag back while you wait
+// and an unchanged poll costs a 304 instead of a response body.
+const res = await fetch(\`${shown}/v1/rounds/\${round.id}\`, {
+  headers: etag ? { 'if-none-match': etag } : {},
+});
+if (res.status === 304) return;           // nothing has moved
+etag = res.headers.get('etag');
+
+const state = await res.json();
+if (state.status !== 'opened') return;    // 'open' | 'closing' | 'opened'
+
+const { data } = await fetch(\`${shown}/v1/rounds/\${round.id}/seals\`)
+  .then((r) => r.json());
+
+for (const seal of data) {
+  const bytes = Uint8Array.from(atob(seal.payload_b64), (c) => c.charCodeAt(0));
+  console.log(seal.id, new TextDecoder().decode(bytes));
 }`,
       run: async (log, state) => {
         const id = state.conditionId;
@@ -892,6 +916,36 @@ const proof = await peal.getProof(id);</code></pre>
   for (const [id] of sections) {
     const el = document.getElementById(id);
     if (el) observer.observe(el);
+  }
+
+  // ---- copy buttons on every code block ----
+  // The text comes from the <code> element itself, so a sample can never be
+  // copied in a stale form: there is only one copy of it.
+  const copyButtons: HTMLButtonElement[] = [];
+  for (const block of Array.from(root.querySelectorAll<HTMLElement>('pre.dev-code'))) {
+    if (block.querySelector('.dev-copy')) continue;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'dev-copy';
+    button.textContent = 'copy';
+    button.setAttribute('aria-label', 'copy this snippet');
+    button.addEventListener('click', async () => {
+      const text = block.querySelector('code')?.textContent ?? '';
+      try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = 'copied';
+        button.classList.add('is-copied');
+      } catch {
+        // An insecure origin has no clipboard. Say so rather than pretending.
+        button.textContent = 'select it';
+      }
+      window.setTimeout(() => {
+        button.textContent = 'copy';
+        button.classList.remove('is-copied');
+      }, 1600);
+    });
+    block.appendChild(button);
+    copyButtons.push(button);
   }
 
   const stopReveal = mountScrollReveal(root);
