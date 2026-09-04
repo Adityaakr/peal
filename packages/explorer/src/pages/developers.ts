@@ -100,94 +100,99 @@ export function renderDevelopers(root: HTMLElement): () => void {
 
   const demos: Demo[] = [
     {
-      id: 'condition',
-      title: '1. Say when it opens',
-      note: `A condition is a row in the coordinator naming a moment, and it fires on its own
-             whether or not anyone is watching. Nothing is encrypted yet. <code>in_secs</code> is
-             relative; use <code>fires_at</code> for an absolute unix second, or
-             <code>kind: "at_block"</code> to fire on a chain height instead. Plain HTTP, no key,
-             no wallet, works from curl.`,
-      code: `const res = await fetch('${shown}/v0/conditions', {
+      id: 'round',
+      title: '1. Open a round',
+      note: `A round is a moment and everything sealed to it. Nothing is encrypted yet.
+             <code>opens_in</code> is relative; <code>opens_at</code> takes RFC 3339 or unix
+             seconds; <code>opens_at_block</code> takes a chain height. Plain HTTP, no key, works
+             from curl.`,
+      code: `const res = await fetch('${shown}/v1/rounds', {
   method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ in_secs: 60, tag: 'my-app' }),
+  headers: { 'content-type': 'application/json',
+             'idempotency-key': crypto.randomUUID() },
+  body: JSON.stringify({ opens_in: 3600, tag: 'my-app' }),
 });
-const { id } = await res.json();`,
+const round = await res.json();   // { id, status: 'open', opens_at, … }`,
       run: async (log, state) => {
-        const res = await fetch(`${base}/v0/conditions`, {
+        const res = await fetch(`${base}/v1/rounds`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ in_secs: 60, tag: 'docs:try' }),
+          headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() },
+          body: JSON.stringify({ opens_in: 60, tag: 'docs:try' }),
         });
         const body = (await res.json()) as { id?: string };
         log(JSON.stringify(body, null, 2));
         if (body.id) {
           state.conditionId = body.id;
-          log(`\nkept as the condition for step 2.`);
+          log(`\nkept as the round for step 2.`);
         }
       },
     },
     {
       id: 'seal',
-      title: '2. Seal something to it',
-      note: `Encryption runs in your process, so the plaintext never crosses the network. Load
-             <code>peal.js</code> straight from this domain: one file, nothing to install, no
-             package manager involved. It fetches the committee's public parameters, verifies their
-             digest against what it was served, encrypts locally, and posts the ciphertext.`,
+      title: '2. Seal a payload to it',
+      note: `The only step that needs code, because this is where the encryption happens and it
+             happens on your machine. <code>peal.js</code> loads straight from this domain: one
+             file, nothing to install. It fetches the public parameters, checks their digest
+             against what it was served, encrypts locally and posts the ciphertext. The seal's id
+             is the SHA-256 of that ciphertext, so you can compute it yourself.`,
       code: `import { peal } from '${shown}/peal.js';
 
-const { ctHash } = await peal.seal('my secret', id);`,
+const seal = await peal.seal('my secret', round.id);
+// seal.id === sha256(ciphertext), computable without trusting us`,
       run: async (log, state) => {
         if (!state.conditionId) {
-          log('run step 1 first: this needs a condition to seal to.');
+          log('run step 1 first: this needs a round to seal to.');
           return;
         }
         const secret = `sealed from the docs at ${new Date().toISOString()}`;
         log(`sealing: ${secret}\n`);
-        const { ctHash, sealedB64 } = await client.seal(secret, state.conditionId);
-        state.ctHash = ctHash;
-        log(`ct_hash: ${ctHash}`);
-        log(`sealed:  ${sealedB64.slice(0, 64)}… (${sealedB64.length} base64 chars)`);
-        log(`\nthat ciphertext is now on the coordinator and nobody can read it,`);
-        log(`including the operators, until the condition fires.`);
+        const sealed = await client.seal(secret, state.conditionId);
+        state.ctHash = sealed.id;
+        log(JSON.stringify(sealed, null, 2));
+        log(`\nunreadable from here until the round opens.`);
       },
     },
     {
       id: 'read',
-      title: '3. Read it when it opens',
-      note: `A 404 before the cue is the guarantee working, not an error to handle: there is
-             genuinely nothing readable to return. Afterwards the whole batch comes back in one
-             response, decoys flagged, with a merkle root over the set so anyone can check that
-             nothing was added, dropped or reordered. Plain HTTP again.`,
-      code: `const res = await fetch(\`${shown}/v0/reveals/\${id}\`);
-// 404 until the cue fires, then every payload in the batch at once.
-const reveal = await res.json();`,
+      title: '3. Read the round',
+      note: `One URL, every stage, always 200. While the round is open you get a status and a
+             count; once it opens the same call reports <code>opened</code> and the payloads are
+             available. Send <code>If-None-Match</code> with the ETag and you get 304s while you
+             wait, so polling a deadline costs almost nothing.`,
+      code: `const round = await (await fetch(\`${shown}/v1/rounds/\${id}\`)).json();
+if (round.status === 'opened') {
+  const { data } = await (await fetch(\`${shown}/v1/rounds/\${id}/seals\`)).json();
+  // each entry now carries payload_b64
+}`,
       run: async (log, state) => {
         const id = state.conditionId;
         if (!id) {
           log('run step 1 first.');
           return;
         }
-        const res = await fetch(`${base}/v0/reveals/${encodeURIComponent(id)}`);
-        if (res.status === 404) {
-          const status = await fetch(`${base}/v0/conditions/${encodeURIComponent(id)}`);
-          const cond = (await status.json()) as { status?: string; fires_at?: number };
-          const left = cond.fires_at ? cond.fires_at - Math.floor(Date.now() / 1000) : null;
-          log(`404, and that is the answer working.`);
-          log(`condition is "${cond.status}"${left !== null && left > 0 ? `, opens in ${left}s` : ''}.`);
-          log(`\nnothing readable exists yet. try this again after the cue.`);
+        const res = await fetch(`${base}/v1/rounds/${encodeURIComponent(id)}`);
+        const round = (await res.json()) as {
+          status?: string; seals?: number; opens_at_unix?: number; slots_including_decoys?: number;
+        };
+        log(JSON.stringify(round, null, 2));
+        const etag = res.headers.get('etag');
+        if (etag) log(`\netag: ${etag}  (send If-None-Match to poll for free)`);
+
+        if (round.status !== 'opened') {
+          const left = round.opens_at_unix
+            ? round.opens_at_unix - Math.floor(Date.now() / 1000)
+            : null;
+          log(`\nstill ${round.status}${left && left > 0 ? `, opens in ${left}s` : ''}.`);
+          log(`no payload exists yet. run this again after it opens.`);
           return;
         }
-        const reveal = (await res.json()) as { slots?: { payload_b64: string; is_dummy: boolean }[] };
-        const real = (reveal.slots ?? []).filter((s) => !s.is_dummy);
-        log(`opened: ${real.length} real payload${real.length === 1 ? '' : 's'} `
-          + `(+${(reveal.slots ?? []).length - real.length} decoys the coordinator added)`);
-        for (const s of real.slice(0, 5)) {
-          try {
-            log(`  ${new TextDecoder().decode(Uint8Array.from(atob(s.payload_b64), (c) => c.charCodeAt(0)))}`);
-          } catch {
-            log('  (binary payload)');
-          }
+        const seals = await client.listSeals(id);
+        log(`\n${seals.length} seal${seals.length === 1 ? '' : 's'}:`);
+        for (const s of seals.slice(0, 5)) {
+          const text = s.payload_b64
+            ? new TextDecoder().decode(Uint8Array.from(atob(s.payload_b64), (c) => c.charCodeAt(0)))
+            : '(sealed)';
+          log(`  ${s.id.slice(0, 12)}…  ${text}`);
         }
       },
     },
@@ -239,34 +244,95 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
 
       <section id="how" class="scroll-reveal">
         <h2>How it works</h2>
-        <p>Three pieces, and it is worth knowing which one does what before you build on it.</p>
-        <h3>The cue is a row, not a promise</h3>
-        <p>A <strong>condition</strong> is a moment: a unix second, or a block height on a chain we
-        watch. It exists in the coordinator's database before anything is encrypted to it, and it
-        fires whether or not anyone is paying attention. That is the difference between this and a
-        commit-reveal scheme: the reveal is not a move any participant has to make, so nobody can
-        decline to make it after seeing they have lost.</p>
-        <h3>The encryption happens on your side</h3>
-        <p>You fetch the committee's public parameters and encrypt against them locally, so the
-        plaintext never exists anywhere we run. What crosses the wire is a ciphertext under
-        batched threshold encryption on BLS12-381, with a Fujisaki-Okamoto transform for
-        chosen-ciphertext security. The coordinator parses it, checks the points are on the curve
-        and in the right subgroup, and refuses anything that is not a real ciphertext. It cannot
-        do anything else with it.</p>
-        <h3>Opening is a threshold, and the batch is padded</h3>
-        <p>Five operators hold key shares; any three can open a batch, any two cannot. When the cue
-        fires the coordinator freezes the set, pads it to a multiple of 64 with decoys it seals to
-        itself, and the operators produce shares over the whole batch at once. One decryption for
-        sixty four slots is what makes this cheap enough to use per bid rather than per auction.</p>
-        <p>The padding is not a detail. Without it, a condition with three ciphertexts announces
-        that three people took part, which for a sealed round is often the thing worth hiding. Every
-        reveal comes back with its decoys flagged <code>is_dummy</code>, and the counts on this page
-        exclude them.</p>
-        <h3>What you can check afterwards</h3>
-        <p>A reveal carries every payload with its position and a merkle root over the set, and the
-        positions are a pure function of the ciphertext hashes rather than of arrival order. So the
-        coordinator cannot reorder a batch to change who was first, and anyone can recompute the
-        root from the published payloads and see that nothing was added or dropped.</p>
+        <p>Your app encrypts locally and sends a ciphertext. The coordinator stores it and holds no
+        key that opens it. When the moment arrives, three of the five operators open the whole
+        batch at once, and everyone reads the same result.</p>
+
+        <figure class="dev-figure">
+          <svg viewBox="0 0 920 366" role="img" class="sketch"
+               aria-label="Your app encrypts a payload locally and sends only ciphertext to the coordinator, which stores it unreadable until the condition fires, when three of five operators open the whole batch at once for everyone.">
+            <defs>
+              <marker id="dv-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+                      markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0.5 1 L9 5 L0.5 9" fill="none" stroke="currentColor"
+                      stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              </marker>
+            </defs>
+
+            <!-- 1. your app -->
+            <g class="sk-node">
+              <path class="sk-box sk-box-you"
+                    d="M18 46 q -2 -12 10 -13 l 200 -2 q 12 0 12.5 11 l 1 118 q 0 12 -11 12.5 l -201 1.5 q -12 0 -12.5 -11 z" />
+              <text class="sk-title" x="42" y="78">your app or agent</text>
+              <text class="sk-line" x="42" y="104">bid, vote, quote, forecast</text>
+              <text class="sk-strong" x="42" y="130">encrypted here</text>
+              <text class="sk-line" x="42" y="152">plaintext never leaves</text>
+            </g>
+
+            <!-- 2. coordinator -->
+            <g class="sk-node">
+              <path class="sk-box"
+                    d="M348 46 q -2 -12 10 -13 l 218 -2 q 12 0 12.5 11 l 1 118 q 0 12 -11 12.5 l -219 1.5 q -12 0 -12.5 -11 z" />
+              <text class="sk-title" x="372" y="78">coordinator</text>
+              <text class="sk-line" x="372" y="104">holds ciphertexts only</text>
+              <text class="sk-line" x="372" y="126">no key that opens one</text>
+              <text class="sk-line" x="372" y="152">batch of 64, padded with decoys</text>
+            </g>
+
+            <!-- 3. committee -->
+            <g class="sk-node">
+              <path class="sk-box"
+                    d="M700 46 q -2 -12 10 -13 l 190 -2 q 12 0 12.5 11 l 1 118 q 0 12 -11 12.5 l -191 1.5 q -12 0 -12.5 -11 z" />
+              <text class="sk-title" x="724" y="78">5 operators</text>
+              <text class="sk-line" x="724" y="104">any 3 can open</text>
+              <text class="sk-line" x="724" y="126">any 2 cannot</text>
+              <g class="sk-dots">
+                <circle cx="732" cy="150" r="7" class="sk-on" />
+                <circle cx="754" cy="150" r="7" class="sk-on" />
+                <circle cx="776" cy="150" r="7" class="sk-on" />
+                <circle cx="798" cy="150" r="7" />
+                <circle cx="820" cy="150" r="7" />
+              </g>
+            </g>
+
+            <!-- arrows across the top row -->
+            <path class="sk-arrow" marker-end="url(#dv-arrow)" d="M244 108 q 44 -8 96 0" />
+            <text class="sk-tag" x="252" y="94">ciphertext</text>
+            <path class="sk-arrow" marker-end="url(#dv-arrow)" d="M596 108 q 46 -8 96 0" />
+            <text class="sk-tag" x="604" y="94">shares</text>
+
+            <!-- Everything from sealing until the cue is unreadable. Labelled to
+                 the left of the drop line so nothing crosses the words. -->
+            <path class="sk-brace" d="M40 206 q 200 12 384 2" />
+            <text class="sk-tag sk-end" x="424" y="232">unreadable by anyone, including us</text>
+
+            <!-- the condition, underneath -->
+            <path class="sk-arrow sk-dash" d="M470 192 q 4 32 0 62" marker-end="url(#dv-arrow)" />
+            <g class="sk-node">
+              <path class="sk-box sk-box-cue"
+                    d="M330 262 q -2 -12 10 -13 l 250 -2 q 12 0 12.5 11 l 1 58 q 0 12 -11 12.5 l -251 1.5 q -12 0 -12.5 -11 z" />
+              <text class="sk-title" x="354" y="296">the condition fires</text>
+              <text class="sk-line" x="354" y="318">a time, or a block height</text>
+            </g>
+
+            <!-- reveal -->
+            <path class="sk-arrow" d="M606 302 q 58 -4 106 -2" marker-end="url(#dv-arrow)" />
+            <g class="sk-node">
+              <path class="sk-box sk-box-open"
+                    d="M716 256 q -2 -12 10 -13 l 174 -2 q 12 0 12.5 11 l 1 74 q 0 12 -11 12.5 l -175 1.5 q -12 0 -12.5 -11 z" />
+              <text class="sk-title" x="740" y="290">everything opens</text>
+              <text class="sk-line" x="740" y="312">at once, for everyone</text>
+              <text class="sk-line" x="740" y="332">merkle root over the set</text>
+            </g>
+          </svg>
+          <figcaption>Encryption happens in your process. Nothing between it and the deadline can
+          read the payload, and opening it takes three operators acting together.</figcaption>
+        </figure>
+
+        <p>Two details worth knowing. Every batch is padded to 64 with decoys the coordinator seals
+        to itself, so a round with three submissions does not announce that it had three; decoys
+        come back flagged <code>is_dummy</code>. And slot positions are derived from the ciphertext
+        hashes rather than arrival order, so a batch cannot be reordered after the fact.</p>
       </section>
 
       <section id="calls" class="scroll-reveal">
@@ -378,46 +444,89 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
         <p>Base URL <code>${esc(shown)}</code>. Everything is JSON. Nothing here needs a key.</p>
         <div class="dev-endpoints">
           <div class="dev-ep">
-            <p class="dev-ep-sig"><span class="dev-verb dev-post">POST</span> <code>/v0/conditions</code></p>
-            <p>Name a moment. <code>in_secs</code> for relative or <code>fires_at</code> for an
-            absolute unix second; <code>kind: "at_block"</code> with <code>chain_id</code> and
-            <code>height</code> to fire on a block instead. <code>tag</code> is your app's label.
-            Returns <code>{ id }</code>.</p>
+            <p class="dev-ep-sig"><span class="dev-verb dev-post">POST</span> <code>/v1/rounds</code></p>
+            <p>Open a round. One of <code>opens_in</code> (seconds), <code>opens_at</code> (RFC 3339
+            or unix seconds) or <code>opens_at_block</code> (<code>chain_id</code> +
+            <code>height</code>), plus an optional <code>tag</code>. Send an
+            <code>Idempotency-Key</code> header and a retry returns the same round with 200 instead
+            of creating a second one. 201 and a <code>Location</code> on success.</p>
           </div>
           <div class="dev-ep">
-            <p class="dev-ep-sig"><span class="dev-verb dev-post">POST</span> <code>/v0/ciphertexts</code></p>
-            <p>Hand over an already-encrypted payload: <code>{ condition_id, sealed_blob_b64 }</code>.
-            It is validated properly (parsed, on curve, subgroup checked) and refused if it is not a
-            real ciphertext. Returns <code>{ ct_hash, code }</code>.</p>
+            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v1/rounds</code></p>
+            <p>Your rounds, newest first. Filter with <code>tag</code> and <code>status</code>
+            (<code>open</code>, <code>closing</code>, <code>opened</code>, <code>stalled</code>),
+            page with <code>limit</code> and <code>cursor</code>. Returns
+            <code>{ data, next_cursor, has_more }</code>.</p>
           </div>
           <div class="dev-ep">
-            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v0/reveals/{id}</code></p>
-            <p>404 until the cue fires; after it, every payload in the batch with its position and
-            a merkle root over the set. The decoys are flagged <code>is_dummy</code>.</p>
+            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v1/rounds/{id}</code></p>
+            <p>One round at any stage, always 200, with <code>status</code>, <code>seals</code>,
+            <code>opens_at</code> and <code>opened_at</code>. Carries an <code>ETag</code>: send
+            <code>If-None-Match</code> while you wait and get 304s until something changes.</p>
           </div>
           <div class="dev-ep">
-            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v0/conditions/{id}</code></p>
-            <p>Where a condition is up to: <code>pending</code>, <code>frozen</code>,
-            <code>revealed</code> or <code>stalled</code>, with its batches and their timings.</p>
+            <p class="dev-ep-sig"><span class="dev-verb dev-post">POST</span> <code>/v1/rounds/{id}/seals</code></p>
+            <p>Submit a ciphertext: <code>{ ciphertext_b64 }</code>. Parsed, on curve and subgroup
+            checked before it is stored. The seal's <code>id</code> is the SHA-256 of the
+            ciphertext, so the same submission twice is the same seal and needs no idempotency key.
+            409 once the round has closed.</p>
           </div>
           <div class="dev-ep">
-            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v0/committees/{id}</code></p>
-            <p>The public parameters you encrypt against, with a digest. The SDK checks that digest
-            against the params it was served, so a coordinator handing out inconsistent parameters
-            fails loudly instead of quietly.</p>
+            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v1/rounds/{id}/seals</code></p>
+            <p>Every seal in the round. Ids and positions while it is open; the same shape with
+            <code>payload_b64</code> filled in once it has opened.</p>
+          </div>
+          <div class="dev-ep">
+            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v1/seals/{id}</code></p>
+            <p>One seal, with its payload once the round has opened.</p>
+          </div>
+          <div class="dev-ep">
+            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v1/parameters</code></p>
+            <p>The public key material to encrypt against, with the digest a client checks before
+            using it, plus <code>operators</code>, <code>threshold</code> and
+            <code>batch_size</code>.</p>
+          </div>
+          <div class="dev-ep">
+            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v1</code></p>
+            <p>What this deployment accepts: payload cap, page sizes, rate limits, idempotency
+            window. Read it rather than hard-coding limits from prose.</p>
           </div>
           <div class="dev-ep">
             <p class="dev-ep-sig"><span class="dev-verb dev-file">FILE</span> <code>/peal.js</code></p>
-            <p>The client, as one ES module with the encryption compiled in. Import it from this
-            domain and you are done: <code>createCondition</code>, <code>seal</code>,
-            <code>getReveal</code>, <code>getPayloads</code> and <code>waitForReveal</code>. Works
-            in browsers and in Node. Point it elsewhere with <code>new Peal({ url })</code>.</p>
+            <p>The client as one ES module with the encryption compiled in:
+            <code>createRound</code>, <code>seal</code>, <code>getRound</code>,
+            <code>listRounds</code>, <code>listSeals</code>, <code>getSeal</code>,
+            <code>getPayloads</code>, <code>waitForOpen</code>. Browsers and Node.</p>
           </div>
-          <div class="dev-ep">
-            <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v0/stats</code></p>
-            <p>What the network is being used for, aggregated over every condition rather than the
-            last hundred. This page's numbers and the board below are this endpoint.</p>
-          </div>
+        </div>
+
+        <h3>Errors</h3>
+        <p>Every failure is <a href="https://www.rfc-editor.org/rfc/rfc9457" target="_blank"
+        rel="noopener">RFC 9457</a> problem+json with a stable <code>code</code> to branch on and a
+        <code>field</code> when one input is at fault. <code>detail</code> is for humans and its
+        wording is not part of the contract.</p>
+        <pre class="dev-code"><code>{
+  "type":   "https://peal.network/#/developers#invalid_tag",
+  "title":  "invalid request",
+  "status": 400,
+  "code":   "invalid_tag",
+  "detail": "a tag is up to 32 characters of a-z, 0-9, colon, hyphen or underscore",
+  "field":  "tag"
+}</code></pre>
+        <p>Codes you can expect: <code>missing_deadline</code>, <code>opens_in_past</code>,
+        <code>invalid_time</code>, <code>invalid_tag</code>, <code>invalid_cursor</code>,
+        <code>invalid_status</code>, <code>invalid_base64</code>, <code>invalid_ciphertext</code>,
+        <code>payload_too_large</code>, <code>round_closed</code>, <code>not_found</code>.</p>
+
+        <h3>Rate limits</h3>
+        <p>Every response carries <code>RateLimit-Limit</code>, <code>RateLimit-Remaining</code> and
+        <code>RateLimit-Reset</code>, so you can see your budget without having to be refused to
+        learn it.</p>
+
+        <h3>v0</h3>
+        <p>The older surface (<code>/v0/conditions</code>, <code>/v0/ciphertexts</code>,
+        <code>/v0/reveals</code>) is unchanged and still serves every existing client. New
+        integrations should use v1.</p>
         </div>
       </section>
 
@@ -579,12 +688,35 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
       and ${nf.format(s.recent.sealed)} payload${s.recent.sealed === 1 ? '' : 's'} in the last 24 hours.</p>`;
   };
 
+  /** Say so, rather than leaving the ellipsis there for ever.
+   *
+   * The first version swallowed every failure and left "…" on screen, which
+   * reads as a page still loading when it is in fact a page that has given up.
+   * A dash is honest and takes the same room. */
+  const paintUnavailable = (): void => {
+    const facts = root.querySelector('#dev-facts');
+    if (facts && facts.textContent?.includes('…')) {
+      for (const strong of facts.querySelectorAll('strong')) strong.textContent = '—';
+    }
+    const board = root.querySelector('#dev-board');
+    if (board && board.textContent?.trim() === 'loading…') {
+      board.innerHTML = '<p class="muted">the network numbers are not reachable from here '
+        + 'right now. they will fill in when they are.</p>';
+    }
+  };
+
   const poll = async (): Promise<void> => {
     try {
-      const res = await fetch(`${base}/v0/stats`);
-      if (res.ok) paintStats((await res.json()) as Stats);
+      const res = await fetch(`${base}/v0/stats`, { headers: { accept: 'application/json' } });
+      // A dev server with no coordinator behind it answers /v0 with the app
+      // shell, so a 200 is not on its own proof of an answer.
+      const isJson = res.headers.get('content-type')?.includes('application/json');
+      if (!res.ok || !isJson) throw new Error(`stats unavailable (${res.status})`);
+      const body = (await res.json()) as Stats;
+      if (typeof body?.totals?.conditions !== 'number') throw new Error('unexpected shape');
+      paintStats(body);
     } catch {
-      // A leaderboard is not worth an error banner. It fills in on the next tick.
+      paintUnavailable();
     }
     if (!stopped) timer = window.setTimeout(poll, 10_000);
   };
