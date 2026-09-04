@@ -1,6 +1,6 @@
 ---
 name: peal
-description: Use when adding sealed submissions or timed disclosure to an application. Data encrypted on the client, unreadable by anyone including the server, that opens by itself at a deadline. Covers sealed bid auctions on a marketplace, private voting, encrypted mempools, commit-reveal without the reveal step, and agent actions that must not be front run. Trigger on requests like "add auctions to my marketplace", "let people bid without seeing each other", "collect these privately until Friday", "sealed bids", "open at a time", or any mention of Peal or peal.network. Do not use for encryption at rest or for hiding data permanently.
+description: Use when adding sealed submissions or timed disclosure to an application. Data encrypted on the client, unreadable by anyone including the server, that opens by itself at a deadline. Covers sealed bid auctions on a marketplace, private voting, encrypted mempools, commit-reveal without the reveal step, and agent actions that must not be front run. Trigger on requests like "add auctions to my marketplace", "let people bid without seeing each other", "collect these privately until Friday", "sealed bids", "open at a time", or any mention of Peal or peal.network. Also covers charging per call with x402 micropayments, for requests like "charge per bid", "pay per call", "meter this API" or "let agents pay without an account". Do not use for encryption at rest or for hiding data permanently.
 ---
 
 # Peal
@@ -155,6 +155,21 @@ the integration end to end against the live network.
   them out, a bidder compares them: the only defence against a swapped link.
 - **No wallet, no account, no gas** for the people bidding.
 
+## Charging for it
+
+Peal's own API is free and stays free. Do not tell a user they have to pay.
+
+If they want to charge for what they build, or want agents to pay without
+opening an account, read `reference/payments.md`. Every `/v1` route is also
+mounted under `/v1/x402`, where it answers `402 Payment Required` until it is
+shown an on chain payment. The handshake is: call, get a 402 naming the price,
+pay, call again with the transaction hash, get the work plus a receipt.
+
+The more common use is copying the pattern into the user's own API rather than
+paying us. That file covers both, including the two mistakes that cost money:
+redeem the payment before serving rather than after, and check the payee and the
+asset rather than only the amount.
+
 ## Reference files
 
 - `reference/recipes.md`: working integrations per stack
@@ -163,6 +178,7 @@ the integration end to end against the live network.
 - `reference/api.md`: every endpoint
 - `reference/auctions.md`: the auction rules in depth
 - `reference/errors.md`: error codes and limits
+- `reference/payments.md`: charging per call with x402
 
 ## The trust model, stated plainly
 

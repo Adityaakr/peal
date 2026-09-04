@@ -5540,7 +5540,7 @@ textarea.live-input {
 
 .dev-rank {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 90px 72px 66px 62px;
+  grid-template-columns: 28px minmax(120px, 20%) minmax(90px, 1fr) 72px 66px 62px;
   align-items: center;
   gap: 10px;
   padding: 9px 4px;
@@ -7523,4 +7523,615 @@ body.docs-page main {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
+}
+
+/* ---------------------------------------------------------------- activity --
+   The dashboard at #/developers/network. It borrows the API reference's card:
+   white on the page's blue wash, hairline accent border, the same 16px radius
+   and the same blue-tinted shadow, so the two reference pages read as one set
+   rather than two designs that happen to share a site. */
+
+.act-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 4px 0 22px;
+}
+
+.act-range {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.act-range-btn {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: 600 13px/1 var(--mono);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.act-range-btn:hover {
+  color: var(--accent-strong);
+}
+
+.act-range-btn.is-on {
+  background: var(--accent);
+  color: #fff;
+}
+
+.act-asof {
+  margin: 0;
+  font: 400 13px/1.4 var(--mono);
+}
+
+/* Cards wrap rather than scroll: six of them at three across is a readable
+   block on a laptop and a single column on a phone, with no hidden seventh. */
+.act-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+  margin: 0 0 34px;
+}
+
+.act-card {
+  position: relative;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgb(37 99 235 / 5%), 0 8px 24px -16px rgb(37 99 235 / 22%);
+}
+
+/* The series colour as a spine down the left edge, so a card and its line in
+   the chart below are recognisably the same thing. */
+.act-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--card, var(--accent));
+}
+
+.act-card span {
+  display: block;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.act-card strong {
+  display: block;
+  margin: 9px 0 4px;
+  font-size: 27px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.act-card em {
+  font: 400 12px/1.3 var(--mono);
+  font-style: normal;
+  color: var(--muted-soft);
+}
+
+.act-panel {
+  position: relative;
+  margin: 0 0 30px;
+  padding: 18px 20px 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(37 99 235 / 5%), 0 8px 24px -16px rgb(37 99 235 / 22%);
+}
+
+.act-legend {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 6px;
+}
+
+.act-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  font: 500 12px/1 var(--mono);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, opacity 160ms ease;
+  opacity: 0.55;
+}
+
+.act-key i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.act-key.is-on {
+  opacity: 1;
+  color: var(--text);
+  border-color: var(--accent-border);
+}
+
+.act-chart {
+  min-height: 200px;
+}
+
+/* preserveAspectRatio is left at its default, so the chart scales without
+   shearing the strokes; non-scaling-stroke keeps a 2px line 2px at any width. */
+.ch {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.ch-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.ch-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.ch-area {
+  opacity: 0.07;
+}
+
+.ch-dot {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.ch-dot.is-on {
+  opacity: 1;
+}
+
+.ch-cross {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+  transition: opacity 120ms ease;
+}
+
+.ch-bar {
+  fill: #7c3aed;
+  opacity: 0.85;
+  transition: opacity 140ms ease;
+}
+
+.ch-bars:hover .ch-bar {
+  opacity: 0.45;
+}
+
+.ch-bars .ch-bar:hover {
+  opacity: 1;
+}
+
+.ch-ytick,
+.ch-xtick {
+  font: 500 11px var(--mono);
+  fill: var(--muted-soft);
+}
+
+.ch-ytick {
+  text-anchor: end;
+}
+
+.ch-xtick {
+  text-anchor: middle;
+}
+
+/* The readout follows the pointer along the panel, clamped to its edges by the
+   mount so it never hangs off the card. */
+.act-tip {
+  position: absolute;
+  bottom: 46px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 6px 20px -8px rgb(37 99 235 / 30%);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.act-tip[hidden] {
+  display: none;
+}
+
+.act-tip strong {
+  font: 600 12px/1 var(--mono);
+  color: var(--text);
+}
+
+.act-tip span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 400 12px/1.4 var(--mono);
+  color: var(--muted);
+}
+
+.act-tip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.act-tip b {
+  margin-left: auto;
+  padding-left: 14px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.lat {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lat-row {
+  display: grid;
+  grid-template-columns: 40px minmax(80px, 1fr) 78px minmax(0, 1.1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.lat-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.lat-bar {
+  height: 9px;
+  border-radius: 999px;
+  background: var(--accent-weak);
+  overflow: hidden;
+}
+
+.lat-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #0ea5e9, var(--accent));
+}
+
+.lat-val {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.lat-note {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .lat-row {
+    grid-template-columns: 36px 1fr 66px;
+  }
+
+  .lat-note {
+    display: none;
+  }
+
+  .act-card strong {
+    font-size: 23px;
+  }
+}
+
+/* -------------------------------------------------------------------- x402 --
+   The metered mode switch on the API reference, and the receipt each paid call
+   leaves under its run button. Same white card on blue as the endpoints it
+   sits above, so turning payment on does not feel like a different product. */
+
+.x402-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin: 22px 0 30px;
+  padding: 14px 18px;
+  border: 1px solid var(--accent-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff, var(--accent-weak));
+  box-shadow: 0 1px 2px rgb(37 99 235 / 5%), 0 8px 24px -16px rgb(37 99 235 / 22%);
+}
+
+.x402-bar-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.x402-bar-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.x402-bar-text strong {
+  font-size: 14px;
+  font-weight: 620;
+  color: var(--text);
+}
+
+.x402-bar-text span {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.x402-switch {
+  flex: none;
+  width: 46px;
+  height: 26px;
+  padding: 3px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+  transition: background 200ms ease, border-color 200ms ease;
+}
+
+.x402-switch i {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--muted-soft);
+  /* The same curve the docs pages enter on, so the site has one motion. */
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), background 200ms ease;
+}
+
+.x402-switch.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.x402-switch.is-on i {
+  background: #fff;
+  transform: translateX(20px);
+}
+
+.x402-wallet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.x402-k {
+  font: 600 10.5px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+
+.x402-wallet b {
+  margin-right: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.x402-r-note {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.x402-spin {
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border: 2px solid var(--accent-border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  display: inline-block;
+  vertical-align: -1px;
+  animation: x402-turn 700ms linear infinite;
+}
+
+@keyframes x402-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Someone who does not want motion still needs to know it is working, so the
+   spinner stops turning rather than disappearing. */
+@media (prefers-reduced-motion: reduce) {
+  .x402-spin {
+    animation: none;
+  }
+
+  .x402-switch i {
+    transition: none;
+  }
+}
+
+.x402-receipt {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 11px;
+  border: 1px solid var(--green-weak);
+  border-radius: 9px;
+  background: var(--green-weak);
+  font-size: 12.5px;
+}
+
+.x402-receipt[hidden] {
+  display: none;
+}
+
+.x402-paid {
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--green);
+  color: #fff;
+  font: 600 10.5px/1.5 var(--mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.x402-receipt a {
+  color: var(--accent-strong);
+  font-size: 12px;
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-border);
+}
+
+.x402-receipt a:hover {
+  border-bottom-color: var(--accent);
+}
+
+/* The demonstration on the metered calls page: a run button, then the steps of
+   the handshake as they actually happen. */
+.x402-demo {
+  margin: 18px 0 30px;
+  padding: 18px 20px;
+  border: 1px solid var(--accent-border);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(37 99 235 / 5%), 0 8px 24px -16px rgb(37 99 235 / 22%);
+}
+
+.x402-demo-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.x402-steps {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.x402-steps:empty {
+  margin: 0;
+}
+
+.x402-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 400 13px/1.5 var(--mono);
+  color: var(--muted);
+}
+
+/* A finished step gets a tick and a done step gets its colour, so the list is
+   readable at a glance without reading it. */
+.x402-step.is-done::before {
+  content: '✓';
+  color: var(--green);
+  font-weight: 700;
+}
+
+.x402-step.is-done {
+  color: var(--text);
+}
+
+.x402-step.is-failed::before {
+  content: '×';
+  color: var(--red);
+  font-weight: 700;
+}
+
+.x402-step.is-failed {
+  color: var(--red-text);
+}
+
+.x402-step a {
+  color: var(--accent-strong);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-border);
+}
+
+.x402-demo .api-out {
+  margin-top: 14px;
+}
+
+.doc-steps {
+  margin: 14px 0 22px;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.doc-steps li {
+  line-height: 1.6;
+}
+
+/* A callout for something the reader must not skim past: a limitation, or a
+   place where this implementation deliberately differs from a standard. */
+.doc-callout {
+  margin: 18px 0 24px;
+  padding: 15px 18px;
+  border: 1px solid var(--accent-border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent-weak);
+}
+
+.doc-callout p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.doc-callout p + p {
+  margin-top: 10px;
 }

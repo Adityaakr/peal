@@ -66,13 +66,14 @@ export const DOCS_NAV: DocsGroup[] = [
     label: 'Reference',
     items: [
       { label: 'API reference', href: '#/developers/api' },
+      { label: 'Metered calls (x402)', href: '#/developers/x402' },
       { label: 'Limits and errors', href: '#/developers/limits' },
     ],
   },
   {
     label: 'The network',
     items: [
-      { label: 'Live activity', href: '#/developers/network' },
+      { label: 'Activity', href: '#/developers/network' },
       { label: 'Roadmap', href: '#/developers/roadmap' },
     ],
   },

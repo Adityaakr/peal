@@ -12,6 +12,7 @@ import type { DocsPage } from '../../docs';
 import { esc } from '../../util';
 import { ENDPOINTS, GROUPS, type Endpoint, type Param } from './api-spec';
 import { base, client, shown } from './runner';
+import { Payer, meteredPath, payAndFetch, type Receipt } from '../../x402';
 
 /** Ids created by running one endpoint, offered to the next.
  *
@@ -115,6 +116,7 @@ function endpointHtml(e: Endpoint): string {
           sample payload in your browser and fills the field.</p>
           <button class="api-btn api-seal" type="button" data-seal="${esc(e.id)}">encrypt a sample</button>` : ''}
           <button class="api-btn api-run" type="button" data-run="${esc(e.id)}">run</button>
+          <div class="x402-receipt" data-receipt="${esc(e.id)}" hidden></div>
           <pre class="api-out" data-out="${esc(e.id)}" hidden></pre>
         </div>
 
@@ -133,10 +135,24 @@ export const apiReference: DocsPage = {
   lede: 'Every endpoint, with a playground on each one. The requests go to the live network, so what you see is what your own code will get.',
   wide: true,
   html: `
-    <p>Base URL <code>${esc(shown)}</code>. Everything is JSON. Nothing here needs a key, an
-    account or a payment, and every endpoint below can be run from this page.</p>
+    <p>Base URL <code>${esc(shown)}</code>. Everything is JSON. Nothing here needs a key or an
+    account, and every endpoint below can be run from this page. The switch below turns on
+    <a href="#/developers/x402">metered mode</a>, which sends each run through a paid twin of the
+    same endpoint; leave it off and the API is free, which is the default it ships as.</p>
     <p>Ids carry forward: run <strong>Open a round</strong> and the round id fills itself into the
     endpoints that need one, so you can work down the page without copying anything.</p>
+
+    <div class="x402-bar" id="x402-bar">
+      <div class="x402-bar-main">
+        <button type="button" class="x402-switch" id="x402-switch" role="switch"
+          aria-checked="false"><i></i></button>
+        <div class="x402-bar-text">
+          <strong>Pay per call with x402</strong>
+          <span id="x402-blurb">Off. Every endpoint on this page is free and needs no wallet.</span>
+        </div>
+      </div>
+      <div class="x402-wallet" id="x402-wallet" hidden></div>
+    </div>
 
     ${GROUPS.map(
       (g) => `
@@ -170,6 +186,101 @@ export const apiReference: DocsPage = {
 
   mount: (root) => {
     const cleanups: (() => void)[] = [];
+
+    // ---- x402 -------------------------------------------------------------
+    //
+    // Off by default, and that default is the honest one: the free API is the
+    // product, and a reader who has to pay before their first request never
+    // makes it. Turned on, every run below goes through the metered twin of the
+    // same endpoint and settles a real micropayment on Tempo first.
+    let paid = false;
+    const paidMode = (): boolean => paid;
+    const walletBox = root.querySelector<HTMLElement>('#x402-wallet');
+    const blurb = root.querySelector<HTMLElement>('#x402-blurb');
+
+    const say = (html: string): void => {
+      if (walletBox) walletBox.innerHTML = html;
+    };
+
+    const payer = new Payer({
+      onPhase: (phase, detail) => {
+        const said: Record<string, string> = {
+          asking: 'asking the endpoint what a call costs',
+          'creating-wallet': 'minting a keypair in this tab',
+          funding: `funding ${detail ? `${detail.slice(0, 10)}…` : 'it'} from the testnet, no faucet form`,
+          paying: `sending ${detail ?? 'the payment'}`,
+          confirming: 'waiting for the block',
+          retrying: 'paid, calling again with the receipt',
+        };
+        say(`<span class="x402-spin"></span>${esc(said[phase] ?? phase)}`);
+      },
+    });
+
+    const showReceipt = (id: string, receipt: Receipt | null): void => {
+      const host = root.querySelector<HTMLElement>(`[data-receipt="${CSS.escape(id)}"]`);
+      if (!host) return;
+      if (!receipt) {
+        host.hidden = true;
+        host.innerHTML = '';
+        return;
+      }
+      host.hidden = false;
+      host.innerHTML = `
+        <span class="x402-paid">paid</span>
+        <a href="${esc(receipt.explorer)}" target="_blank" rel="noopener" class="mono">
+          ${esc(receipt.transaction.slice(0, 14))}…${esc(receipt.transaction.slice(-8))}</a>
+        <span class="x402-r-note">settled on ${esc(receipt.network)}</span>`;
+      // Refresh the balance, since a call just spent some of it.
+      void refreshBalance();
+    };
+
+    let price: { display: string } | null = null;
+    const refreshBalance = async (): Promise<void> => {
+      if (!paid) return;
+      try {
+        const quote = await fetch(`${base}/v0/x402`).then((r) => r.json() as Promise<{
+          requirements?: { accepts?: { extra?: { priceDisplay?: string } }[] };
+        }>);
+        const req = quote.requirements?.accepts?.[0];
+        price = { display: req?.extra?.priceDisplay ?? 'a micropayment' };
+        const addr = payer.address;
+        const bal = req ? await payer.balance(req as never) : null;
+        say(
+          `<span class="x402-k">price</span><b>${esc(price.display)} a call</b>`
+          + (addr
+            ? `<span class="x402-k">this tab</span><b class="mono">${esc(addr.slice(0, 10))}…${esc(addr.slice(-6))}</b>`
+              + (bal ? `<span class="x402-k">balance</span><b>${esc(bal)}</b>` : '')
+            : '<span class="x402-r-note">a keypair is minted on your first paid call</span>'),
+        );
+      } catch {
+        say('<span class="x402-r-note">metered calls are not available on this deployment. '
+          + 'The free API is unaffected.</span>');
+      }
+    };
+
+    const setPaid = (on: boolean): void => {
+      paid = on;
+      const sw = root.querySelector<HTMLElement>('#x402-switch');
+      sw?.classList.toggle('is-on', on);
+      sw?.setAttribute('aria-checked', String(on));
+      if (walletBox) walletBox.hidden = !on;
+      if (blurb) {
+        blurb.textContent = on
+          ? 'On. Each run settles a real micropayment on Tempo, then calls the metered twin of the same endpoint.'
+          : 'Off. Every endpoint on this page is free and needs no wallet.';
+      }
+      for (const b of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-run]'))) {
+        b.textContent = on ? 'pay and run' : 'run';
+      }
+      if (on) void refreshBalance();
+    };
+
+    const sw = root.querySelector<HTMLElement>('#x402-switch');
+    if (sw) {
+      const toggle = (): void => setPaid(!paid);
+      sw.addEventListener('click', toggle);
+      cleanups.push(() => sw.removeEventListener('click', toggle));
+    }
 
     const valuesFor = (e: Endpoint): Record<string, string> => {
       const out: Record<string, string> = {};
@@ -280,18 +391,29 @@ export const apiReference: DocsPage = {
             );
           }
 
+          const paid = paidMode();
+          const url = `${base}${paid ? meteredPath(path) : path}${query ? `?${query}` : ''}`;
           const started = performance.now();
-          const res = await fetch(`${base}${path}${query ? `?${query}` : ''}`, {
-            method: e.method,
-            headers,
-            body,
-          });
+          let receipt: Receipt | null = null;
+          let payMs = 0;
+          let res: Response;
+          if (paid) {
+            const result = await payAndFetch(url, { method: e.method, headers, body }, payer);
+            res = result.response;
+            receipt = result.receipt;
+            payMs = result.payMs;
+          } else {
+            res = await fetch(url, { method: e.method, headers, body });
+          }
           const ms = Math.round(performance.now() - started);
           const text = await res.text();
 
           const budget = res.headers.get('ratelimit-remaining');
           const etag = res.headers.get('etag');
           const meta = [`${res.status} ${res.statusText}`.trim(), `${ms}ms`]
+            // Which part of the wait was the chain, said plainly, so the paid
+            // path does not read as a slow API.
+            .concat(payMs ? [`${payMs < 1000 ? `${payMs}ms` : `${(payMs / 1000).toFixed(1)}s`} of it paying`] : [])
             .concat(budget ? [`${budget} requests left`] : [])
             .concat(etag ? [`etag ${etag}`] : [])
             .join('  ·  ');
@@ -312,11 +434,14 @@ export const apiReference: DocsPage = {
 
           out.textContent = `${meta}\n\n${pretty}`;
           out.classList.toggle('is-error', !res.ok);
+          showReceipt(e.id, receipt);
         } catch (err) {
           out.textContent = err instanceof Error ? err.message : String(err);
           out.classList.add('is-error');
+          showReceipt(e.id, null);
         } finally {
           btn.disabled = false;
+          btn.textContent = paidMode() ? 'pay and run' : 'run';
         }
       };
       btn.addEventListener('click', () => void onRun());

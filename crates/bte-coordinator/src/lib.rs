@@ -1,6 +1,7 @@
 //! bte-coordinator library surface, consumed by the binary (src/main.rs) and
 //! in-process integration tests.
 
+pub mod activity;
 pub mod api;
 pub mod auction;
 pub mod currency;
@@ -14,3 +15,4 @@ pub mod pages;
 pub mod state;
 pub mod stats;
 pub mod v1;
+pub mod x402;

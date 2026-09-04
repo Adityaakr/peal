@@ -252,7 +252,7 @@ pub fn plain_shell() -> Response {
 /// handler sees is not the one anyone shares. Without og:url a crawler treats
 /// whatever it fetched as canonical, and clients that key their preview cache
 /// on it can end up holding the card under the wrong address.
-fn canonical_url(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
+pub(crate) fn canonical_url(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
     let host = headers.get(header::HOST).and_then(|v| v.to_str().ok())?;
     // Rejected rather than escaped: a Host header is client controlled, and the
     // only safe thing to build a canonical URL from is one that looks like a

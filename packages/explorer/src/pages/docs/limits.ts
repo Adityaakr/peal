@@ -23,8 +23,8 @@ export const limits: DocsPage = {
         merkle root over the set, and positions are derived from the ciphertext hashes rather than
         arrival order, so a batch cannot be reordered or quietly edited. The
         <a href="#/protocol">protocol reference</a> documents the committee, the ceremony and the
-        full threat model, and the <a href="#/developers/network">live activity page</a> shows every reveal the network has
-        performed.</p>
+        full threat model, and the <a href="#/developers/network">activity dashboard</a> counts every reveal the
+        network has performed.</p>
         <p>This is the v0 devnet. Parameters, addresses and endpoints are stable, and the committee
         composition is documented in the protocol reference.</p>`,
 };

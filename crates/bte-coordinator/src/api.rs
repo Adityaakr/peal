@@ -49,12 +49,24 @@ pub fn router(app: App) -> Router {
         .route("/committees", get(list_committees).post(register_committee))
         .route("/committees/{id}", get(get_committee))
         .route("/stats", get(crate::stats::get_stats))
+        .route("/activity", get(crate::activity::get_activity))
+        .route("/x402", get(crate::x402::price))
+        .route("/skill-installs", post(crate::activity::skill_installed))
         .route("/healthz", get(|| async { Json(json!({"ok": true})) }));
     Router::new()
         .nest("/v0", api)
         .nest("/v1", crate::intents::routes())
         .nest("/v1", crate::v1::routes())
         .nest("/v1", crate::auction::routes())
+        // The same handlers a second time, behind HTTP 402. Mounted from the
+        // same routers rather than reimplemented, so a paid call cannot drift
+        // from the free one it is a twin of.
+        .nest(
+            "/v1/x402",
+            crate::v1::routes().merge(crate::auction::routes()).layer(
+                axum::middleware::from_fn_with_state(app.clone(), crate::x402::require_payment),
+            ),
+        )
         // The app shell for a short link, with that auction's own preview meta
         // written into it. Caddy rewrites `/{name}` onto this; the browser's
         // address bar keeps the pretty path. See names.rs.

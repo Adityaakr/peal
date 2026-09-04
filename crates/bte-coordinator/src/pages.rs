@@ -120,6 +120,17 @@ pub const PAGES: &[Page] = &[
         index: true,
     },
     Page {
+        path: "developers/x402",
+        route: "#/developers/x402",
+        title: "Metered API calls with x402 on Peal.",
+        description:
+            "Charge per sealed action with HTTP 402: the server quotes a price, the caller pays on \
+             Tempo, and the response carries the transaction hash. No account, no API key, no \
+             invoice. The free API is unchanged.",
+        schema: "TechArticle",
+        index: true,
+    },
+    Page {
         path: "developers/limits",
         route: "#/developers/limits",
         title: "Peal API limits and errors.",
@@ -131,9 +142,9 @@ pub const PAGES: &[Page] = &[
     Page {
         path: "developers/network",
         route: "#/developers/network",
-        title: "Live activity on the Peal network.",
+        title: "Activity on the Peal network.",
         description:
-            "Conditions, payloads sealed, reveals performed and the median time to open, aggregated from the coordinator's own tables, with a board of what is being built.",
+            "Rounds created, payloads sealed, batches opened, how long opening takes and how often the agent skill is installed, counted from the coordinator's own tables. No visitor tracking: there are no accounts on this network to count.",
         schema: "WebPage",
         index: false,
     },
@@ -435,7 +446,11 @@ pub fn llms_txt(origin: &str) -> String {
 
 /// Today, as YYYY-MM-DD, for the sitemap's lastmod.
 pub fn today() -> String {
-    let unix = crate::db::unix_now();
+    day_of(crate::db::unix_now())
+}
+
+/// A unix instant as YYYY-MM-DD in UTC.
+pub fn day_of(unix: i64) -> String {
     let days = unix.div_euclid(86_400);
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;

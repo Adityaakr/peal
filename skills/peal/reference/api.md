@@ -92,6 +92,16 @@ closed check as any seal.
   is a permanent onchain write done from your own key
 - `GET /peal.js`: the client, one ES module with the encryption compiled in
 
+## Metered twins
+
+Every route above is also mounted under `/v1/x402`, where it answers 402 until
+shown an on chain payment. `POST /v1/rounds` has a twin at
+`POST /v1/x402/rounds`, and so on. Same body, same response.
+
+The free routes stay free. See `reference/payments.md`.
+
+- `GET /v0/x402`: what a metered call costs, without triggering a 402
+
 ## Rate limits
 
 50 requests a second per IP, bursting to 400. Every response carries
