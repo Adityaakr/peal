@@ -55,6 +55,14 @@ CREATE TABLE IF NOT EXISTS batch_slots (
     batch_id   INTEGER PRIMARY KEY REFERENCES batches(id),
     slots_json TEXT NOT NULL
 );
+-- Retry safety for POST /v1/rounds. Keyed by the caller's Idempotency-Key so a
+-- timed-out create returns the original round instead of making a second one.
+CREATE TABLE IF NOT EXISTS idempotency (
+    key           TEXT PRIMARY KEY,
+    round_id      TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    created_at    INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS reveals (
     condition_id  TEXT PRIMARY KEY REFERENCES conditions(id),
     revealed_at   INTEGER NOT NULL,
