@@ -265,17 +265,24 @@ fn canonical_url(headers: &axum::http::HeaderMap, name: &str) -> Option<String> 
     {
         return None;
     }
-    let scheme = headers
-        .get("x-forwarded-proto")
-        .and_then(|v| v.to_str().ok())
-        .filter(|s| *s == "http" || *s == "https")
-        .unwrap_or(
-            if host.starts_with("localhost") || host.starts_with("127.0.0.1") {
-                "http"
-            } else {
-                "https"
-            },
-        );
+    // A public host is https; only a local one may be http.
+    //
+    // x-forwarded-proto is deliberately NOT trusted to downgrade a public host.
+    // Railway terminates TLS at its edge and forwards the internal leg as
+    // http, so taking that header at face value published every canonical URL
+    // and every og:url as http://peal.network, declaring the insecure address
+    // the authoritative one. The header only gets a say for a local host, where
+    // it can legitimately be either.
+    let local = host.starts_with("localhost") || host.starts_with("127.0.0.1");
+    let scheme = if local {
+        headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .filter(|s| *s == "http" || *s == "https")
+            .unwrap_or("http")
+    } else {
+        "https"
+    };
     Some(format!("{scheme}://{host}/{name}"))
 }
 
@@ -728,14 +735,16 @@ mod tests {
             canonical_url(&head(&[("host", "localhost:9911")]), "nepal").as_deref(),
             Some("http://localhost:9911/nepal"),
         );
-        // The edge's own answer wins over the guess.
+        // A proxy reporting http for a public host is describing its own
+        // internal leg, not what the visitor used. Trusting it published every
+        // canonical URL as http://peal.network.
         assert_eq!(
             canonical_url(
                 &head(&[("host", "peal.network"), ("x-forwarded-proto", "http")]),
                 "n"
             )
             .as_deref(),
-            Some("http://peal.network/n"),
+            Some("https://peal.network/n"),
         );
 
         // A Host header is written by whoever made the request. Anything that

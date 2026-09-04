@@ -7,11 +7,11 @@
 	# route fell through to the static file server, which answers a POST with
 	# 405 and an empty body. The client then failed inside res.json() with
 	# "unexpected end of JSON input", which says nothing about the cause.
-	handle /v0/* {
-		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
-	}
-
-	handle /v1/* {
+	# `/v1/*` does not match `/v1` itself, so the service description a client is
+	# told to read for its limits fell through to the app and answered with a
+	# web page. Both spellings, for both versions.
+	@api path /v0 /v0/* /v1 /v1/*
+	handle @api {
 		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
 	}
 
