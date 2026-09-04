@@ -41,39 +41,67 @@ pub fn count(app: &App, kind: &str) {
     );
 }
 
-/// Where a request was served from, without ever handling an address.
+/// Where a call came from, without ever handling an address.
 ///
-/// The edge that terminated TLS already knows roughly where the caller is, and
-/// says so in a header. Reading that is the whole implementation: no IP is
-/// parsed, no IP is stored, no GeoIP database is consulted and no third party
-/// is asked. The resolution is a handful of metros rather than a city, which is
-/// the right resolution for "who is using this" and the wrong one for following
-/// anybody.
+/// Three sources, in the order they are trusted, and the answer is tagged with
+/// which one it came from so the page never presents one as the other:
 ///
-/// The alternative, resolving x-forwarded-for against a GeoIP database, would
-/// mean the coordinator handling visitor addresses to draw a chart. On a
-/// product whose entire claim is that it cannot read what you send it, that is
-/// not a trade worth making for a nicer map.
+///   cc:XX   a real country, from a CDN that resolved it at the edge
+///   tz:Zone the caller's own timezone, which browsers know about themselves
+///   edge:X  the edge that served the request
+///
+/// The edge is last because it is the least informative and was, on its own,
+/// actively misleading: a single region deployment answers every request from
+/// the same edge, so a panel built on it showed one city with every call
+/// against it and looked like a finding. It was measuring where this server
+/// runs.
+///
+/// What is deliberately not here is a lookup of x-forwarded-for against a
+/// geolocation database. That is the only way to place a server to server
+/// caller, and it means this coordinator handling visitor addresses in order to
+/// draw a chart. On a product whose whole claim is that it cannot read what you
+/// send it, that is not a trade worth making for a map. Callers that report
+/// nothing are counted as reporting nothing.
 fn region_of(headers: &axum::http::HeaderMap) -> String {
-    // cf-ipcountry first, so putting Cloudflare in front upgrades this to real
-    // country resolution with no code change.
-    if let Some(cc) = headers.get("cf-ipcountry").and_then(|v| v.to_str().ok()) {
-        let cc = cc.trim().to_uppercase();
-        if cc.len() == 2 && cc.chars().all(|c| c.is_ascii_alphabetic()) {
-            return cc;
+    // A real country, resolved at a CDN edge. Nothing to configure here: put
+    // Cloudflare in front and this starts answering with countries.
+    for name in ["cf-ipcountry", "x-vercel-ip-country"] {
+        if let Some(cc) = headers.get(name).and_then(|v| v.to_str().ok()) {
+            let cc = cc.trim().to_uppercase();
+            if cc.len() == 2 && cc.chars().all(|c| c.is_ascii_alphabetic()) && cc != "XX" {
+                return format!("cc:{cc}");
+            }
         }
     }
-    for name in ["x-railway-edge", "x-vercel-ip-country", "fly-region"] {
-        if let Some(v) = headers.get(name).and_then(|v| v.to_str().ok()) {
-            let v: String = v
-                .trim()
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-                .take(16)
-                .collect();
-            if !v.is_empty() {
-                return v.to_lowercase();
-            }
+
+    // The caller's own timezone. A browser knows this about itself and it is
+    // not derived from an address: hundreds of zones, no identity, and the
+    // caller chooses to send it. It is the only signal here that says anything
+    // about where a person actually is.
+    if let Some(tz) = headers.get("x-peal-tz").and_then(|v| v.to_str().ok()) {
+        let tz: String = tz
+            .trim()
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '+'))
+            .take(40)
+            .collect();
+        // One slash, Area/Location, is what an IANA zone looks like. Anything
+        // else is a caller inventing keys, and a counter table is not the place
+        // to find out what they can make up.
+        if tz.matches('/').count() == 1 && tz.len() >= 5 {
+            return format!("tz:{tz}");
+        }
+    }
+
+    if let Some(v) = headers.get("x-railway-edge").and_then(|v| v.to_str().ok()) {
+        let v: String = v
+            .trim()
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .take(16)
+            .collect();
+        if !v.is_empty() {
+            return format!("edge:{}", v.to_lowercase());
         }
     }
     "unknown".to_string()

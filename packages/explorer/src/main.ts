@@ -29,6 +29,7 @@ import { apiReference } from './pages/docs/api';
 import { limits as limitsDocs } from './pages/docs/limits';
 import { network as networkDocs } from './pages/docs/network';
 import { x402Page } from './pages/docs/x402';
+import { installRegionHeader } from './region';
 import { roadmap } from './pages/docs/roadmap';
 import { renderSealView } from './pages/seal-view';
 
@@ -326,6 +327,11 @@ function route(): void {
     cleanup = renderHome(root);
   }
 }
+
+// Before anything makes a request, so the first call of the session carries it
+// too. See region.ts: a coarse, self reported timezone on our own API paths and
+// nowhere else.
+installRegionHeader();
 
 // One React root for Privy, mounted outside the router element so navigation
 // never unmounts the session.
