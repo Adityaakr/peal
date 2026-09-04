@@ -1104,3 +1104,22 @@ async fn v1_round_opens_and_carries_the_payload() {
         b"the payload"
     );
 }
+/// A retried create must not split one auction into two.
+#[tokio::test]
+async fn v1_idempotency_key_makes_create_retry_safe() {
+    let h = harness().await;
+    let body = json!({"opens_in": 600, "tag": "retry"});
+
+    let (first_status, first) = h.post_keyed("/v1/rounds", "abc-123", body.clone()).await;
+    let (second_status, second) = h.post_keyed("/v1/rounds", "abc-123", body.clone()).await;
+
+    assert_eq!(first_status, 201);
+    // 200, not 201: the second call created nothing.
+    assert_eq!(second_status, 200);
+    assert_eq!(first["id"], second["id"]);
+
+    // A different key is a different intent, so it makes a second round.
+    let (status, other) = h.post_keyed("/v1/rounds", "different", body).await;
+    assert_eq!(status, 201);
+    assert_ne!(other["id"], first["id"]);
+}
