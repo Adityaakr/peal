@@ -23,6 +23,10 @@ export interface Round {
   opens_at_block?: { chain_id: number; height: number };
   seals: number;
   slots_including_decoys: number;
+  /** Public from the moment the round is created, unlike anything sealed to it. */
+  title: string | null;
+  description: string | null;
+  image_url: string | null;
   created_at: string;
   created_at_unix: number;
   opened_at: string | null;
@@ -49,6 +53,12 @@ export interface CreateRoundOptions {
   /** Retry safety. Send the same key twice and you get the same round back
    * rather than a second one. */
   idempotencyKey?: string;
+  /** What this round is, for whoever opens it before it closes. PUBLIC: this is
+   * the opposite of a sealed payload, and it is readable from creation. */
+  title?: string;
+  description?: string;
+  /** An https picture. Anything else is refused rather than sanitised. */
+  imageUrl?: string;
 }
 
 /** An error carrying the API\'s own machine-readable code. */
@@ -98,6 +108,9 @@ export class Peal {
       body.opens_in = 3600;
     }
     if (opts.tag) body.tag = opts.tag;
+    if (opts.title) body.title = opts.title;
+    if (opts.description) body.description = opts.description;
+    if (opts.imageUrl) body.image_url = opts.imageUrl;
 
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (opts.idempotencyKey) headers['idempotency-key'] = opts.idempotencyKey;
