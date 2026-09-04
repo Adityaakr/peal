@@ -27,3 +27,6 @@ tempo-keys.env
 
 # Privy app id can live in env; the id itself is public but the override is local
 .env.local
+
+# Built by `pnpm build` (scripts/build-peal-js.mjs). Generated, not source.
+packages/explorer/public/peal.js
