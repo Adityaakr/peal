@@ -1275,3 +1275,62 @@ async fn v1_reposting_a_seal_is_the_same_seal() {
     let (_, round) = h.get(&format!("/v1/rounds/{id}")).await;
     assert_eq!(round["seals"], 1, "a retry created a second seal");
 }
+/// Polling a deadline should be nearly free.
+#[tokio::test]
+async fn v1_etag_lets_a_poller_wait_cheaply() {
+    let h = harness().await;
+    let (_, round) = h.post("/v1/rounds", json!({"opens_in": 600})).await;
+    let id = round["id"].as_str().unwrap().to_string();
+
+    let (status, _, headers) = h.get_full(&format!("/v1/rounds/{id}")).await;
+    assert_eq!(status, 200);
+    let tag = headers["etag"].to_str().unwrap().to_string();
+
+    let unchanged = h
+        .client
+        .get(format!("{}/v1/rounds/{id}", h.base))
+        .header("if-none-match", &tag)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unchanged.status().as_u16(), 304);
+
+    // Something actually happened, so the tag must move.
+    let mut rng = bte_crypto::os_rng();
+    let ct = seal(&h.params, b"changes things", &mut rng).unwrap();
+    h.post(
+        &format!("/v1/rounds/{id}/seals"),
+        json!({"ciphertext_b64": B64.encode(ct.to_bytes())}),
+    )
+    .await;
+    let changed = h
+        .client
+        .get(format!("{}/v1/rounds/{id}", h.base))
+        .header("if-none-match", &tag)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(changed.status().as_u16(), 200);
+}
+/// Both time forms in, one form out.
+#[tokio::test]
+async fn v1_accepts_rfc3339_or_unix_and_answers_in_both() {
+    let h = harness().await;
+    let future = crate_unix_now() + 3600;
+
+    let (_, a) = h.post("/v1/rounds", json!({"opens_at": future})).await;
+    assert_eq!(a["opens_at_unix"], future);
+
+    let iso = a["opens_at"].as_str().unwrap().to_string();
+    let (_, b) = h.post("/v1/rounds", json!({"opens_at": iso})).await;
+    assert_eq!(
+        b["opens_at_unix"], future,
+        "RFC 3339 round trip drifted: {b}"
+    );
+}
+fn crate_unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
