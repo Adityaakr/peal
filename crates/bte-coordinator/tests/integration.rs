@@ -1445,3 +1445,75 @@ async fn v1_listing_seals_after_the_round_opens_returns_payloads() {
     let (status, _) = h.get("/v1").await;
     assert_eq!(status, 200, "the coordinator stopped responding");
 }
+
+/// A round can say what it is, so a bidder knows what they are bidding on
+/// before anything opens.
+///
+/// This is PUBLIC and the test says so plainly: it is readable from creation,
+/// unlike every payload sealed to the round.
+#[tokio::test]
+async fn v1_round_can_describe_itself() {
+    let h = harness().await;
+    let (status, round) = h
+        .post(
+            "/v1/rounds",
+            json!({
+                "opens_in": 600,
+                "tag": "shop",
+                "title": "Signed tour poster",
+                "description": "One of a kind, ships worldwide.",
+                "image_url": "https://images.example.com/poster.jpg",
+            }),
+        )
+        .await;
+    assert_eq!(status, 201, "{round}");
+    assert_eq!(round["title"], "Signed tour poster");
+    assert_eq!(round["image_url"], "https://images.example.com/poster.jpg");
+
+    // It survives the round trip, and comes back on the list as well as the
+    // single fetch: a gallery needs it without N+1 requests.
+    let id = round["id"].as_str().unwrap();
+    let (_, fetched) = h.get(&format!("/v1/rounds/{id}")).await;
+    assert_eq!(fetched["description"], "One of a kind, ships worldwide.");
+    let (_, listed) = h.get("/v1/rounds?tag=shop").await;
+    assert_eq!(
+        listed["data"][0]["image_url"],
+        "https://images.example.com/poster.jpg"
+    );
+
+    // Absent stays absent rather than becoming an empty string.
+    let (_, bare) = h.post("/v1/rounds", json!({"opens_in": 600})).await;
+    assert_eq!(bare["title"], Value::Null);
+    assert_eq!(bare["image_url"], Value::Null);
+}
+
+/// A picture address arrives from whoever created the round and is rendered by
+/// everyone who opens it, so anything that is not an https URL is refused
+/// rather than sanitised: the caller can fix it and we cannot guess.
+#[tokio::test]
+async fn v1_refuses_a_picture_that_is_not_https() {
+    let h = harness().await;
+    for bad in [
+        "http://images.example.com/x.jpg",
+        "javascript:alert(1)",
+        "data:image/png;base64,AAAA",
+        "//images.example.com/x.jpg",
+        "https://images.example.com/a b.jpg",
+    ] {
+        let (status, body) = h
+            .post("/v1/rounds", json!({"opens_in": 600, "image_url": bad}))
+            .await;
+        assert_eq!(status, 400, "accepted {bad}: {body}");
+        assert_eq!(body["code"], "invalid_image_url", "{body}");
+        assert_eq!(body["field"], "image_url");
+    }
+
+    // And the text has bounds, so one round cannot carry a novel.
+    let (_, body) = h
+        .post(
+            "/v1/rounds",
+            json!({"opens_in": 600, "title": "x".repeat(200)}),
+        )
+        .await;
+    assert_eq!(body["code"], "invalid_title");
+}
