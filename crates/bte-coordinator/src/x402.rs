@@ -198,10 +198,37 @@ pub async fn price(State(app): State<App>) -> Response {
     let Some(cfg) = Config::from_env() else {
         return not_configured();
     };
-    let redeemed: i64 = {
+    let (redeemed, recent) = {
         let conn = app.0.db.lock().unwrap();
-        conn.query_row("SELECT COUNT(*) FROM x402_payments", [], |r| r.get(0))
-            .unwrap_or(0)
+        let redeemed: i64 = conn
+            .query_row("SELECT COUNT(*) FROM x402_payments", [], |r| r.get(0))
+            .unwrap_or(0);
+        // The last few settlements, so the page can show what has actually
+        // happened rather than only offering a button. Everything here is
+        // already public: a transaction hash and a payer address are on a
+        // public chain the moment the payment is made, and the payer is an
+        // ephemeral key the browser minted for one call.
+        let recent = conn
+            .prepare(
+                "SELECT tx_hash, payer, amount, redeemed_at FROM x402_payments
+                  ORDER BY redeemed_at DESC LIMIT 8",
+            )
+            .and_then(|mut stmt| {
+                let rows = stmt
+                    .query_map([], |r| {
+                        Ok(json!({
+                            "transaction": r.get::<_, String>(0)?,
+                            "payer": r.get::<_, String>(1)?,
+                            "amount": r.get::<_, String>(2)?,
+                            "at": r.get::<_, i64>(3)?,
+                        }))
+                    })?
+                    .filter_map(Result::ok)
+                    .collect::<Vec<_>>();
+                Ok(rows)
+            })
+            .unwrap_or_default();
+        (redeemed, recent)
     };
     (
         StatusCode::OK,
@@ -209,6 +236,7 @@ pub async fn price(State(app): State<App>) -> Response {
         json!({
             "enabled": true,
             "paymentsRedeemed": redeemed,
+            "recent": recent,
             "requirements": requirements(&cfg, "/v1/x402/*"),
         })
         .to_string(),
