@@ -69,6 +69,9 @@ interface Activity {
 const nf = new Intl.NumberFormat();
 const RANGES = [7, 30, 90] as const;
 
+/** The single ink every stat card's sparkline is drawn in. */
+const CARD_INK = '#7c8ea8';
+
 const SERIES = [
   { key: 'rounds', label: 'rounds', colour: PALETTE.rounds },
   { key: 'sealed', label: 'sealed', colour: PALETTE.sealed },
@@ -273,57 +276,58 @@ export const network: DocsPage = {
     const paintCards = (a: Activity): void => {
       const cards = el('#act-cards');
       if (!cards) return;
+      // One ink for every card.
+      //
+      // Six cards each in their own colour turned a row of numbers into a
+      // colour chart: the eye reads the palette before it reads a single
+      // figure, and the hues carried no meaning a reader could use. Multi
+      // series charts still need distinct colours because they are comparing
+      // lines; a card is not comparing anything.
       const items: {
         label: string;
         value: string;
         sub: string;
-        colour: string;
         series: number[];
       }[] = [
         {
           label: 'skill installs',
           value: nf.format(a.totals.skill_installs),
           sub: `${nf.format(windowed(a, 'skill_installs'))} in ${days}d`,
-          colour: PALETTE.installs,
           series: a.series.map((d) => d.skill_installs),
         },
         {
           label: 'api calls',
           value: nf.format(a.calls),
           sub: `in the last ${days}d`,
-          colour: PALETTE.calls,
           series: a.series.map((d) => d.calls),
         },
         {
           label: 'rounds',
           value: nf.format(a.totals.rounds),
           sub: `${nf.format(windowed(a, 'rounds'))} in ${days}d`,
-          colour: PALETTE.rounds,
           series: a.series.map((d) => d.rounds),
         },
         {
           label: 'payloads sealed',
           value: nf.format(a.totals.sealed),
           sub: `${nf.format(windowed(a, 'sealed'))} in ${days}d`,
-          colour: PALETTE.sealed,
           series: a.series.map((d) => d.sealed),
         },
         {
           label: 'x402 calls paid',
           value: nf.format(a.totals.paid_calls),
           sub: `${nf.format(windowed(a, 'paid_calls'))} in ${days}d`,
-          colour: PALETTE.paid,
           series: a.series.map((d) => d.paid_calls),
         },
       ];
       cards.innerHTML = items
         .map(
           (it, i) => `
-        <div class="act-card" style="--card:${it.colour}">
+        <div class="act-card">
           <span>${esc(it.label)}</span>
           <strong>${esc(it.value)}</strong>
           <em>${esc(it.sub)}</em>
-          ${sparkline(it.series, it.colour, `c${i}`)}
+          ${sparkline(it.series, CARD_INK, `c${i}`)}
         </div>`,
         )
         .join('');

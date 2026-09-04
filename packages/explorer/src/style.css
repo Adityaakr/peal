@@ -7596,20 +7596,16 @@ body.docs-page main {
   box-shadow: 0 1px 2px rgb(37 99 235 / 5%), 0 8px 24px -16px rgb(37 99 235 / 22%);
 }
 
-/* The series colour as a dot beside the label, not as a slab down the edge.
-   A three pixel bar of saturated colour is the loudest thing on a card whose
-   job is to show a number, and with six cards in a row it reads as a paint
-   chart. The dot ties the card to its line in the chart below at a fraction of
-   the weight, and the sparkline underneath already carries the colour. */
-.act-card span::before {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 7px;
-  border-radius: 50%;
-  background: var(--card, var(--accent));
-  vertical-align: 1px;
+/* No marker beside the label at all.
+   
+   This went from a three pixel colour bar down the card edge, to a coloured
+   dot, and both were the same mistake in different sizes: decoration on a card
+   whose whole job is one number, carrying no meaning a reader could use. The
+   label is set in small uppercase mono and that is enough to mark it as a
+   label. A hairline separates it from the figure instead. */
+.act-card span {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 
 .act-card span {
@@ -7622,7 +7618,7 @@ body.docs-page main {
 
 .act-card strong {
   display: block;
-  margin: 9px 0 4px;
+  margin: 11px 0 4px;
   font-size: 27px;
   font-weight: 650;
   letter-spacing: -0.02em;
