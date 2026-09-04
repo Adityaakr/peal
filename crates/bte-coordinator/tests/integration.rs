@@ -1123,3 +1123,46 @@ async fn v1_idempotency_key_makes_create_retry_safe() {
     assert_eq!(status, 201);
     assert_ne!(other["id"], first["id"]);
 }
+/// The query v0 could not answer, which is what made tags decorative.
+#[tokio::test]
+async fn v1_rounds_filter_by_tag_and_page_without_gaps() {
+    let h = harness().await;
+    for i in 0..7 {
+        h.post("/v1/rounds", json!({"opens_in": 600 + i, "tag": "mine"}))
+            .await;
+    }
+    for i in 0..3 {
+        h.post("/v1/rounds", json!({"opens_in": 600 + i, "tag": "theirs"}))
+            .await;
+    }
+
+    let (status, page) = h.get("/v1/rounds?tag=mine&limit=3").await;
+    assert_eq!(status, 200, "{page}");
+    assert_eq!(page["data"].as_array().unwrap().len(), 3);
+    assert_eq!(page["has_more"], true);
+
+    // Walk every page and prove the cursor is total: rows created inside the
+    // same second must not be skipped or repeated.
+    let mut seen: Vec<String> = Vec::new();
+    let mut cursor = page["next_cursor"].as_str().map(str::to_owned);
+    for row in page["data"].as_array().unwrap() {
+        seen.push(row["id"].as_str().unwrap().to_string());
+        assert_eq!(row["tag"], "mine");
+    }
+    while let Some(c) = cursor {
+        let (_, next) = h
+            .get(&format!("/v1/rounds?tag=mine&limit=3&cursor={c}"))
+            .await;
+        for row in next["data"].as_array().unwrap() {
+            seen.push(row["id"].as_str().unwrap().to_string());
+            assert_eq!(row["tag"], "mine");
+        }
+        cursor = next["next_cursor"].as_str().map(str::to_owned);
+    }
+    seen.sort();
+    seen.dedup();
+    assert_eq!(seen.len(), 7, "cursor skipped or repeated rows");
+
+    let (_, by_status) = h.get("/v1/rounds?status=open&tag=theirs").await;
+    assert_eq!(by_status["data"].as_array().unwrap().len(), 3);
+}
