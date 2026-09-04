@@ -38,6 +38,10 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
 COPY demos ./demos
 COPY examples ./examples
+# The agent skill, served from the site root. The explorer build copies it
+# into public/, so it has to be in the context or the build fails outright
+# rather than quietly shipping a site whose install command 404s.
+COPY skills ./skills
 COPY --from=wasm /app/crates/bte-wasm/pkg-seal ./crates/bte-wasm/pkg-seal
 COPY --from=wasm /app/crates/bte-wasm/pkg-verify ./crates/bte-wasm/pkg-verify
 RUN pnpm install --frozen-lockfile
