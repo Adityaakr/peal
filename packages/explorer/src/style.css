@@ -5678,3 +5678,54 @@ textarea.live-input {
     padding-left: 14px;
   }
 }
+
+/* The one-glance integration, in the header. Smaller than a worked example
+   because it is a promise about scale, not something to copy. */
+.dev-teaser {
+  margin-top: 20px;
+  font-size: 12.5px;
+}
+
+/* The use case we most want built, given its own weight above the grid. */
+.dev-headline {
+  margin: 20px 0 26px;
+  padding: 22px 24px;
+  border: 1px solid var(--accent-border);
+  border-radius: 16px;
+  background: var(--accent-weak);
+}
+
+.dev-headline-kicker {
+  margin: 0 0 6px !important;
+  color: var(--accent);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dev-headline h3 {
+  margin: 0 0 10px;
+  font-size: 20px;
+}
+
+.dev-headline p {
+  margin: 0 0 10px;
+  font-size: 14.5px;
+}
+
+.dev-headline p:last-child {
+  margin-bottom: 0;
+}
+
+/* Reads as a link, behaves as a button, because an href with a second hash
+   would take the router off this page. */
+.dev-jump {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}

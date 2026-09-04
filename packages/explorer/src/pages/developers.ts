@@ -204,12 +204,27 @@ const reveal = await res.json();`,
         commitments, then opening them only when the rules say. Everything arrives sealed, nothing
         is readable before the deadline (not by the other participants, not by you, not by us), and
         when the moment comes the whole set opens at once.</p>
+
+        <p class="lede"><strong>If your product has a deadline, it probably has this bug.</strong>
+        Anywhere people submit something that others must not see yet, whoever runs the server can
+        see it. You can promise you do not look. You cannot prove it, and your users cannot check.
+        That single fact is why sealed bids get run over email, why fair launches get front run,
+        and why every commit-reveal scheme leaks a way for the loser to simply never reveal.</p>
+
         <p class="lede">The hard part was never the encryption. It is that somebody has to hold the
         key until the deadline, and whoever holds it can peek, leak, or quietly decline to open it
-        when the answer does not suit them. Peal removes that person: no single party can open a
-        batch early, and nobody has to come back to reveal, because the network does it.</p>
-        <p class="lede">Three HTTP calls. No signup, no API key, no payment on the devnet. Every
-        example below runs against the live network from this page.</p>
+        when the answer does not suit them. Peal removes that person. No single party can open a
+        batch early, and nobody has to come back to reveal, because the network does it on its
+        own.</p>
+
+        <p class="lede">What you add is three HTTP calls. No signup, no API key, no wallet and no
+        gas for the people submitting. Every example below runs against the live network from this
+        page, so you can see it work before you write anything.</p>
+
+        <pre class="dev-code dev-teaser"><code>// the whole integration, more or less
+const { id } = await createCondition({ in_secs: 3600, tag: 'my-app' });
+await peal.seal(userSubmission, id);          // unreadable from here on
+const { slots } = await getReveal(id);        // everything, at the deadline</code></pre>
         <div class="facts" id="dev-facts" aria-label="live network numbers">
           <div><span>conditions</span><strong>…</strong></div>
           <div><span>payloads sealed</span><strong>…</strong></div>
@@ -265,8 +280,27 @@ const reveal = await res.json();`,
       <section id="uses" class="scroll-reveal">
         <h2>What to build</h2>
         <p>The shape is always the same: people commit to something they cannot take back, and
-        nobody can see anyone else's until they all open together. That turns out to be the
-        missing piece in a lot of things.</p>
+        nobody can see anyone else's until they all open together. That turns out to be the missing
+        piece in a lot of things.</p>
+
+        <div class="dev-headline">
+          <p class="dev-headline-kicker">the one we most want built</p>
+          <h3>Sealed actions for autonomous agents, paid per call</h3>
+          <p><strong>A pay-per-use API that lets agents seal an action, bid, prediction or message
+          until a deadline, then automatically reveal it with cryptographic proof.</strong></p>
+          <p>Agents are the users who need this most and can integrate it fastest. An agent that
+          submits in the clear can be read and front run by the next agent in the queue. An agent
+          cannot sign up for your service, accept terms, or hold an API key it did not earn, but it
+          can pay for one request. So the natural shape is a single priced call: seal this until
+          then, and prove afterwards that nobody could have touched it.</p>
+          <p>Peal supplies the part nobody can build for themselves, which is the evidence that no
+          one could peek, copy, alter or open early. <a href="https://docs.x402.org/introduction"
+          target="_blank" rel="noopener">x402</a> supplies payment and discovery without an
+          account. <button type="button" class="dev-jump" data-section="next">The API shape and
+          pricing are sketched below</button>, and are not built yet. The primitive underneath them
+          is live on this page today.</p>
+        </div>
+
         <div class="dev-uses">
           <div class="dev-use">
             <h3>Sealed bid auctions</h3>
@@ -573,10 +607,53 @@ const reveal = await res.json();`,
     });
   });
 
+  // ---- section nav ----
+  // Buttons rather than anchors throughout: an href="#next" would rewrite
+  // location.hash and take the router off this page entirely.
+  const nav = root.querySelector<HTMLElement>('.protocol-nav');
+  const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('.protocol-nav [data-section]'));
+  const setCurrent = (id: string): void => {
+    for (const b of buttons) {
+      if (b.dataset.section === id) b.setAttribute('aria-current', 'true');
+      else b.removeAttribute('aria-current');
+    }
+  };
+  const jump = (event: Event): void => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-section]');
+    if (!button) return;
+    const id = button.dataset.section ?? '';
+    setCurrent(id);
+    document.getElementById(id)?.scrollIntoView({
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    });
+  };
+  nav?.addEventListener('click', jump);
+  // The same handler for links inside the prose that point at a section.
+  const inline = Array.from(root.querySelectorAll<HTMLButtonElement>('.dev-jump'));
+  for (const b of inline) b.addEventListener('click', jump);
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((e) => e.isIntersecting)
+        .sort((a, b) => Math.abs(a.boundingClientRect.top) - Math.abs(b.boundingClientRect.top));
+      const id = visible[0]?.target.id;
+      if (id) setCurrent(id);
+    },
+    { rootMargin: '-10% 0px -76% 0px' },
+  );
+  for (const [id] of sections) {
+    const el = document.getElementById(id);
+    if (el) observer.observe(el);
+  }
+
   const stopReveal = mountScrollReveal(root);
   return () => {
     stopped = true;
     if (timer) window.clearTimeout(timer);
+    nav?.removeEventListener('click', jump);
+    for (const b of inline) b.removeEventListener('click', jump);
+    observer.disconnect();
     stopReveal();
     document.title = previousTitle;
   };
