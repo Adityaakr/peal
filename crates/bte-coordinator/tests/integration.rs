@@ -965,3 +965,142 @@ async fn stats_window_is_bounded() {
         assert_eq!(stats["window_secs"], want, "asked for {asked}");
     }
 }
+
+// ---------------------------------------------------------------- v1 API ----
+
+impl Harness {
+    async fn get_full(&self, path: &str) -> (u16, Value, reqwest::header::HeaderMap) {
+        let resp = self
+            .client
+            .get(format!("{}{path}", self.base))
+            .send()
+            .await
+            .unwrap();
+        let status = resp.status().as_u16();
+        let headers = resp.headers().clone();
+        (status, resp.json().await.unwrap_or(Value::Null), headers)
+    }
+
+    /// Wait for a round to fall due, then freeze, share and finalise it.
+    ///
+    /// The wait is real rather than skipped: v1 refuses to create a round that
+    /// opens in the past, because nothing could be sealed to one, so a test
+    /// cannot shortcut by backdating the deadline.
+    async fn drive_to_reveal(&self, round_id: &str) {
+        let (_, round) = self.get(&format!("/v1/rounds/{round_id}")).await;
+        if let Some(at) = round["opens_at_unix"].as_i64() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+            if at >= now {
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    ((at - now) as u64 + 1) * 1000,
+                ))
+                .await;
+            }
+        }
+        // Freeze: the round is due, so the engine pads and creates batches.
+        engine::tick(&self.app).await.unwrap();
+        for secret in &self.secrets {
+            self.work_and_share(secret).await;
+        }
+        engine::tick(&self.app).await.unwrap();
+        let (_, round) = self.get(&format!("/v1/rounds/{round_id}")).await;
+        assert_eq!(round["status"], "opened", "round never opened: {round}");
+    }
+
+    async fn post_keyed(&self, path: &str, key: &str, body: Value) -> (u16, Value) {
+        let resp = self
+            .client
+            .post(format!("{}{path}", self.base))
+            .header("idempotency-key", key)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        let status = resp.status().as_u16();
+        (status, resp.json().await.unwrap_or(Value::Null))
+    }
+}
+/// The lifecycle a caller actually follows, on one URL, with no 404 standing in
+/// for a state.
+#[tokio::test]
+async fn v1_round_reports_every_stage_on_one_url() {
+    let h = harness().await;
+
+    let (status, round) = h
+        .post("/v1/rounds", json!({"opens_in": 600, "tag": "shop"}))
+        .await;
+    assert_eq!(status, 201, "{round}");
+    let id = round["id"].as_str().unwrap().to_string();
+    assert_eq!(round["status"], "open");
+    assert_eq!(round["tag"], "shop");
+    assert_eq!(round["seals"], 0);
+    // ISO for people, unix for arithmetic, and never a relative time on the way
+    // out.
+    assert!(
+        round["opens_at"].as_str().unwrap().ends_with('Z'),
+        "{round}"
+    );
+    assert!(round["opens_at_unix"].as_i64().unwrap() > 0);
+    assert!(round.get("opens_in").is_none());
+
+    let mut rng = bte_crypto::os_rng();
+    let ct = seal(&h.params, b"a sealed bid", &mut rng).unwrap();
+    let (status, sealed) = h
+        .post(
+            &format!("/v1/rounds/{id}/seals"),
+            json!({"ciphertext_b64": B64.encode(ct.to_bytes())}),
+        )
+        .await;
+    assert_eq!(status, 201, "{sealed}");
+    // The id is the hash of the ciphertext, so the caller can compute it and
+    // never has to trust our answer about which row is theirs.
+    assert_eq!(sealed["id"], hex::encode(ct.hash()));
+
+    let (status, open) = h.get(&format!("/v1/rounds/{id}")).await;
+    assert_eq!(status, 200);
+    assert_eq!(open["status"], "open");
+    assert_eq!(open["seals"], 1);
+    assert_eq!(open["opened_at"], Value::Null);
+
+    // While open, seals list without payloads. There is nothing to leak: the
+    // coordinator does not hold one.
+    let (_, listed) = h.get(&format!("/v1/rounds/{id}/seals")).await;
+    assert_eq!(listed["data"].as_array().unwrap().len(), 1);
+    assert!(listed["data"][0].get("payload_b64").is_none(), "{listed}");
+}
+#[tokio::test]
+async fn v1_round_opens_and_carries_the_payload() {
+    let h = harness().await;
+    let (_, round) = h.post("/v1/rounds", json!({"opens_in": 1})).await;
+    let id = round["id"].as_str().unwrap().to_string();
+
+    let mut rng = bte_crypto::os_rng();
+    let ct = seal(&h.params, b"the payload", &mut rng).unwrap();
+    h.post(
+        &format!("/v1/rounds/{id}/seals"),
+        json!({"ciphertext_b64": B64.encode(ct.to_bytes())}),
+    )
+    .await;
+    let seal_id = hex::encode(ct.hash());
+
+    h.drive_to_reveal(&id).await;
+
+    let (status, round) = h.get(&format!("/v1/rounds/{id}")).await;
+    assert_eq!(status, 200);
+    assert_eq!(round["status"], "opened", "{round}");
+    assert_ne!(round["opened_at"], Value::Null);
+    // The count of real seals never includes the decoys, and the field that
+    // does is named so nobody reads it as a participant count.
+    assert_eq!(round["seals"], 1);
+    assert!(round["slots_including_decoys"].as_i64().unwrap() > 1);
+
+    let (_, one) = h.get(&format!("/v1/seals/{seal_id}")).await;
+    assert_eq!(one["status"], "opened", "{one}");
+    assert_eq!(
+        B64.decode(one["payload_b64"].as_str().unwrap()).unwrap(),
+        b"the payload"
+    );
+}
