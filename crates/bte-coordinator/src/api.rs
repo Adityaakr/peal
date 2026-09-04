@@ -83,6 +83,13 @@ pub fn router(app: App) -> Router {
             app.clone(),
             rate_limit,
         ))
+        // Outside the rate limiter, so a refused request still counts as one
+        // that was attempted. A chart that only shows what got through cannot
+        // show somebody hitting a wall.
+        .layer(axum::middleware::from_fn_with_state(
+            app.clone(),
+            crate::activity::observe,
+        ))
         .layer(axum::middleware::from_fn(cors))
         .with_state(app)
 }

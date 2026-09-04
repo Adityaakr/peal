@@ -138,6 +138,29 @@ function renderNamedAuction(root: HTMLElement, name: string): Cleanup {
   };
 }
 
+// Pages live at real paths as well as fragments, because a fragment is never
+// sent to a server and search engines do not index them: the whole site had one
+// indexable URL. The server hands /developers the developers page's meta; this
+// is the half that makes the app render it. Kept in step with
+// crates/bte-coordinator/src/pages.rs, which owns the same list.
+const PAGE_PATHS = new Set([
+  'developers', 'developers/quickstart', 'developers/agents', 'developers/howitworks',
+  'developers/auctions', 'developers/createauction', 'developers/usecases',
+  'developers/api', 'developers/x402', 'developers/limits', 'developers/network',
+  'developers/roadmap',
+  'protocol', 'mempool', 'auction', 'auctions', 'execution', 'philosophy', 'create', 'app',
+]);
+
+/** Whether a fragment names a developer page, so it can be upgraded to a path. */
+function hashIsDocs(hash: string): boolean {
+  return hash.startsWith('#/developers') && PAGE_PATHS.has(hash.slice(2));
+}
+
+/** Whether a path is one of the developer pages served at a clean URL. */
+function isDocsPath(path: string): boolean {
+  return path === 'developers' || path.startsWith('developers/');
+}
+
 function route(): void {
   if (cleanup) cleanup();
   const root = document.getElementById('app');
@@ -148,27 +171,48 @@ function route(): void {
   // one indexable URL. The server hands /developers the developers page's meta;
   // this is the half that makes the app render it. Kept in step with
   // crates/bte-coordinator/src/pages.rs, which owns the same list.
-  const PAGE_PATHS = new Set([
-    'developers', 'developers/quickstart', 'developers/agents', 'developers/howitworks',
-    'developers/auctions', 'developers/createauction', 'developers/usecases',
-    'developers/api', 'developers/x402', 'developers/limits', 'developers/network',
-    'developers/roadmap',
-    'protocol', 'mempool', 'auction', 'auctions', 'execution', 'philosophy', 'create', 'app',
-  ]);
   const pagePath = location.pathname.replace(/^\/|\/$/g, '');
-  if (PAGE_PATHS.has(pagePath)) {
-    if (!location.hash || location.hash === '#' || location.hash === '#/') {
+  // The developer section is addressed by path alone: peal.network/developers,
+  // no fragment. It is the URL people paste into a channel and the one the
+  // sitemap advertises, and a `#` in the middle of it makes a documentation
+  // link read like an anchor into somewhere else.
+  //
+  // Everywhere else keeps the older behaviour of path plus fragment. The
+  // fragment is still what this router branches on, so nothing below had to
+  // learn about paths: a clean developer path is translated into the fragment
+  // it means, and the address bar is left alone.
+  const hashIsEmpty = !location.hash || location.hash === '#' || location.hash === '#/';
+  const cleanPath = isDocsPath(pagePath) ? pagePath : null;
+
+  if (cleanPath) {
+    if (!hashIsEmpty && location.hash !== `#/${cleanPath}`) {
+      // A link out of the docs, followed while a docs path was in the bar. The
+      // fragment is the truth, so the stale path goes.
+      history.replaceState(null, '', `/${location.hash}`);
+    } else if (!hashIsEmpty) {
+      // An older `/developers#/developers` link. The fragment says nothing the
+      // path does not, so it goes rather than sitting there looking like an
+      // anchor into somewhere else.
+      history.replaceState(null, '', `/${cleanPath}`);
+    }
+  } else if (PAGE_PATHS.has(pagePath)) {
+    if (hashIsEmpty) {
       // replace, not assign: the address bar keeps the path a crawler indexed
       // and a person can copy, while the app routes on the fragment it knows.
       history.replaceState(null, '', `/${pagePath}#/${pagePath}`);
     } else if (location.hash !== `#/${pagePath}`) {
-      // Navigated away from this page while its path was still in the bar. The
-      // hash is the truth, so the stale path goes.
       history.replaceState(null, '', `/${location.hash}`);
     }
+  } else if (hashIsDocs(location.hash)) {
+    // Somebody followed an old `peal.network/#/developers/api` link. Upgrade it
+    // in place, so what they copy out of the bar afterwards is the clean one.
+    history.replaceState(null, '', `/${location.hash.slice(2)}`);
   }
 
-  const hash = location.hash || '#/';
+  // A clean docs path is translated into the fragment it means, so nothing
+  // below had to learn about paths. A fragment still wins when there is one, so
+  // every `#/developers/...` link ever shared keeps working.
+  const hash = hashIsEmpty && cleanPath ? `#/${cleanPath}` : location.hash || '#/';
   // A bare path is only a short link when there is no hash asking for something
   // else. Following a nav link from `/shoonya` should go to that page, not stay
   // stuck on the auction, so a hash always wins and the path is then normalised
@@ -178,7 +222,7 @@ function route(): void {
   // URL a crawler indexed and a person copied.
   const shortLink = location.pathname.match(/^\/([a-z0-9-]{3,32})\/?$/);
   const named = shortLink && !PAGE_PATHS.has(shortLink[1]!) ? shortLink : null;
-  const hashIsBare = !location.hash || location.hash === '#' || location.hash === '#/';
+  const hashIsBare = hashIsEmpty;
   if (named && !hashIsBare) {
     history.replaceState(null, '', `/${location.hash}`);
   } else if (named && hashIsBare) {
@@ -280,4 +324,29 @@ mountAuth();
 mountNav();
 
 window.addEventListener('hashchange', route);
+// Back and forward across pushed docs paths, which change no fragment and so
+// fire no hashchange.
+window.addEventListener('popstate', route);
+
+// Links into the developer section navigate by path. Written once here rather
+// than in every docs page, so a new cross reference is an ordinary `#/...`
+// anchor and still lands on a clean URL.
+document.addEventListener('click', (ev) => {
+  if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) {
+    return;
+  }
+  const anchor = (ev.target as HTMLElement | null)?.closest?.('a');
+  const href = anchor?.getAttribute('href');
+  if (!anchor || !href || !hashIsDocs(href)) return;
+  // Anything asking to open elsewhere is left to the browser.
+  if (anchor.target && anchor.target !== '_self') return;
+  ev.preventDefault();
+  const path = `/${href.slice(2)}`;
+  if (location.pathname !== path || location.hash) {
+    history.pushState(null, '', path);
+  }
+  route();
+  window.scrollTo({ top: 0 });
+});
+
 route();
