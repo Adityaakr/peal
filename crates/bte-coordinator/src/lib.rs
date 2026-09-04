@@ -8,6 +8,7 @@ pub mod engine;
 pub mod intents;
 pub mod merkle;
 pub mod names;
+pub mod pages;
 pub mod state;
 pub mod stats;
 pub mod v1;

@@ -131,12 +131,38 @@ function route(): void {
   const root = document.getElementById('app');
   if (!root) return;
   root.innerHTML = '';
+  // Pages live at real paths as well as fragments, because a fragment is never
+  // sent to a server and search engines do not index them: the whole site had
+  // one indexable URL. The server hands /developers the developers page's meta;
+  // this is the half that makes the app render it. Kept in step with
+  // crates/bte-coordinator/src/pages.rs, which owns the same list.
+  const PAGE_PATHS = new Set([
+    'developers', 'protocol', 'mempool', 'auction', 'auctions',
+    'execution', 'philosophy', 'create', 'app',
+  ]);
+  const pagePath = location.pathname.replace(/^\/|\/$/g, '');
+  if (PAGE_PATHS.has(pagePath)) {
+    if (!location.hash || location.hash === '#' || location.hash === '#/') {
+      // replace, not assign: the address bar keeps the path a crawler indexed
+      // and a person can copy, while the app routes on the fragment it knows.
+      history.replaceState(null, '', `/${pagePath}#/${pagePath}`);
+    } else if (location.hash !== `#/${pagePath}`) {
+      // Navigated away from this page while its path was still in the bar. The
+      // hash is the truth, so the stale path goes.
+      history.replaceState(null, '', `/${location.hash}`);
+    }
+  }
+
   const hash = location.hash || '#/';
   // A bare path is only a short link when there is no hash asking for something
   // else. Following a nav link from `/shoonya` should go to that page, not stay
   // stuck on the auction, so a hash always wins and the path is then normalised
   // away rather than trailing along in the address bar.
-  const named = location.pathname.match(/^\/([a-z0-9-]{3,32})\/?$/);
+  // Page paths are never auction names, or the normalisation below would strip
+  // /developers off the address bar the instant it loaded, throwing away the
+  // URL a crawler indexed and a person copied.
+  const shortLink = location.pathname.match(/^\/([a-z0-9-]{3,32})\/?$/);
+  const named = shortLink && !PAGE_PATHS.has(shortLink[1]!) ? shortLink : null;
   const hashIsBare = !location.hash || location.hash === '#' || location.hash === '#/';
   if (named && !hashIsBare) {
     history.replaceState(null, '', `/${location.hash}`);

@@ -1517,3 +1517,110 @@ async fn v1_refuses_a_picture_that_is_not_https() {
         .await;
     assert_eq!(body["code"], "invalid_title");
 }
+
+// -------------------------------------------------------------------- seo ---
+
+/// Every page in the table appears in the sitemap unless it is deliberately a
+/// live view rather than a document, and the sitemap is generated from the same
+/// table as the pages, so it cannot fall behind them.
+#[tokio::test]
+async fn seo_sitemap_lists_every_indexable_page() {
+    use bte_coordinator::pages;
+    let xml = pages::sitemap("https://peal.network", "2026-09-04");
+    for page in pages::PAGES.iter().filter(|p| p.index) {
+        let loc = if page.path.is_empty() {
+            "<loc>https://peal.network</loc>".to_string()
+        } else {
+            format!("<loc>https://peal.network/{}</loc>", page.path)
+        };
+        assert!(xml.contains(&loc), "sitemap is missing {}", page.path);
+    }
+    for page in pages::PAGES.iter().filter(|p| !p.index) {
+        assert!(
+            !xml.contains(&format!("/{}</loc>", page.path)),
+            "{} is a live view and should not be in the sitemap",
+            page.path
+        );
+    }
+    assert!(xml.starts_with("<?xml"));
+}
+
+/// robots.txt must be robots.txt. It used to fall through to the SPA and answer
+/// with an HTML page, which is a worse answer than a 404 to the crawler
+/// deciding whether the rest of the site is worth reading.
+#[tokio::test]
+async fn seo_robots_points_at_the_sitemap_and_keeps_crawlers_out_of_the_api() {
+    let robots = bte_coordinator::pages::robots("https://peal.network");
+    assert!(robots.starts_with("User-agent: *"));
+    assert!(robots.contains("Sitemap: https://peal.network/sitemap.xml"));
+    // The API is for programs. Crawling it spends everyone's budget for nothing.
+    assert!(robots.contains("Disallow: /v0/"));
+    assert!(robots.contains("Disallow: /v1/"));
+}
+
+/// The structured data has to parse, and its nodes have to be distinct: two
+/// nodes of one type with different ids is a graph a parser has to guess at.
+#[tokio::test]
+async fn seo_structured_data_is_a_well_formed_graph() {
+    use bte_coordinator::pages;
+    for page in pages::PAGES {
+        let script = pages::json_ld(page, "https://peal.network");
+        let json = script
+            .trim_start_matches("<script type=\"application/ld+json\">")
+            .trim_end_matches("</script>");
+        let parsed: Value = serde_json::from_str(json)
+            .unwrap_or_else(|e| panic!("{} produced invalid JSON-LD: {e}", page.path));
+        let graph = parsed["@graph"].as_array().unwrap();
+        assert!(!graph.is_empty(), "{} has an empty graph", page.path);
+
+        let ids: Vec<&str> = graph.iter().filter_map(|n| n["@id"].as_str()).collect();
+        let mut unique = ids.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(ids.len(), unique.len(), "{} repeats an @id", page.path);
+    }
+
+    // The home page carries the product itself, which is the node an answer
+    // engine reads when somebody asks what this is.
+    let home = pages::json_ld(&pages::PAGES[0], "https://peal.network");
+    assert!(home.contains("\"SoftwareApplication\""));
+    assert!(home.contains("\"Organization\""));
+
+    // And the developer page answers the questions people actually ask.
+    let devs = pages::find("developers").unwrap();
+    let ld = pages::json_ld(devs, "https://peal.network");
+    assert!(ld.contains("\"FAQPage\""));
+    assert!(ld.contains("How do I encrypt data until a specific time?"));
+}
+
+/// llms.txt is the one piece of answer engine optimisation entirely under our
+/// control: it is what a model reads when asked what this is.
+#[tokio::test]
+async fn seo_llms_txt_describes_the_product_and_links_the_pages() {
+    let txt = bte_coordinator::pages::llms_txt("https://peal.network");
+    assert!(txt.starts_with("# Peal Network"));
+    // The convention is a blockquote summary directly under the heading.
+    assert!(txt.contains("\n> Peal is an API"));
+    // The three calls, so a model can answer "how do I use it" concretely.
+    assert!(txt.contains("POST https://peal.network/v1/rounds"));
+    for page in bte_coordinator::pages::PAGES.iter().filter(|p| p.index) {
+        assert!(
+            txt.contains(page.title),
+            "llms.txt is missing {}",
+            page.path
+        );
+    }
+}
+
+/// A page path must never be treated as an auction name, and vice versa.
+#[tokio::test]
+async fn seo_page_paths_and_auction_names_do_not_collide() {
+    use bte_coordinator::pages;
+    assert!(pages::find("developers").is_some());
+    assert!(
+        pages::find("/protocol/").is_some(),
+        "slashes should be tolerated"
+    );
+    assert!(pages::find("nepal-relief").is_none());
+    assert!(pages::find("").is_some(), "the empty path is the home page");
+}

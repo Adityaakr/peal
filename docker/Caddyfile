@@ -15,6 +15,23 @@
 		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
 	}
 
+	# Crawler documents, generated from the page table so the sitemap cannot
+	# fall behind the pages. Without these, /robots.txt fell through to the SPA
+	# fallback and answered with an HTML page, which is a worse answer than a
+	# 404 to the crawler deciding whether to read the rest of the site.
+	@crawl path /robots.txt /sitemap.xml /llms.txt
+	handle @crawl {
+		rewrite * /crawl{path}
+		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
+	}
+
+	# The home page needs its own title and structured data, not the shell's.
+	@root path / /index.html
+	handle @root {
+		rewrite * /home
+		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
+	}
+
 	# A short link is a path, so unlike a fragment link it reaches us and can
 	# carry a real preview. The coordinator serves the same shell with that
 	# auction's name, description and picture in its meta tags; the rewrite is
@@ -50,7 +67,7 @@
 	# all, which Caddy turns into a 502 before any response exists to handle.
 	# Scoped to short links so ordinary errors are still ordinary errors.
 	handle_errors {
-		@named_error path_regexp ^/([a-z0-9-]{3,32})/?$
+		@named_error path_regexp ^(/|/([a-z0-9-]{3,32})/?)$
 		handle @named_error {
 			root * /srv/explorer
 			rewrite * /index.html

@@ -58,6 +58,8 @@ pub fn router(app: App) -> Router {
         // written into it. Caddy rewrites `/{name}` onto this; the browser's
         // address bar keeps the pretty path. See names.rs.
         .route("/link/{name}", get(crate::names::named_shell))
+        .route("/home", get(crate::names::root_shell))
+        .route("/crawl/{doc}", get(crate::names::crawler_doc))
         // Bounded by the one route that carries bulk: a sealed blob arrives
         // base64'd inside JSON, so 4/3 of the blob cap plus slack for the
         // surrounding fields. This is what a request may BUFFER, so it is kept

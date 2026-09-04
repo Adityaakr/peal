@@ -99,8 +99,16 @@ pub async fn named_shell(
         None => return (StatusCode::NOT_FOUND, "explorer shell not found").into_response(),
     };
 
+    let canonical = canonical_url(&headers, &name);
+
+    // A page path wins over a name lookup. See pages.rs for why that precedence
+    // is the right one and what it costs.
+    if let Some(page) = crate::pages::find(&name) {
+        return page_response(&shell, page, canonical.as_deref());
+    }
+
     let html = match preview_for(&app, &name).await {
-        Some(p) => inject(&shell, &p, canonical_url(&headers, &name).as_deref()),
+        Some(p) => inject(&shell, &p, canonical.as_deref()),
         None => shell,
     };
 
@@ -112,6 +120,94 @@ pub async fn named_shell(
             // a short cache is all the edge needs and it keeps a bad preview
             // from being pinned for hours.
             (header::CACHE_CONTROL, "public, max-age=60"),
+        ],
+        html,
+    )
+        .into_response()
+}
+
+/// robots.txt, sitemap.xml and llms.txt, each with the content type a crawler
+/// expects. Generated from the page table rather than kept as static files, so
+/// adding a page cannot leave the sitemap behind.
+pub async fn crawler_doc(Path(doc): Path<String>, headers: axum::http::HeaderMap) -> Response {
+    let origin = canonical_url(&headers, "")
+        .and_then(|c| c.rsplit_once('/').map(|(o, _)| o.to_string()))
+        .unwrap_or_else(|| "https://peal.network".to_string());
+
+    let (body, content_type) = match doc.as_str() {
+        "robots.txt" => (crate::pages::robots(&origin), "text/plain; charset=utf-8"),
+        "llms.txt" => (crate::pages::llms_txt(&origin), "text/plain; charset=utf-8"),
+        "sitemap.xml" => {
+            // Dated from the build, which is when the content last changed.
+            let today = crate::pages::today();
+            (
+                crate::pages::sitemap(&origin, &today),
+                "application/xml; charset=utf-8",
+            )
+        }
+        _ => return (StatusCode::NOT_FOUND, "not found").into_response(),
+    };
+
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        body,
+    )
+        .into_response()
+}
+
+/// The site root, which Caddy sends here so the home page gets its own title
+/// and structured data rather than the shell's defaults.
+pub async fn root_shell(headers: axum::http::HeaderMap) -> Response {
+    let Some(shell) = read_shell() else {
+        return (StatusCode::NOT_FOUND, "explorer shell not found").into_response();
+    };
+    let home = &crate::pages::PAGES[0];
+    let canonical = canonical_url(&headers, "");
+    page_response(&shell, home, canonical.as_deref())
+}
+
+/// One page, with its own title, description, canonical URL and structured
+/// data written into the shell.
+fn page_response(shell: &str, page: &crate::pages::Page, canonical: Option<&str>) -> Response {
+    let origin = canonical
+        .and_then(|c| c.rsplit_once('/').map(|(o, _)| o.to_string()))
+        .unwrap_or_else(|| "https://peal.network".to_string());
+    let url = canonical.map(str::to_owned).unwrap_or_else(|| {
+        if page.path.is_empty() {
+            origin.clone()
+        } else {
+            format!("{origin}/{}", page.path)
+        }
+    });
+
+    let mut html = replace_title(shell, &esc(page.title));
+    html = replace_meta(&html, "og:title", &esc(page.title));
+    html = replace_meta(&html, "description", &esc(page.description));
+    html = replace_meta(&html, "og:description", &esc(page.description));
+
+    // A canonical and an og:url on every page. Without one, a page reachable at
+    // both /developers and /developers/ is two documents competing with each
+    // other for the same words.
+    let head = format!(
+        "<link rel=\"canonical\" href=\"{u}\" />\n    \
+         <meta property=\"og:url\" content=\"{u}\" />\n    {ld}\n    ",
+        u = esc(&url),
+        ld = crate::pages::json_ld(page, &origin),
+    );
+    html = match html.find("</head>") {
+        Some(at) => format!("{}{head}{}", &html[..at], &html[at..]),
+        None => html,
+    };
+
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=300"),
         ],
         html,
     )
