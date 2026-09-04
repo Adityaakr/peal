@@ -5684,6 +5684,14 @@ textarea.live-input {
   }
 }
 
+/* The protocol article has a single lede and zeroes its margin. This page opens
+   with four paragraphs, so they need space between them; scoped to .dev-article
+   so the protocol page keeps the spacing it was designed with. Adjacent-sibling
+   rather than a blanket margin, so no gap is added after the last one. */
+.dev-article .lede + .lede {
+  margin-top: 18px;
+}
+
 /* The one-glance integration, in the header. Smaller than a worked example
    because it is a promise about scale, not something to copy. */
 .dev-teaser {
