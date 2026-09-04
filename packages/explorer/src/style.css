@@ -8135,3 +8135,225 @@ body.docs-page main {
 .doc-callout p + p {
   margin-top: 10px;
 }
+
+/* ------------------------------------------------------ dashboard charts --
+   Sparklines in the stat cards, the three panel grid, the donut, the ranked
+   bar lists and the latency histogram. All on the same white card over the
+   page's blue wash as the rest of the reference. */
+
+.act-card {
+  padding-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The sparkline is the floor of the card: full bleed to the edges, so the card
+   reads as a small chart with a number on it rather than a number with a
+   decoration underneath. */
+.spark {
+  display: block;
+  width: calc(100% + 36px);
+  margin: 10px -18px -14px;
+  height: 48px;
+}
+
+.act-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin: 0 0 30px;
+  align-items: start;
+}
+
+.act-grid .act-panel {
+  margin: 0;
+  padding: 18px 20px 20px;
+}
+
+.act-panel h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.act-panel-note {
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ---- donut ---- */
+
+.donut-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.donut {
+  width: 100%;
+  max-width: 180px;
+  height: auto;
+}
+
+.donut-arc {
+  transition: opacity 160ms ease;
+}
+
+.donut:hover .donut-arc {
+  opacity: 0.45;
+}
+
+.donut .donut-arc:hover {
+  opacity: 1;
+}
+
+.donut-v {
+  text-anchor: middle;
+  font: 650 24px var(--mono);
+  fill: var(--text);
+}
+
+.donut-k {
+  text-anchor: middle;
+  font: 500 11px var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  fill: var(--muted-soft);
+}
+
+.donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.donut-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.donut-legend span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+}
+
+.donut-legend b {
+  margin-left: auto;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.donut-empty {
+  padding: 40px 0;
+  text-align: center;
+  font-size: 13px;
+}
+
+/* ---- ranked bar lists ---- */
+
+.barlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.barlist li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(48px, 0.9fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.barlist-label {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barlist-label em {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted-soft);
+}
+
+.barlist-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent-weak);
+  overflow: hidden;
+}
+
+.barlist-track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.barlist-value {
+  font: 600 13px var(--mono);
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.barlist-value em {
+  font-style: normal;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted-soft);
+}
+
+/* ---- histogram ---- */
+
+.hist {
+  margin-top: 18px;
+}
+
+.hist-bar {
+  fill: var(--accent);
+  opacity: 0.8;
+  transition: opacity 140ms ease;
+}
+
+.hist:hover .hist-bar {
+  opacity: 0.4;
+}
+
+.hist .hist-bar:hover {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .barlist-track i {
+    transition: none;
+  }
+}
