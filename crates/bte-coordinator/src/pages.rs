@@ -25,6 +25,11 @@
 //! made of words nobody would pick for an auction.
 
 /// A page, its address, and what it should say to a crawler.
+/// The developer section's preview card. One image for the whole section: it
+/// says "Developer Docs" rather than naming a page, so it stays accurate as
+/// pages are added, and a reader who has seen it once recognises the next link.
+const DEV_CARD: &str = "/developers.jpg";
+
 pub struct Page {
     /// The path, without a leading slash.
     pub path: &'static str,
@@ -38,6 +43,15 @@ pub struct Page {
     /// Whether it belongs in the sitemap. Pages that are a live view of state
     /// rather than a document do not.
     pub index: bool,
+    /// A preview card image, as an absolute path from the site root.
+    ///
+    /// Most pages deliberately have none. A link to Peal should arrive as a
+    /// line of text that says what it is rather than a slab of branding, and an
+    /// og:image is hard to withdraw once shared links carry it. The developer
+    /// section is the exception: it is the thing people paste into a team
+    /// channel, where a card is what makes it read as documentation rather than
+    /// a bare URL.
+    pub image: Option<&'static str>,
 }
 
 /// Titles are written for what people actually type, and read as sentences
@@ -55,6 +69,7 @@ pub const PAGES: &[Page] = &[
         // graph a parser has to guess at.
         schema: "WebPage",
         index: true,
+        image: None,
     },
     Page {
         path: "developers",
@@ -64,6 +79,7 @@ pub const PAGES: &[Page] = &[
             "Three HTTP calls to accept encrypted submissions and open them on a timer or a block height. Timelock encryption for sealed bid auctions, private voting, commit reveal without the reveal step, and agent actions. Free, no API key, runnable examples.",
         schema: "TechArticle",
         index: true,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "developers/quickstart",
@@ -73,6 +89,7 @@ pub const PAGES: &[Page] = &[
             "Open a round, seal an encrypted payload to it, and read it back when it opens. Runnable against the live network from the page, with no signup, no API key and no wallet.",
         schema: "HowTo",
         index: true,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "developers/agents",
@@ -82,6 +99,7 @@ pub const PAGES: &[Page] = &[
             "Install one skill and your agent can add sealed bids and timed disclosure to an application without reading the docs first. Four markdown files, no package, no registry, no account.",
         schema: "HowTo",
         index: true,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "developers/howitworks",
@@ -91,6 +109,7 @@ pub const PAGES: &[Page] = &[
             "The cue is a row that fires on its own, the encryption happens on the caller's machine, and three of five operators open a batch. What you can check afterwards, and why the batch is padded.",
         schema: "TechArticle",
         index: true,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "developers/auctions",
@@ -100,6 +119,7 @@ pub const PAGES: &[Page] = &[
             "Run a sealed bid auction in three calls. Every bid is the same size on the wire, a maximum stops joke bids, the result is a queue rather than only a winner, and replays are discarded.",
         schema: "TechArticle",
         index: true,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "developers/usecases",
@@ -109,6 +129,7 @@ pub const PAGES: &[Page] = &[
             "Sealed bid auctions, encrypted mempools, private voting, agent actions, procurement and quotes, prediction tournaments, bounty submissions and fair launches.",
         schema: "TechArticle",
         index: true,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "developers/api",
@@ -118,6 +139,7 @@ pub const PAGES: &[Page] = &[
             "Every endpoint with its parameters, the RFC 9457 error codes to branch on, the rate limit headers and the one-file client. Plain JSON over HTTP, no key.",
         schema: "APIReference",
         index: true,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "developers/x402",
@@ -129,6 +151,7 @@ pub const PAGES: &[Page] = &[
              invoice. The free API is unchanged.",
         schema: "TechArticle",
         index: true,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "developers/limits",
@@ -138,6 +161,7 @@ pub const PAGES: &[Page] = &[
             "What the server enforces: payload caps, page sizes, rate limits, batch size, and the error codes returned when you cross one.",
         schema: "TechArticle",
         index: true,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "developers/network",
@@ -147,6 +171,7 @@ pub const PAGES: &[Page] = &[
             "Rounds created, payloads sealed, batches opened, how long opening takes and how often the agent skill is installed, counted from the coordinator's own tables. No visitor tracking: there are no accounts on this network to count.",
         schema: "WebPage",
         index: false,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "developers/roadmap",
@@ -156,6 +181,7 @@ pub const PAGES: &[Page] = &[
             "The one-call seal API, webhook delivery, an MCP tool, x402 paid access and typed SDKs, with what is live stated separately from what is not.",
         schema: "WebPage",
         index: true,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "developers/createauction",
@@ -165,6 +191,7 @@ pub const PAGES: &[Page] = &[
             "A complete integration: open an auction with a reserve and a maximum, take encrypted bids that are all the same size on the wire, read the ranked board when it closes, and collect contact details only the seller can read. Working code, the money rules, and the mistakes worth avoiding.",
         schema: "HowTo",
         index: true,
+        image: Some(DEV_CARD),
     },
     Page {
         path: "protocol",
@@ -174,6 +201,7 @@ pub const PAGES: &[Page] = &[
             "The protocol behind Peal: BLS12-381 batched threshold encryption, a three of five committee, fixed batches of 64, and why the reveal happens whether or not any participant cooperates. Full lifecycle, cryptography and threat model.",
         schema: "TechArticle",
         index: true,
+        image: None,
     },
     Page {
         path: "mempool",
@@ -183,6 +211,7 @@ pub const PAGES: &[Page] = &[
             "Seal transactions to the block they belong in, so searchers cannot read the queue and jump it. The whole block's worth opens at once when the block is due. Built on batched threshold encryption.",
         schema: "TechArticle",
         index: true,
+        image: None,
     },
     Page {
         path: "auction",
@@ -192,6 +221,7 @@ pub const PAGES: &[Page] = &[
             "Run a sealed bid auction where every bid is encrypted until the close, then all open together. No sniping, no bid copying, no trusted auctioneer holding the numbers. Bidders need no wallet and pay no gas.",
         schema: "TechArticle",
         index: true,
+        image: None,
     },
     Page {
         path: "execution",
@@ -201,6 +231,7 @@ pub const PAGES: &[Page] = &[
             "Submit an action nobody can read or front run, and have it execute when the condition fires. Private execution built on Peal's timed disclosure.",
         schema: "TechArticle",
         index: true,
+        image: None,
     },
     Page {
         path: "philosophy",
@@ -210,6 +241,7 @@ pub const PAGES: &[Page] = &[
             "Anywhere people submit something others must not see yet, whoever runs the server can see it. You can promise you do not look; you cannot prove it. What it takes to remove that person from the picture.",
         schema: "Article",
         index: true,
+        image: None,
     },
     Page {
         path: "create",
@@ -219,6 +251,7 @@ pub const PAGES: &[Page] = &[
             "Open an auction in one click and share a link. Bids stay encrypted until your close time, then everyone sees them at once. Bidders need no wallet, no account and no gas.",
         schema: "WebPage",
         index: true,
+        image: None,
     },
     Page {
         path: "auctions",
@@ -227,6 +260,7 @@ pub const PAGES: &[Page] = &[
         description: "Auctions open on Peal right now, and the ones that have already opened.",
         schema: "WebPage",
         index: false,
+        image: None,
     },
     Page {
         path: "app",
@@ -236,6 +270,7 @@ pub const PAGES: &[Page] = &[
             "Live view of the Peal network: conditions waiting to fire, batches being opened, and every reveal the committee has performed, with the timings.",
         schema: "WebPage",
         index: false,
+        image: None,
     },
 ];
 

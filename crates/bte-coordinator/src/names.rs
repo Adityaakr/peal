@@ -191,8 +191,39 @@ pub async fn root_shell(headers: axum::http::HeaderMap) -> Response {
 /// One page, with its own title, description, canonical URL and structured
 /// data written into the shell.
 fn page_response(shell: &str, page: &crate::pages::Page, canonical: Option<&str>) -> Response {
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        page_html(shell, page, canonical),
+    )
+        .into_response()
+}
+
+/// The shell with this page's meta written into it. Split out from the response
+/// so a test can read the html rather than reconstruct it.
+fn page_html(shell: &str, page: &crate::pages::Page, canonical: Option<&str>) -> String {
+    // The site origin, by removing this page's own path from its canonical URL.
+    //
+    // Splitting on the last slash instead looked right for a one segment path
+    // and was wrong for every nested one: /developers/api yielded an origin of
+    // https://peal.network/developers, so the structured data claimed the page
+    // lived at /developers/developers/api, a URL that 404s and contradicts the
+    // canonical tag beside it, and pointed isPartOf at a WebSite node that
+    // does not exist.
     let origin = canonical
-        .and_then(|c| c.rsplit_once('/').map(|(o, _)| o.to_string()))
+        .map(|c| {
+            let trimmed = c.trim_end_matches('/');
+            match trimmed
+                .strip_suffix(page.path)
+                .map(|o| o.trim_end_matches('/'))
+            {
+                Some(o) if !o.is_empty() => o.to_string(),
+                _ => trimmed.to_string(),
+            }
+        })
         .unwrap_or_else(|| "https://peal.network".to_string());
     let url = canonical.map(str::to_owned).unwrap_or_else(|| {
         if page.path.is_empty() {
@@ -210,9 +241,33 @@ fn page_response(shell: &str, page: &crate::pages::Page, canonical: Option<&str>
     // A canonical and an og:url on every page. Without one, a page reachable at
     // both /developers and /developers/ is two documents competing with each
     // other for the same words.
+    // A card only where the page table asks for one. The shell ships with a
+    // twitter:card of "summary", so a page carrying an image has to be upgraded
+    // to summary_large_image or the card renders as a thumbnail beside text
+    // rather than the banner it was cropped to be.
+    let card = match page.image {
+        Some(path) => {
+            let src = format!("{origin}{path}");
+            html = html.replace(
+                "<meta name=\"twitter:card\" content=\"summary\" />",
+                "<meta name=\"twitter:card\" content=\"summary_large_image\" />",
+            );
+            format!(
+                "<meta property=\"og:image\" content=\"{s}\" />\n    \
+                 <meta property=\"og:image:width\" content=\"1200\" />\n    \
+                 <meta property=\"og:image:height\" content=\"630\" />\n    \
+                 <meta property=\"og:image:alt\" content=\"{t}\" />\n    \
+                 <meta name=\"twitter:image\" content=\"{s}\" />\n    ",
+                s = esc(&src),
+                t = esc(page.title),
+            )
+        }
+        None => String::new(),
+    };
+
     let head = format!(
         "<link rel=\"canonical\" href=\"{u}\" />\n    \
-         <meta property=\"og:url\" content=\"{u}\" />\n    {ld}\n    ",
+         <meta property=\"og:url\" content=\"{u}\" />\n    {card}{ld}\n    ",
         u = esc(&url),
         ld = crate::pages::json_ld(page, &origin),
     );
@@ -221,15 +276,7 @@ fn page_response(shell: &str, page: &crate::pages::Page, canonical: Option<&str>
         None => html,
     };
 
-    (
-        StatusCode::OK,
-        [
-            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
-            (header::CACHE_CONTROL, "public, max-age=300"),
-        ],
-        html,
-    )
-        .into_response()
+    html
 }
 
 /// The app shell with no preview written into it: what every failure path here
@@ -647,6 +694,58 @@ mod tests {
         assert!(!html.contains(r#"onerror="alert(1)"#));
         assert!(html.contains("&quot;&gt;&lt;script&gt;"));
         assert!(html.contains("a &amp; b &lt; c"));
+    }
+
+    #[test]
+    fn nested_pages_keep_the_site_origin() {
+        // A nested page must describe itself with the same origin as the home
+        // page, or its structured data claims a URL that does not exist and
+        // joins a website node nobody else is in.
+        let nested = crate::pages::PAGES
+            .iter()
+            .find(|p| p.path == "developers/api")
+            .expect("developers/api page");
+        let html = page_html(SHELL, nested, Some("https://peal.network/developers/api"));
+        assert!(
+            html.contains(r#""url":"https://peal.network/developers/api""#),
+            "structured data must name the real url"
+        );
+        assert!(
+            !html.contains("developers/developers"),
+            "origin leaked a path segment"
+        );
+        assert!(html.contains(r#""@id":"https://peal.network#website""#));
+        assert!(html.contains(
+            r#"<meta property="og:image" content="https://peal.network/developers.jpg""#
+        ));
+    }
+
+    #[test]
+    fn developer_pages_carry_a_card_and_other_pages_do_not() {
+        // The card is the exception, not the default. A regression here would
+        // put branding on every shared link, which is very hard to withdraw
+        // once the links are out.
+        let dev = crate::pages::PAGES
+            .iter()
+            .find(|p| p.path == "developers")
+            .expect("developers page");
+        let html = page_html(SHELL, dev, Some("https://peal.network/developers"));
+        assert!(
+            html.contains(r#"property="og:image" content="https://peal.network/developers.jpg""#)
+        );
+        assert!(html.contains(r#"content="summary_large_image""#));
+        assert!(!html.contains(r#"content="summary" "#));
+
+        let home = crate::pages::PAGES
+            .iter()
+            .find(|p| p.path.is_empty())
+            .expect("home page");
+        let plain = page_html(SHELL, home, Some("https://peal.network"));
+        assert!(
+            !plain.contains("og:image"),
+            "the home page must stay imageless"
+        );
+        assert!(plain.contains(r#"content="summary""#));
     }
 
     #[test]
