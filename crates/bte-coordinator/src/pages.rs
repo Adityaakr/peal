@@ -66,6 +66,15 @@ pub const PAGES: &[Page] = &[
         index: true,
     },
     Page {
+        path: "developers/createauction",
+        route: "#/developers/createauction",
+        title: "How to add sealed bid auctions to your app. Peal guide.",
+        description:
+            "A complete integration: open an auction with a reserve and a maximum, take encrypted bids that are all the same size on the wire, read the ranked board when it closes, and collect contact details only the seller can read. Working code, the money rules, and the mistakes worth avoiding.",
+        schema: "HowTo",
+        index: true,
+    },
+    Page {
         path: "protocol",
         route: "#/protocol",
         title: "How batched threshold encryption guarantees a reveal. Peal protocol.",

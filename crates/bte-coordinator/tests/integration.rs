@@ -1909,3 +1909,39 @@ async fn auction_survives_a_payload_that_is_not_a_bid() {
     // Two real payloads in a batch of four, so the coordinator padded the rest.
     assert_eq!(results["decoys"], json!(2), "{results}");
 }
+
+/// Guides live under a section, at a path with more than one segment. The
+/// single-segment handler cannot serve them: it shares its shape with auction
+/// short links, and /developers/createauction is not a name anybody can claim.
+#[tokio::test]
+async fn seo_nested_guide_pages_have_their_own_identity() {
+    use bte_coordinator::pages;
+    let guide = pages::find("developers/createauction").expect("the guide is a page");
+    assert_eq!(
+        guide.schema, "HowTo",
+        "a walkthrough is a HowTo, not an Article"
+    );
+    assert!(guide.index, "a guide belongs in the sitemap");
+
+    // Its own title and description, not the section's.
+    let section = pages::find("developers").unwrap();
+    assert_ne!(guide.title, section.title);
+    assert_ne!(guide.description, section.description);
+
+    let xml = pages::sitemap("https://peal.network", "2026-09-04");
+    assert!(
+        xml.contains("<loc>https://peal.network/developers/createauction</loc>"),
+        "{xml}"
+    );
+
+    let ld = pages::json_ld(guide, "https://peal.network");
+    assert!(ld.contains("https://peal.network/developers/createauction"));
+    assert!(serde_json::from_str::<Value>(
+        ld.trim_start_matches("<script type=\"application/ld+json\">")
+            .trim_end_matches("</script>")
+    )
+    .is_ok());
+
+    // And a nested path is never mistaken for a short link.
+    assert!(pages::find("createauction").is_none());
+}

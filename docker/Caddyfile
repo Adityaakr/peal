@@ -32,6 +32,15 @@
 		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
 	}
 
+	# Guides that live under a section, like /developers/createauction. Two
+	# lowercase segments with no dot, so an asset path never matches: those all
+	# carry an extension. Unknown paths of this shape fall back to the shell.
+	@nested path_regexp nested ^/([a-z0-9-]{3,32})/([a-z0-9-]{1,48})/?$
+	handle @nested {
+		rewrite * /page/{re.nested.1}/{re.nested.2}
+		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
+	}
+
 	# A short link is a path, so unlike a fragment link it reaches us and can
 	# carry a real preview. The coordinator serves the same shell with that
 	# auction's name, description and picture in its meta tags; the rewrite is
@@ -67,7 +76,7 @@
 	# all, which Caddy turns into a 502 before any response exists to handle.
 	# Scoped to short links so ordinary errors are still ordinary errors.
 	handle_errors {
-		@named_error path_regexp ^(/|/([a-z0-9-]{3,32})/?)$
+		@named_error path_regexp ^(/|/([a-z0-9-]{3,32})(/[a-z0-9-]{1,48})?/?)$
 		handle @named_error {
 			root * /srv/explorer
 			rewrite * /index.html

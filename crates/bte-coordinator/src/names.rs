@@ -126,6 +126,24 @@ pub async fn named_shell(
         .into_response()
 }
 
+/// A page at a path of any depth, for guides that live under a section.
+///
+/// The single-segment handler cannot serve these: it shares its shape with
+/// auction short links, and /developers/createauction is not a name anybody
+/// could claim.
+pub async fn nested_page(Path(path): Path<String>, headers: axum::http::HeaderMap) -> Response {
+    let Some(shell) = read_shell() else {
+        return (StatusCode::NOT_FOUND, "explorer shell not found").into_response();
+    };
+    let Some(page) = crate::pages::find(&path) else {
+        // Not a page we know. The shell still renders, and the app decides what
+        // to show, which is what the static edge would have done anyway.
+        return plain_shell();
+    };
+    let canonical = canonical_url(&headers, &path);
+    page_response(&shell, page, canonical.as_deref())
+}
+
 /// robots.txt, sitemap.xml and llms.txt, each with the content type a crawler
 /// expects. Generated from the page table rather than kept as static files, so
 /// adding a page cannot leave the sitemap behind.

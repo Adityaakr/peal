@@ -6143,3 +6143,232 @@ textarea.live-input {
 .dev-rules strong {
   color: var(--text);
 }
+
+/* ---- documentation shell (/developers/createauction) ----------------------
+   Sidebar, content column, and an "on this page" rail. Kept on the site's own
+   light palette rather than the dark one the pattern is usually seen in: the
+   rest of Peal is white and one accent, and a dark island would read as a
+   different product. */
+.doc-shell {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr) 200px;
+  gap: 40px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 24px 96px;
+  align-items: start;
+}
+
+.doc-side,
+.doc-toc {
+  position: sticky;
+  top: 24px;
+  font-size: 13.5px;
+}
+
+.doc-side-head,
+.doc-toc-head {
+  margin: 0 0 10px;
+  color: var(--muted-soft);
+  font-size: 11.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.doc-side nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.doc-side a {
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.doc-side a:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.doc-side a[aria-current='page'] {
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.doc-main h1 {
+  margin: 0 0 8px;
+  font-size: 34px;
+  letter-spacing: -0.02em;
+}
+
+.doc-lede {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.doc-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.doc-btn:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.doc-body {
+  font-size: 15.5px;
+  line-height: 1.72;
+}
+
+.doc-body h2 {
+  margin: 40px 0 12px;
+  font-size: 24px;
+  letter-spacing: -0.01em;
+  scroll-margin-top: 24px;
+}
+
+.doc-body h3 {
+  margin: 28px 0 8px;
+  font-size: 17px;
+  scroll-margin-top: 24px;
+}
+
+.doc-body p {
+  margin: 0 0 14px;
+}
+
+.doc-body code {
+  padding: 1px 6px;
+  border: 1px solid #e7e2d9;
+  border-radius: 5px;
+  background: #fbf8f3;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.doc-code {
+  position: relative;
+  margin: 0 0 18px;
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: #2b2825;
+  color: #e8e3da;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-x: auto;
+}
+
+.doc-code code {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+.doc-quote {
+  margin: 0 0 16px;
+  padding: 12px 18px;
+  border-left: 3px solid var(--accent-border);
+  border-radius: 0 10px 10px 0;
+  background: var(--accent-weak);
+  color: var(--text);
+}
+
+.doc-list {
+  margin: 0 0 16px;
+  padding-left: 22px;
+}
+
+.doc-list li {
+  margin-bottom: 7px;
+}
+
+.doc-toc {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 1px solid var(--border);
+  padding-left: 14px;
+}
+
+.doc-toc button {
+  padding: 5px 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.doc-toc button:hover {
+  color: var(--text);
+}
+
+.doc-toc button[aria-current='true'] {
+  color: var(--accent);
+}
+
+.doc-toc-3 {
+  padding-left: 10px !important;
+  font-size: 12.5px !important;
+}
+
+/* The rails are navigation, not content: below a laptop they become a header
+   and a footer rather than being squeezed into unreadable columns. */
+@media (max-width: 1080px) {
+  .doc-shell {
+    grid-template-columns: 180px minmax(0, 1fr);
+  }
+
+  .doc-toc {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .doc-shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    padding: 20px 16px 64px;
+  }
+
+  .doc-side {
+    position: static;
+  }
+
+  .doc-side nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .doc-main h1 {
+    font-size: 27px;
+  }
+}

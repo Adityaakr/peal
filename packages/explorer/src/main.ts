@@ -18,6 +18,7 @@ import { renderMempoolLanding } from './pages/mempool-landing';
 import { renderPhilosophy } from './pages/philosophy';
 import { renderProtocol } from './pages/protocol';
 import { renderDevelopers } from './pages/developers';
+import { renderCreateAuctionDocs } from './pages/docs-create-auction';
 import { renderSealView } from './pages/seal-view';
 
 type Cleanup = () => void;
@@ -137,8 +138,8 @@ function route(): void {
   // this is the half that makes the app render it. Kept in step with
   // crates/bte-coordinator/src/pages.rs, which owns the same list.
   const PAGE_PATHS = new Set([
-    'developers', 'protocol', 'mempool', 'auction', 'auctions',
-    'execution', 'philosophy', 'create', 'app',
+    'developers', 'developers/createauction', 'protocol', 'mempool', 'auction',
+    'auctions', 'execution', 'philosophy', 'create', 'app',
   ]);
   const pagePath = location.pathname.replace(/^\/|\/$/g, '');
   if (PAGE_PATHS.has(pagePath)) {
@@ -228,6 +229,8 @@ function route(): void {
     cleanup = renderProtocol(root);
   } else if (hash === '#/developers') {
     cleanup = renderDevelopers(root);
+  } else if (hash === '#/developers/createauction') {
+    cleanup = renderCreateAuctionDocs(root);
   } else if (hash === '#/philosophy') {
     cleanup = renderPhilosophy(root);
   } else if (isLanding) {

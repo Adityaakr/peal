@@ -61,6 +61,7 @@ pub fn router(app: App) -> Router {
         .route("/link/{name}", get(crate::names::named_shell))
         .route("/home", get(crate::names::root_shell))
         .route("/crawl/{doc}", get(crate::names::crawler_doc))
+        .route("/page/{*path}", get(crate::names::nested_page))
         // Bounded by the one route that carries bulk: a sealed blob arrives
         // base64'd inside JSON, so 4/3 of the blob cap plus slack for the
         // surrounding fields. This is what a request may BUFFER, so it is kept

@@ -667,7 +667,10 @@ const payloads = await peal.getPayloads(id);  // all of them, at the deadline</c
 
         <p>Run them in order against the live network. The auction below closes about a minute
         after you open it, so you can watch a real one through from an empty board to a
-        result.</p>
+        result. For the full integration, including the money rules, contact details and a
+        checklist before you ship, read
+        <button type="button" class="dev-jump" data-goto="__guide">the create an auction
+        guide</button>.</p>
 
         ${auctionDemos.map(demoHtml).join('')}
 
@@ -1104,6 +1107,11 @@ const proof = await peal.getProof(id);</code></pre>
     }
   };
   const jump = (event: Event): void => {
+    const guide = (event.target as HTMLElement).closest<HTMLElement>('[data-goto="__guide"]');
+    if (guide) {
+      location.hash = '#/developers/createauction';
+      return;
+    }
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-section]');
     if (!button) return;
     const id = button.dataset.section ?? '';
