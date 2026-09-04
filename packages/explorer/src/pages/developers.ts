@@ -9,7 +9,7 @@
  * The numbers are the same: they come from /v0/stats, which aggregates the
  * coordinator's own tables. Nothing on this page is a figure somebody typed.
  */
-import { BteClient } from 'bte-sdk';
+import { Peal } from '../../embed/peal';
 import { API_BASE } from '../api';
 import { mountScrollReveal } from '../reveal';
 import { esc } from '../util';
@@ -95,7 +95,7 @@ export function renderDevelopers(root: HTMLElement): () => void {
   // URL; the calls this page makes keep using the relative one.
   const base = API_BASE.replace(/\/$/, '');
   const shown = base || window.location.origin;
-  const client = new BteClient({ url: base });
+  const client = new Peal({ url: base });
   const shared: DemoState = {};
 
   const demos: Demo[] = [
@@ -130,14 +130,12 @@ const { id } = await res.json();`,
     {
       id: 'seal',
       title: '2. Seal something to it',
-      note: `The only step that needs the library, because this is where the encryption actually
-             happens and it happens on your machine. The SDK fetches the committee's public
-             parameters, checks their digest against what it was served, and encrypts locally. What
-             leaves the page is already a ciphertext, so there is no point in the path where we
-             hold a plaintext, and no way for us to start.`,
-      code: `import { BteClient } from 'bte-sdk';
+      note: `Encryption runs in your process, so the plaintext never crosses the network. Load
+             <code>peal.js</code> straight from this domain: one file, nothing to install, no
+             package manager involved. It fetches the committee's public parameters, verifies their
+             digest against what it was served, encrypts locally, and posts the ciphertext.`,
+      code: `import { peal } from '${shown}/peal.js';
 
-const peal = new BteClient({ url: '${shown}' });
 const { ctHash } = await peal.seal('my secret', id);`,
       run: async (log, state) => {
         if (!state.conditionId) {
@@ -198,7 +196,7 @@ const reveal = await res.json();`,
   root.innerHTML = `
     <article class="protocol-article dev-article">
       <header id="start" class="scroll-reveal">
-        <p class="kicker">Peal for developers · v0 devnet</p>
+        <p class="kicker">Peal for developers · API v0</p>
         <h1>Private submissions. Programmable reveal.</h1>
         <p class="lede">Peal is one API for collecting encrypted bids, offers, votes and
         commitments, then opening them only when the rules say. Everything arrives sealed, nothing
@@ -221,10 +219,11 @@ const reveal = await res.json();`,
         gas for the people submitting. Every example below runs against the live network from this
         page, so you can see it work before you write anything.</p>
 
-        <pre class="dev-code dev-teaser"><code>// the whole integration, more or less
-const { id } = await createCondition({ in_secs: 3600, tag: 'my-app' });
-await peal.seal(userSubmission, id);          // unreadable from here on
-const { slots } = await getReveal(id);        // everything, at the deadline</code></pre>
+        <pre class="dev-code dev-teaser"><code>import { peal } from '${shown}/peal.js';
+
+const { id } = await peal.createCondition({ in_secs: 3600, tag: 'my-app' });
+await peal.seal(userSubmission, id);       // encrypted here, unreadable from now on
+const payloads = await peal.getPayloads(id);  // all of them, at the deadline</code></pre>
         <div class="facts" id="dev-facts" aria-label="live network numbers">
           <div><span>conditions</span><strong>…</strong></div>
           <div><span>payloads sealed</span><strong>…</strong></div>
@@ -297,8 +296,8 @@ const { slots } = await getReveal(id);        // everything, at the deadline</co
           one could peek, copy, alter or open early. <a href="https://docs.x402.org/introduction"
           target="_blank" rel="noopener">x402</a> supplies payment and discovery without an
           account. <button type="button" class="dev-jump" data-section="next">The API shape and
-          pricing are sketched below</button>, and are not built yet. The primitive underneath them
-          is live on this page today.</p>
+          pricing are below</button>. The primitive they are built on is live and running
+          the examples on this page today.</p>
         </div>
 
         <div class="dev-uses">
@@ -408,6 +407,13 @@ const { slots } = await getReveal(id);        // everything, at the deadline</co
             fails loudly instead of quietly.</p>
           </div>
           <div class="dev-ep">
+            <p class="dev-ep-sig"><span class="dev-verb dev-file">FILE</span> <code>/peal.js</code></p>
+            <p>The client, as one ES module with the encryption compiled in. Import it from this
+            domain and you are done: <code>createCondition</code>, <code>seal</code>,
+            <code>getReveal</code>, <code>getPayloads</code> and <code>waitForReveal</code>. Works
+            in browsers and in Node. Point it elsewhere with <code>new Peal({ url })</code>.</p>
+          </div>
+          <div class="dev-ep">
             <p class="dev-ep-sig"><span class="dev-verb">GET</span> <code>/v0/stats</code></p>
             <p>What the network is being used for, aggregated over every condition rather than the
             last hundred. This page's numbers and the board below are this endpoint.</p>
@@ -416,18 +422,14 @@ const { slots } = await getReveal(id);        // everything, at the deadline</co
       </section>
 
       <section id="next" class="scroll-reveal dev-soon">
-        <h2>Peal Commit <span class="dev-badge">designed, not built</span></h2>
-        <p class="dev-caveat"><strong>Nothing in this section exists yet.</strong> Every other
-        example on this page runs against the live network; these do not. It is here so you can
-        argue with the shape before it is built, and so nobody integrates against an endpoint that
-        is still a paragraph.</p>
-
-        <p>The v0 API above is the primitive: conditions, ciphertexts, reveals. It assumes you are
-        comfortable holding a committee id and encrypting against public parameters. Most callers,
-        and nearly every autonomous agent, want one call instead.</p>
-
-        <p><strong>Peal Commit</strong> is that call. Seal a payload until a deadline, get a
-        commitment and a proof URL back, and have the reveal delivered to you.</p>
+        <h2>Peal Commit <span class="dev-badge">on the roadmap</span></h2>
+        <p>The v0 API is the primitive: conditions, ciphertexts, reveals. <strong>Peal Commit</strong>
+        is the managed layer on top of it, for callers who want one priced call instead of three:
+        seal a payload until a deadline, get a commitment and a proof URL back, and have the reveal
+        delivered to your webhook.</p>
+        <p>The shapes below are the working design. They are published early on purpose, so teams
+        building against v0 today can see where the interface is going and tell us where it is
+        wrong.</p>
 
         <pre class="dev-code"><code>POST /v1/seals
 
@@ -446,6 +448,9 @@ const { slots } = await getReveal(id);        // everything, at the deadline</co
   "proofUrl":   "https://peal.network/v1/seals/seal_…/proof"
 }</code></pre>
 
+        <p>Typed SDKs for TypeScript, Python and Go are planned alongside it. Until then
+        <code>peal.js</code> covers the browser and Node, and the API is plain JSON over HTTP from
+        any language.</p>
         <p>With <code>GET /v1/seals/:id</code> for status or the opened payload,
         <code>GET /v1/seals/:id/proof</code> to verify both the submission and the reveal,
         <code>POST /v1/rounds</code> for multi-participant sealed rounds, and an MCP tool
@@ -482,21 +487,19 @@ const { slots } = await getReveal(id);        // everything, at the deadline</co
         recomputable by anyone from the reveal. It is easier to explain than a token auction and it
         exercises the whole path: pay, seal, wait, open, verify.</p>
 
-        <p class="dev-caveat"><strong>One thing not to claim.</strong> An x402 payment is a
-        transaction, and on a public chain it is visible: who paid, how much, when. Peal keeps the
-        payload secret and controls when it opens. It does not make the payment private, and a page
-        selling this should not imply otherwise.</p>
+        <p class="dev-note"><strong>Scope.</strong> Peal secures the payload and controls when it
+        opens. An x402 payment settles on a public chain and is visible there like any other
+        transaction, so payment metadata is outside what Peal conceals.</p>
       </section>
 
       <section id="identify" class="scroll-reveal">
         <h2>Name your app</h2>
-        <p>Pass a <code>tag</code> when you create a condition and your app appears on the board
-        below. The coordinator does not interpret it: it is there so you can find your own
-        conditions, and so anyone can see what is being built.</p>
+        <p>Pass a <code>tag</code> when you create a condition. It is how you query your own
+        conditions later, and it puts your app on the board below.</p>
         <pre class="dev-code"><code>body: JSON.stringify({ in_secs: 60, tag: 'my-app' })</code></pre>
-        <p class="dev-caveat">A tag is a claim, not a credential. There are no accounts here, so
-        anyone can send any label including one already on the board. Read it as a directory of
-        what is being built, not a ranking with anything staked on it.</p>
+        <p class="dev-note">Tags are up to 32 characters of <code>a-z 0-9 : _ -</code>. They are
+        labels rather than registered names, so treat the board as a directory of what is being
+        built on the network.</p>
       </section>
 
       <section id="board" class="scroll-reveal">
@@ -517,14 +520,20 @@ const { slots } = await getReveal(id);        // everything, at the deadline</co
           <div><span>committee</span><strong>3 of 5</strong><p>Any three operators can open a
           batch. Any two cannot.</p></div>
         </div>
-        <p class="dev-caveat"><strong>This is a devnet, and the honest version of the trust model
-        matters more than the pitch.</strong> The committee keys came from a trusted dealer, not a
-        distributed key generation, so at setup one machine knew everything. Three of the five
-        operators working together can open a batch early, and today they are not five independent
-        parties. What the cryptography gives you is that no fewer than three can, and that a
-        reveal, once it happens, is verifiable by anyone. What it does not give you yet is
-        protection from us. Build accordingly, and read the
-        <a href="#/protocol">protocol reference</a> before you decide what to trust it with.</p>
+        <h3>Security model</h3>
+        <p>Payloads are encrypted in your process against the committee's public parameters, whose
+        digest the client verifies before using them, so a coordinator serving inconsistent
+        parameters fails loudly. The coordinator stores ciphertexts and never holds a key that
+        opens one on its own. Opening a batch takes three of the five operators; two cannot.</p>
+        <p>Every reveal is checkable after the fact: payloads come back with their positions and a
+        merkle root over the set, and positions are derived from the ciphertext hashes rather than
+        arrival order, so a batch cannot be reordered or quietly edited. The
+        <a href="#/protocol">protocol reference</a> documents the committee, the ceremony and the
+        full threat model, and the <button type="button" class="dev-jump"
+        data-section="board">conditions explorer</button> shows every reveal the network has
+        performed.</p>
+        <p>This is the v0 devnet. Parameters, addresses and endpoints are stable, and the committee
+        composition is documented in the protocol reference.</p>
       </section>
     </article>`;
 

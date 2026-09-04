@@ -5527,6 +5527,11 @@ textarea.live-input {
   color: var(--accent);
 }
 
+.dev-file {
+  background: color-mix(in srgb, var(--green) 16%, transparent);
+  color: var(--green);
+}
+
 .dev-ranks {
   margin: 0;
   padding: 0;
