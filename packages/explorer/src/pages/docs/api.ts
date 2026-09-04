@@ -61,7 +61,6 @@ function paramRow(p: Param): string {
         <code>${esc(p.name)}</code>
         <span class="api-type">${esc(p.type)}</span>
         ${p.required ? '<span class="api-req">required</span>' : ''}
-        <span class="api-in">${esc(p.in)}</span>
       </p>
       <p class="api-param-desc">${esc(p.description)}</p>
     </div>`;
@@ -141,7 +140,11 @@ export const apiReference: DocsPage = {
 
     ${GROUPS.map(
       (g) => `
-      <h2 id="${g.toLowerCase()}">${g}</h2>
+      <div class="api-group" id="${g.toLowerCase()}">
+        <h2>${g}</h2>
+        <span>${ENDPOINTS.filter((e) => e.group === g).length} endpoints</span>
+        <span class="api-group-rule"></span>
+      </div>
       ${ENDPOINTS.filter((e) => e.group === g).map(endpointHtml).join('')}`,
     ).join('')}
 

@@ -7168,27 +7168,72 @@ body.docs-page main {
   }
 }
 
-/* ---- API reference: one block per endpoint, with a playground ------------
-   Documentation on the left, the thing you press on the right. The pattern is
-   the one every good API reference has converged on, because a reader either
-   wants to understand the endpoint or wants to fire it, and putting both in one
-   column makes each interrupt the other. */
+/* A page whose content is itself two columns drops the contents rail and takes
+   its width. Otherwise the documentation and the playground get about 350px
+   each, which is not enough for a JSON response. */
+.doc-shell.is-wide {
+  grid-template-columns: 244px minmax(0, 1fr);
+}
+
+.doc-shell.is-wide .doc-main {
+  max-width: none;
+}
+
+.doc-shell.is-wide .doc-body > p,
+.doc-shell.is-wide .doc-body > .doc-list,
+.doc-shell.is-wide .doc-body > .doc-quote {
+  max-width: 860px;
+}
+
+/* ---- API reference -------------------------------------------------------
+   Three zones per endpoint, each a different surface, so a reader always knows
+   which one they are looking at: a tinted header, a white column of
+   documentation, and a blue playground. The page's own sky gradient sits behind
+   them, so a white card reads as raised rather than as the background. */
+.api-group {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 56px 0 18px;
+  scroll-margin-top: 28px;
+}
+
+.api-group h2 {
+  margin: 0;
+}
+
+.api-group span {
+  color: var(--muted-soft);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.api-group-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 .api-endpoint {
-  margin: 0 0 20px;
-  border: 1px solid var(--border);
+  margin: 0 0 18px;
+  border: 1px solid var(--accent-border);
   border-radius: 16px;
   background: #fff;
   overflow: hidden;
   scroll-margin-top: 28px;
+  box-shadow: 0 1px 2px rgb(37 99 235 / 5%), 0 8px 24px -14px rgb(37 99 235 / 22%);
 }
 
+/* The header carries the accent, so the method and the path are the first
+   thing the eye lands on in a page of sixteen of these. */
 .api-head {
-  padding: 22px 24px 18px;
-  border-bottom: 1px solid var(--border);
+  padding: 20px 24px 18px;
+  border-bottom: 1px solid var(--accent-border);
+  background: linear-gradient(180deg, var(--accent-weak), #f7fbff);
 }
 
 .api-head h3 {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   font-size: 19px;
   scroll-margin-top: 28px;
 }
@@ -7202,56 +7247,54 @@ body.docs-page main {
 }
 
 .api-sig code {
-  padding: 4px 10px;
-  border: 1px solid var(--border);
+  padding: 5px 11px;
+  border: 1px solid var(--accent-border);
   border-radius: 8px;
-  background: var(--surface);
+  background: #fff;
   font-family: var(--mono);
   font-size: 13.5px;
+  color: var(--text);
 }
 
 .api-method {
-  padding: 4px 9px;
+  padding: 5px 10px;
   border-radius: 7px;
   font-family: var(--mono);
   font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  color: #fff;
 }
 
 .api-m-get {
-  background: var(--green-weak);
-  border: 1px solid var(--green);
-  color: var(--green);
+  background: var(--green);
 }
 
 .api-m-post {
-  background: var(--accent-weak);
-  border: 1px solid var(--accent-border);
-  color: var(--accent);
+  background: var(--accent);
 }
 
 .api-summary {
   margin: 0;
   color: var(--muted);
   font-size: 14.5px;
+  line-height: 1.6;
 }
 
-/* Two columns on a wide screen, stacked below. */
 .api-cols {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .api-doc {
-  padding: 20px 24px 24px;
+  padding: 22px 24px 26px;
   border-right: 1px solid var(--border);
 }
 
 .api-doc h4 {
-  margin: 18px 0 10px;
-  font-size: 12px;
-  letter-spacing: 0.07em;
+  margin: 22px 0 8px;
+  font-size: 11.5px;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--muted-soft);
 }
@@ -7261,12 +7304,13 @@ body.docs-page main {
 }
 
 .api-param {
-  padding: 10px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border);
 }
 
 .api-param:last-of-type {
   border-bottom: 0;
+  padding-bottom: 0;
 }
 
 .api-param-head {
@@ -7274,7 +7318,7 @@ body.docs-page main {
   align-items: center;
   flex-wrap: wrap;
   gap: 7px;
-  margin: 0 0 5px;
+  margin: 0 0 6px;
 }
 
 .api-param-head code {
@@ -7287,13 +7331,15 @@ body.docs-page main {
   color: var(--text);
 }
 
+/* The section heading already says Body or Path parameters, so the row does
+   not repeat it: that third badge was pushing rows onto two lines. */
 .api-type,
-.api-req,
-.api-in {
-  padding: 1px 7px;
-  border-radius: 5px;
+.api-req {
+  padding: 2px 8px;
+  border-radius: 999px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
 }
 
 .api-type {
@@ -7308,53 +7354,55 @@ body.docs-page main {
   color: var(--red-text);
 }
 
-.api-in {
-  color: var(--muted-soft);
-}
-
 .api-param-desc {
   margin: 0;
   font-size: 13.5px;
   color: var(--muted);
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 .api-note {
-  margin: 16px 0 0;
-  padding: 12px 14px;
+  margin: 20px 0 0;
+  padding: 13px 15px;
   border-left: 3px solid var(--accent-border);
-  border-radius: 0 9px 9px 0;
+  border-radius: 0 10px 10px 0;
   background: var(--accent-weak);
   font-size: 13.5px;
+  line-height: 1.65;
 }
 
+/* The blue half. This is the part you press. */
 .api-panel {
-  padding: 20px 24px 24px;
-  background: var(--surface);
+  padding: 22px 24px 26px;
+  background: linear-gradient(180deg, #eff6ff, #e8f1fd);
   min-width: 0;
 }
 
 .api-try-head,
 .api-sample-head {
-  margin: 0 0 10px;
-  font-size: 12px;
-  letter-spacing: 0.07em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 11.5px;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--muted-soft);
+  color: var(--accent);
 }
 
 .api-sample-head {
-  margin-top: 18px;
+  margin: 22px 0 10px;
+  color: var(--muted-soft);
 }
 
 .api-field {
   display: block;
-  margin-bottom: 9px;
+  margin-bottom: 10px;
 }
 
 .api-field span {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
   font-size: 12.5px;
   color: var(--muted);
 }
@@ -7371,35 +7419,42 @@ body.docs-page main {
 .api-field em {
   margin-left: 6px;
   font-style: normal;
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--red-text);
 }
 
 .api-field input {
   width: 100%;
-  padding: 8px 11px;
-  border: 1px solid var(--border);
+  padding: 9px 12px;
+  border: 1px solid var(--accent-border);
   border-radius: 9px;
   background: #fff;
   font-family: var(--mono);
   font-size: 13px;
   color: var(--text);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.api-field input::placeholder {
+  color: var(--muted-soft);
 }
 
 .api-field input:focus-visible {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 14%);
 }
 
 .api-noparams,
 .api-seal-hint {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   font-size: 13px;
   color: var(--muted);
+  line-height: 1.6;
 }
 
 .api-btn {
-  padding: 8px 16px;
+  padding: 9px 18px;
   border: 1px solid var(--accent);
   border-radius: 9px;
   background: var(--accent);
@@ -7407,15 +7462,16 @@ body.docs-page main {
   font: inherit;
   font-size: 13.5px;
   cursor: pointer;
-  transition: opacity 140ms ease;
+  transition: background 140ms ease, transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.api-btn:hover {
-  opacity: 0.88;
+.api-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+  transform: translateY(-1px);
 }
 
 .api-btn:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: default;
 }
 
@@ -7425,29 +7481,36 @@ body.docs-page main {
   color: var(--accent);
 }
 
-/* The real response. Distinct from the sample above it, so nobody mistakes an
-   illustration for something that happened. */
+.api-seal:hover:not(:disabled) {
+  background: #fff;
+}
+
+/* What actually came back, on white so it separates from the blue it sits in,
+   and coloured by whether it worked. */
 .api-out {
-  margin: 12px 0 0;
-  padding: 13px 15px;
+  margin: 14px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
   border-left: 3px solid var(--green);
-  border-radius: 0 10px 10px 0;
+  border-radius: 4px 11px 11px 4px;
   background: #fff;
   font-family: var(--mono);
   font-size: 12.5px;
-  line-height: 1.6;
+  line-height: 1.65;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 340px;
+  max-height: 360px;
   overflow: auto;
 }
 
 .api-out.is-error {
   border-left-color: var(--red);
+  border-color: var(--red-border);
   background: var(--red-weak);
 }
 
-.api-curl {
+.api-panel .doc-code {
+  margin: 0;
   font-size: 12.5px;
 }
 
@@ -7460,21 +7523,4 @@ body.docs-page main {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
-}
-
-/* A page whose content is itself two columns drops the contents rail and takes
-   its width. Otherwise the documentation and the playground get about 350px
-   each, which is not enough for a JSON response. */
-.doc-shell.is-wide {
-  grid-template-columns: 244px minmax(0, 1fr);
-}
-
-.doc-shell.is-wide .doc-main {
-  max-width: none;
-}
-
-.doc-shell.is-wide .doc-body > p,
-.doc-shell.is-wide .doc-body > .doc-list,
-.doc-shell.is-wide .doc-body > .doc-quote {
-  max-width: 860px;
 }
