@@ -227,9 +227,11 @@ async fn create_condition(
             }
             let conn = app.0.db.lock().unwrap();
             conn.execute(
-                "INSERT INTO conditions (id, committee_id, kind, chain_id, height, status, created_at)
-                 VALUES (?1, ?2, 'at_block', ?3, ?4, 'pending', ?5)",
-                rusqlite::params![id, committee_id, chain_id, height, now],
+                // The tag was missing from this insert, so a block-scheduled
+                // condition could never be attributed to the app that made it.
+                "INSERT INTO conditions (id, committee_id, kind, chain_id, height, status, tag, created_at)
+                 VALUES (?1, ?2, 'at_block', ?3, ?4, 'pending', ?5, ?6)",
+                rusqlite::params![id, committee_id, chain_id, height, tag, now],
             )
             .map_err(internal)?;
             Ok(Json(json!({
