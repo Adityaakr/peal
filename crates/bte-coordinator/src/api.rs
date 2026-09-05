@@ -111,9 +111,33 @@ async fn cors(request: axum::extract::Request, next: axum::middleware::Next) -> 
         header::ACCESS_CONTROL_ALLOW_METHODS,
         HeaderValue::from_static("GET, POST, OPTIONS"),
     );
+    // Every header the documentation tells a caller to send.
+    //
+    // This was `content-type` alone, which meant the quickstart worked from
+    // peal.network and from nowhere else: a browser on any other origin had its
+    // Idempotency-Key and If-None-Match stripped by the preflight, so the two
+    // things this API asks agents to do, retry safely and poll cheaply, were
+    // the two a cross origin caller could not do.
     headers.insert(
         header::ACCESS_CONTROL_ALLOW_HEADERS,
-        HeaderValue::from_static("content-type"),
+        HeaderValue::from_static("content-type, accept, idempotency-key, if-none-match, x-payment"),
+    );
+    // And every header the documentation tells a caller to read. Without this a
+    // browser can see the status line and the body and nothing else: the ETag it
+    // was told to send back, the Location of what it just made, its rate limit
+    // budget and its payment receipt were all invisible.
+    headers.insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static(
+            "etag, location, ratelimit-limit, ratelimit-remaining, ratelimit-reset, \
+             retry-after, x-payment-response",
+        ),
+    );
+    // A preflight for every request is a round trip nobody needs; this API's
+    // CORS answer does not change.
+    headers.insert(
+        header::ACCESS_CONTROL_MAX_AGE,
+        HeaderValue::from_static("86400"),
     );
     response
 }
