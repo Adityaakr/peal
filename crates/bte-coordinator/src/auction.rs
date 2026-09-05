@@ -193,7 +193,7 @@ struct CreateAuction {
 async fn create_auction(
     State(app): State<App>,
     headers: HeaderMap,
-    Json(req): Json<CreateAuction>,
+    crate::v1::ApiJson(req): crate::v1::ApiJson<CreateAuction>,
 ) -> Result<Response> {
     let currency = req.currency.unwrap_or_else(|| "USD".into());
     if currency.trim().is_empty() || currency.chars().count() > 12 {

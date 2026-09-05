@@ -50,7 +50,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -77,6 +77,84 @@ pub fn routes() -> Router<App> {
         .route("/seals", post(create_lone_seal))
         .route("/seals/{id}", get(get_seal))
         .route("/seals/{id}/proof", get(get_seal_proof))
+}
+
+/// A JSON body extractor whose failures are problem+json like every other
+/// error this API returns.
+///
+/// axum's own `Json` rejects with `text/plain`: a string body, no `code`, no
+/// `field`. So a caller following the documentation, which says to branch on
+/// `code`, hit `JSON.parse` on the words "Failed to deserialize the JSON body"
+/// and got a parse error instead of the reason. Four of the most likely
+/// mistakes anyone makes against this API were the four that came back in a
+/// shape nothing could read.
+pub struct ApiJson<T>(pub T);
+
+impl<S, T> axum::extract::FromRequest<S> for ApiJson<T>
+where
+    T: serde::de::DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = Problem;
+
+    async fn from_request(
+        req: axum::extract::Request,
+        state: &S,
+    ) -> std::result::Result<Self, Self::Rejection> {
+        use axum::extract::rejection::JsonRejection;
+        match Json::<T>::from_request(req, state).await {
+            Ok(Json(value)) => Ok(ApiJson(value)),
+            Err(rejection) => Err(match rejection {
+                // The body parsed as JSON but did not fit the type. The message
+                // names the offending field, which is worth keeping: it is the
+                // difference between "invalid body" and "opens_in must be a
+                // number".
+                JsonRejection::JsonDataError(e) => Problem::new(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "invalid_body",
+                    tidy(&e.body_text()),
+                ),
+                JsonRejection::JsonSyntaxError(e) => Problem::new(
+                    StatusCode::BAD_REQUEST,
+                    "malformed_json",
+                    tidy(&e.body_text()),
+                ),
+                JsonRejection::MissingJsonContentType(_) => Problem::new(
+                    StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                    "unsupported_media_type",
+                    "send this with `Content-Type: application/json`.",
+                ),
+                JsonRejection::BytesRejection(_) => Problem::new(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "payload_too_large",
+                    "the request body is larger than this endpoint accepts.",
+                ),
+                other => Problem::new(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_body",
+                    tidy(&other.body_text()),
+                ),
+            }),
+        }
+    }
+}
+
+/// axum's rejection text is a sentence with a stack of `serde` detail after it.
+/// The first line is the useful part; the rest names internal types.
+fn tidy(text: &str) -> String {
+    let first = text.lines().next().unwrap_or(text).trim();
+    let first = first
+        .strip_prefix("Failed to deserialize the JSON body into the target type: ")
+        .unwrap_or(first);
+    let first = first
+        .strip_prefix("Failed to parse the request body as JSON: ")
+        .map(|rest| format!("the body is not valid JSON: {rest}"))
+        .unwrap_or_else(|| first.to_string());
+    let mut out = first.trim().to_string();
+    if !out.ends_with('.') {
+        out.push('.');
+    }
+    out
 }
 
 // ---------------------------------------------------------------- errors ----
@@ -227,7 +305,10 @@ async fn parameters(State(app): State<App>) -> Result<Json<Value>> {
 
 // ----------------------------------------------------------------- rounds ---
 
-#[derive(Deserialize)]
+// Serialize as well as Deserialize: the idempotency fingerprint is taken over
+// the parsed request, so a retry that differs only in whitespace or key order
+// is still recognised as the same request.
+#[derive(Deserialize, Serialize)]
 struct CreateRound {
     /// Absolute, and preferred: RFC 3339, or unix seconds as a number.
     opens_at: Option<Value>,
@@ -331,7 +412,7 @@ fn validate_presentation(req: &CreateRound) -> Result<Presentation> {
     })
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct OpensAtBlock {
     chain_id: i64,
     height: i64,
@@ -356,7 +437,7 @@ pub(crate) async fn create_round_inner(
     let res = create_round(
         State(app.clone()),
         headers,
-        Json(CreateRound {
+        ApiJson(CreateRound {
             opens_at: spec.opens_at,
             opens_in: spec.opens_in,
             opens_at_block: None,
@@ -376,7 +457,7 @@ pub(crate) async fn create_seal_inner(app: &App, round_id: &str, body: Value) ->
     let req: CreateSeal = serde_json::from_value(body).map_err(|_| {
         Problem::invalid("invalid_body", "expected { ciphertext_b64 }").field("ciphertext_b64")
     })?;
-    create_seal(State(app.clone()), Path(round_id.to_string()), Json(req)).await
+    create_seal(State(app.clone()), Path(round_id.to_string()), ApiJson(req)).await
 }
 
 /// One round as JSON, for a module that presents it differently.
@@ -401,8 +482,9 @@ pub(crate) fn reveal_slots(app: &App, round_id: &str) -> Option<Vec<Value>> {
 async fn create_round(
     State(app): State<App>,
     headers: HeaderMap,
-    Json(req): Json<CreateRound>,
+    ApiJson(req): ApiJson<CreateRound>,
 ) -> Result<Response> {
+    let fingerprint = request_fingerprint(&req);
     let idempotency_key = headers
         .get("idempotency-key")
         .and_then(|v| v.to_str().ok())
@@ -417,9 +499,22 @@ async fn create_round(
                     .field("Idempotency-Key"),
             );
         }
-        if let Some(existing) = replay(&app, key)? {
+        match replay(&app, key, &fingerprint)? {
             // 200 rather than 201: this call created nothing.
-            return Ok((StatusCode::OK, Json(existing)).into_response());
+            Replay::Same(existing) => return Ok((StatusCode::OK, Json(*existing)).into_response()),
+            // Silently handing back the first round was the dangerous answer:
+            // an agent retrying with a new deadline got the old one, with a
+            // 200 and nothing to branch on.
+            Replay::Different => {
+                return Err(Problem::new(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "idempotency_key_reused",
+                    "this Idempotency-Key was already used with a different request. \
+                     Use a new key, or send the original request again.",
+                )
+                .field("Idempotency-Key"))
+            }
+            Replay::Fresh => {}
         }
     }
 
@@ -524,7 +619,7 @@ async fn create_round(
     };
 
     if let Some(key) = &idempotency_key {
-        remember(&app, key, &id, &body, now)?;
+        remember(&app, key, &id, &body, &fingerprint, now)?;
     }
 
     // 201 with a Location, so a caller can follow the resource it just made.
@@ -672,7 +767,7 @@ struct CreateSeal {
 async fn create_seal(
     State(app): State<App>,
     Path(round_id): Path<String>,
-    Json(req): Json<CreateSeal>,
+    ApiJson(req): ApiJson<CreateSeal>,
 ) -> Result<Response> {
     let max_b64 = (bte_crypto::MAX_PAYLOAD_BYTES + 4096) * 4 / 3 + 8;
     if req.ciphertext_b64.len() > max_b64 {
@@ -868,7 +963,7 @@ struct CreateLoneSeal {
 async fn create_lone_seal(
     State(app): State<App>,
     headers: HeaderMap,
-    Json(req): Json<CreateLoneSeal>,
+    ApiJson(req): ApiJson<CreateLoneSeal>,
 ) -> Result<Response> {
     let round_req = CreateRound {
         opens_at: req.unlock_at.clone(),
@@ -881,14 +976,14 @@ async fn create_lone_seal(
     };
     // Reuse the round path wholesale rather than reimplementing validation, so
     // a rule can never hold on one endpoint and not the other.
-    let created = create_round(State(app.clone()), headers, Json(round_req)).await?;
+    let created = create_round(State(app.clone()), headers, ApiJson(round_req)).await?;
     let round: Value = body_json(created).await?;
     let round_id = round["id"].as_str().unwrap_or_default().to_string();
 
     let sealed = create_seal(
         State(app.clone()),
         Path(round_id.clone()),
-        Json(CreateSeal {
+        ApiJson(CreateSeal {
             ciphertext_b64: req.ciphertext_b64,
         }),
     )
@@ -1259,29 +1354,64 @@ fn decode_cursor(raw: &str) -> Result<(i64, String)> {
     Ok((at.parse().map_err(|_| bad())?, id.to_string()))
 }
 
-fn replay(app: &App, key: &str) -> Result<Option<Value>> {
+/// A stable fingerprint of the request a key was used with.
+///
+/// Taken over the parsed request rather than the raw bytes, so whitespace and
+/// key order do not make a genuine retry look like a new request.
+fn request_fingerprint<T: serde::Serialize>(req: &T) -> String {
+    use sha2::{Digest, Sha256};
+    let canonical = serde_json::to_string(req).unwrap_or_default();
+    hex::encode(Sha256::digest(canonical.as_bytes()))
+}
+
+/// What a key already in the table means for this request.
+enum Replay {
+    /// Not seen, or expired. Carry on and create.
+    Fresh,
+    /// Seen with the same request. Hand back what was made the first time.
+    Same(Box<Value>),
+    /// Seen with a different request. That is a mistake, not a retry.
+    Different,
+}
+
+fn replay(app: &App, key: &str, fingerprint: &str) -> Result<Replay> {
     let conn = app.0.db.lock().unwrap();
-    let row: Option<(String, i64)> = conn
+    let row: Option<(String, i64, Option<String>)> = conn
         .query_row(
-            "SELECT response_json, created_at FROM idempotency WHERE key = ?1",
+            "SELECT response_json, created_at, request_hash FROM idempotency WHERE key = ?1",
             [key],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .ok();
     match row {
-        Some((body, at)) if unix_now() - at < IDEMPOTENCY_TTL_SECS => {
-            Ok(serde_json::from_str(&body).ok())
+        Some((body, at, stored)) if unix_now() - at < IDEMPOTENCY_TTL_SECS => {
+            // A row written before fingerprints existed matches anything, so
+            // keys in flight across the deploy keep working.
+            match stored {
+                Some(hash) if hash != fingerprint => Ok(Replay::Different),
+                _ => Ok(serde_json::from_str(&body)
+                    .map(|v| Replay::Same(Box::new(v)))
+                    .unwrap_or(Replay::Fresh)),
+            }
         }
-        _ => Ok(None),
+        _ => Ok(Replay::Fresh),
     }
 }
 
-fn remember(app: &App, key: &str, round_id: &str, body: &Value, now: i64) -> Result<()> {
+fn remember(
+    app: &App,
+    key: &str,
+    round_id: &str,
+    body: &Value,
+    fingerprint: &str,
+    now: i64,
+) -> Result<()> {
     let conn = app.0.db.lock().unwrap();
     conn.execute(
-        "INSERT OR REPLACE INTO idempotency (key, round_id, response_json, created_at)
-         VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![key, round_id, body.to_string(), now],
+        "INSERT OR REPLACE INTO idempotency
+             (key, round_id, response_json, created_at, request_hash)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![key, round_id, body.to_string(), now, fingerprint],
     )
     .map_err(Problem::internal)?;
     Ok(())
