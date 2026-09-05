@@ -2,6 +2,31 @@
 import type { DocsPage } from '../../docs';
 import { type Demo, base, client, demoHtml, readJson, shown, wireDemos } from './runner';
 
+/**
+ * Undo the padding envelope before showing a payload.
+ *
+ * peal.js pads what it seals, because a sealed length is public the moment a
+ * ciphertext is submitted and an unpadded bid announces its own size. The
+ * padded form is `01`, a four byte big endian length, the payload, then zeros
+ * to the next bucket. `payload_b64` is the bytes that were revealed, envelope
+ * and all, so decoding it raw prints five bytes of header and a tail of NULs,
+ * which is exactly what this page used to do.
+ *
+ * Anything that is not this envelope comes back as it came: a round can hold
+ * payloads from clients that never used one, and one caller's format choice
+ * must not make somebody else's payload unreadable.
+ */
+function unwrapPayload(b64: string): string {
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const decode = (v: Uint8Array): string => new TextDecoder().decode(v);
+  if (bytes.length < 5 || bytes[0] !== 1) return decode(bytes);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const length = view.getUint32(1, false);
+  if (5 + length > bytes.length) return decode(bytes);
+  for (let i = 5 + length; i < bytes.length; i++) if (bytes[i] !== 0) return decode(bytes);
+  return decode(bytes.slice(5, 5 + length));
+}
+
 const demos: Demo[] = [
   {
     id: 'round',
@@ -109,9 +134,7 @@ const { data } = await fetch(\`${shown}/v1/rounds/\${round.id}/seals\`)
       const seals = await client.listSeals(id);
       log(`\n${seals.length} seal${seals.length === 1 ? '' : 's'}:`);
       for (const s of seals.slice(0, 5)) {
-        const text = s.payload_b64
-          ? new TextDecoder().decode(Uint8Array.from(atob(s.payload_b64), (c) => c.charCodeAt(0)))
-          : '(sealed)';
+        const text = s.payload_b64 ? unwrapPayload(s.payload_b64) : '(sealed)';
         log(`  ${s.id.slice(0, 12)}…  ${text}`);
       }
     },

@@ -126,8 +126,16 @@ export const howItWorks: DocsPage = {
           </div>
         </div>
 
-        <p>Two details worth knowing. Every batch is padded to 64 with decoys the coordinator seals
-        to itself, so a round with three submissions does not announce that it had three; decoys
-        come back flagged <code>is_dummy</code>. And slot positions are derived from the ciphertext
-        hashes rather than arrival order, so a batch cannot be reordered after the fact.</p>`,
+        <p>Three details worth knowing. <strong>How many sealed is not published while a round is
+        open.</strong> <code>seals</code> and <code>slots_including_decoys</code> come back
+        <code>null</code> until it opens, and the list of seal ids with them, because a live count
+        is the number a competitor in a sealed auction most wants and the deadline is exactly when
+        it is worth something. You read your own back with
+        <code>GET /v1/seals/{id}</code>, using the id your own submission returned.</p>
+
+        <p>Then every batch is padded to 64 with decoys the coordinator seals to itself, so once a
+        round has opened, a round with three submissions still does not announce that it had three;
+        decoys come back flagged <code>is_dummy</code>. And slot positions are derived from the
+        ciphertext hashes rather than arrival order, so a batch cannot be reordered after the
+        fact.</p>`,
 };

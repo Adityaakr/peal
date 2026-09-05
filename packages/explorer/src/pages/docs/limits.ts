@@ -9,8 +9,8 @@ export const limits: DocsPage = {
         <div class="dev-limits">
           <div><span>payload</span><strong>5 MB</strong><p>Per sealed blob.</p></div>
           <div><span>rate</span><strong>50/s</strong><p>Per IP, bursting to 400.</p></div>
-          <div><span>batch</span><strong>64</strong><p>Padded with decoys, so a quiet condition
-          does not announce how few sealed to it.</p></div>
+          <div><span>batch</span><strong>64</strong><p>Padded with decoys. The count is not
+          published at all until a round opens, and padded once it has.</p></div>
           <div><span>committee</span><strong>3 of 5</strong><p>Any three operators can open a
           batch. Any two cannot.</p></div>
         </div>

@@ -156,10 +156,17 @@ the integration end to end against the live network.
 6. **A picture must be `https://`.** `http:`, `javascript:` and `data:` are
    refused rather than sanitised.
 
-7. **A slot count is not a participant count.** Batches are padded to 64 with
-   decoys so a quiet round does not announce how few took part.
+7. **A slot count is not a participant count, and neither is available early.**
+   `seals` and `slots_including_decoys` are `null` until the round opens, so a
+   live round does not announce how few sealed to it. Once open, the batch is
+   padded to 64 with decoys, so the slot count is not a participant count then
+   either.
 
-8. **404 before the deadline is correct.** For an auction, `bids` is `null`
+8. **`payload_b64` is padded.** It arrives as `01`, a four byte big endian
+   length, the payload, then zeros. `peal.js` unwraps it; over plain HTTP you
+   must. See `reference/api.md`.
+
+9. **404 before the deadline is correct.** For an auction, `bids` is `null`
    rather than an empty list, so "not open yet" cannot be read as "nobody bid".
 
 ---
