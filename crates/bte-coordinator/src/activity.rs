@@ -33,6 +33,16 @@ pub struct ActivityQuery {
     days: Option<i64>,
 }
 
+/// The counter keys for the public families, as a SQL list. Built from the
+/// same constant the middleware writes with, so the two cannot drift.
+fn public_keys(prefix: &str) -> String {
+    PUBLIC_FAMILIES
+        .iter()
+        .map(|f| format!("'{prefix}{f}'"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Bump a daily counter. Never fails a request: a missed count is a worse
 /// outcome than a 500, but only slightly, and the caller is doing something
 /// real that should not break because a statistic could not be written.
@@ -46,7 +56,31 @@ pub fn count(app: &App, kind: &str) {
     );
 }
 
-/// Which part of the API a path belongs to, for the endpoint breakdown.
+/// The families that count as public API usage.
+///
+/// Also used when reading the counters back, so rows written before /v0 was
+/// excluded stop being summed rather than sitting in the history for ever
+/// making the chart look like a hockey stick that never happened.
+const PUBLIC_FAMILIES: [&str; 8] = [
+    "rounds",
+    "seals",
+    "auctions",
+    "parameters",
+    "currencies",
+    "names",
+    "intents",
+    "service",
+];
+
+/// Which part of the public API a path belongs to.
+///
+/// `/v1` only, and that is the whole point. `/v0` is this network's own
+/// plumbing: operator nodes polling for work, submitting shares and posting
+/// ciphertexts, in a loop, for ever. Counting it produced a headline of
+/// twenty two thousand calls of which twenty two thousand three hundred and
+/// eleven were nodes talking to their own coordinator. The number was real and
+/// told you nothing, and it buried the twenty five calls that were somebody
+/// building something.
 ///
 /// A family rather than a route: `/v1/rounds/{id}/seals` counts as seals, and
 /// ids never enter a counter key. A key built from a path with an id in it
@@ -55,33 +89,13 @@ pub fn count(app: &App, kind: &str) {
 fn family_of(path: &str) -> Option<&'static str> {
     let rest = path
         .strip_prefix("/v1/x402/")
-        .or_else(|| path.strip_prefix("/v1/"))
-        .or_else(|| path.strip_prefix("/v0/"))?;
-    let head = rest.split('/').next().unwrap_or_default();
-    // Reading the dashboard is not using the API. Without this the activity
-    // page's own polling, every fifteen seconds per open tab, becomes the
-    // busiest endpoint on the chart it is drawing.
-    const OBSERVABILITY: [&str; 5] = ["activity", "stats", "healthz", "x402", "skill-installs"];
-    if OBSERVABILITY.contains(&head) {
-        return None;
-    }
-    // A fixed set, so a caller cannot mint counter rows by inventing paths.
-    const FAMILIES: [&str; 10] = [
-        "rounds",
-        "seals",
-        "auctions",
-        "parameters",
-        "currencies",
-        "names",
-        "intents",
-        "conditions",
-        "ciphertexts",
-        "committees",
-    ];
+        .or_else(|| path.strip_prefix("/v1/"))?;
     if rest.is_empty() {
         return Some("service");
     }
-    FAMILIES.into_iter().find(|f| *f == head)
+    let head = rest.split('/').next().unwrap_or_default();
+    // A fixed set, so a caller cannot mint counter rows by inventing paths.
+    PUBLIC_FAMILIES.into_iter().find(|f| *f == head)
 }
 
 /// Counts a call and where it came from. Nothing else about the request.
@@ -94,6 +108,10 @@ pub async fn observe(
         return next.run(req).await;
     }
     let family = family_of(req.uri().path());
+    // Reading a round and creating one are not the same event, and a client
+    // polling one while it waits for the deadline can produce hundreds of the
+    // first for one of the second.
+    let is_write = req.method() != axum::http::Method::GET;
     let res = next.run(req).await;
 
     if let Some(family) = family {
@@ -102,6 +120,9 @@ pub async fn observe(
         // worth fixing.
         let ok = res.status().as_u16() < 400;
         count(&app, &format!("call:{family}"));
+        if is_write {
+            count(&app, &format!("write:{family}"));
+        }
         if !ok {
             count(&app, &format!("err:{family}"));
         }
@@ -172,8 +193,22 @@ pub async fn get_activity(
             .unwrap_or(0);
         let calls: i64 = conn
             .query_row(
-                "SELECT COALESCE(SUM(count), 0) FROM counters
-                  WHERE kind LIKE 'call:%' AND day = ?1",
+                &format!(
+                    "SELECT COALESCE(SUM(count), 0) FROM counters
+                      WHERE day = ?1 AND kind IN ({})",
+                    public_keys("call:")
+                ),
+                [&day],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        let writes: i64 = conn
+            .query_row(
+                &format!(
+                    "SELECT COALESCE(SUM(count), 0) FROM counters
+                      WHERE day = ?1 AND kind IN ({})",
+                    public_keys("write:")
+                ),
                 [&day],
                 |r| r.get(0),
             )
@@ -194,6 +229,7 @@ pub async fn get_activity(
             "skill_installs": installs,
             "paid_calls": paid,
             "calls": calls,
+            "writes": writes,
         }));
     }
 
@@ -252,12 +288,17 @@ pub async fn get_activity(
     };
 
     let errors: std::collections::HashMap<String, i64> = sum_prefix("err:").into_iter().collect();
+    let writes: std::collections::HashMap<String, i64> = sum_prefix("write:").into_iter().collect();
     let endpoints: Vec<Value> = sum_prefix("call:")
         .into_iter()
+        .filter(|(family, _)| PUBLIC_FAMILIES.contains(&family.as_str()))
         .map(|(family, calls)| {
+            let wrote = writes.get(&family).copied().unwrap_or(0);
             json!({
                 "family": family.clone(),
                 "calls": calls,
+                "writes": wrote,
+                "reads": calls - wrote,
                 "errors": errors.get(&family).copied().unwrap_or(0),
             })
         })
@@ -265,6 +306,10 @@ pub async fn get_activity(
     let calls_total: i64 = endpoints
         .iter()
         .filter_map(|e| e.get("calls").and_then(Value::as_i64))
+        .sum();
+    let writes_total: i64 = endpoints
+        .iter()
+        .filter_map(|e| e.get("writes").and_then(Value::as_i64))
         .sum();
 
     // ---- what is being built ----------------------------------------------
@@ -306,6 +351,7 @@ pub async fn get_activity(
         "tags": tags,
         "endpoints": endpoints,
         "calls": calls_total,
+        "writes": writes_total,
         "counts_note": "Work, not people. There are no accounts on this network, so nothing here counts visitors, sessions or addresses.",
     })))
 }

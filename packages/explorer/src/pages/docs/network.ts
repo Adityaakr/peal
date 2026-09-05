@@ -41,12 +41,14 @@ interface DayRow {
   skill_installs: number;
   paid_calls: number;
   calls: number;
+  writes: number;
 }
 
 interface Activity {
   days: number;
   as_of: number;
   calls: number;
+  writes: number;
   totals: {
     rounds: number;
     opened: number;
@@ -63,7 +65,7 @@ interface Activity {
   open_ms: { p50: number | null; p90: number | null; p99: number | null; samples: number };
   timings?: number[];
   tags: TagRow[];
-  endpoints: { family: string; calls: number; errors: number }[];
+  endpoints: { family: string; calls: number; writes: number; reads: number; errors: number }[];
 }
 
 const nf = new Intl.NumberFormat();
@@ -207,15 +209,20 @@ export const network: DocsPage = {
 
       <section class="act-panel">
         <h3>Which parts of the API</h3>
-        <p class="act-panel-note">Calls by family, with failures counted apart.</p>
+        <p class="act-panel-note">By family, split by whether the call created something or
+        read something.</p>
         <div id="act-endpoints"><p class="muted">loading…</p></div>
       </section>
     </div>
 
     <h2 id="api-calls">API calls</h2>
-    <p>Every request to <code>/v0</code> and <code>/v1</code>, counted by family. The dashboard's
-    own polling is excluded: it runs every fifteen seconds per open tab, and counting it would
-    make this page the busiest thing on the chart it is drawing.</p>
+    <p>Requests to the public API at <code>/v1</code>, counted by family, split by whether they
+    created something or read something.</p>
+    <p>The network's own plumbing is not in here. Operator nodes poll <code>/v0</code> for work
+    and post shares to it continuously, which at one point was twenty two thousand of the twenty
+    two thousand four hundred calls on this page. That number was real and told you nothing, and
+    it buried the two dozen that were somebody building something. The dashboard's own polling is
+    excluded for the same reason.</p>
     <div class="act-panel">
       <div class="act-total" id="act-calls-total"></div>
       <div class="act-chart" id="act-calls-chart"><p class="muted">loading…</p></div>
@@ -298,7 +305,7 @@ export const network: DocsPage = {
         {
           label: 'api calls',
           value: nf.format(a.calls),
-          sub: `in the last ${days}d`,
+          sub: `${nf.format(a.writes)} created something`,
           series: a.series.map((d) => d.calls),
         },
         {
@@ -469,17 +476,14 @@ export const network: DocsPage = {
 
       panel('#act-calls-chart', () => {
         const failures = a.endpoints.reduce((sum, e) => sum + e.errors, 0);
-        const busiest = a.endpoints[0];
         const callsTotal = el('#act-calls-total');
         if (callsTotal) {
           callsTotal.innerHTML = `
             <strong>${nf.format(a.calls)}</strong>
             <span>call${a.calls === 1 ? '' : 's'} in the last ${a.days} days</span>
-            <em>${
-              failures > 0
-                ? `${nf.format(failures)} failed`
-                : 'none failed'
-            }${busiest ? ` · busiest ${esc(busiest.family)}` : ''}</em>`;
+            <em>${nf.format(a.writes)} created something · ${nf.format(a.calls - a.writes)} read${
+              a.calls - a.writes === 1 ? '' : 's'
+            }${failures > 0 ? ` · ${nf.format(failures)} failed` : ''}</em>`;
         }
         const callsChart = el<HTMLElement>('#act-calls-chart');
         if (callsChart) {
@@ -549,12 +553,23 @@ export const network: DocsPage = {
         // ---- endpoints ----
         const epHost = el('#act-endpoints');
         if (epHost) {
-          const rows: BarRow[] = a.endpoints.map((e) => ({
-            label: e.family,
-            value: e.calls,
-            sub: e.errors > 0 ? `${nf.format(e.errors)} failed` : undefined,
-            colour: e.errors > 0 && e.errors / Math.max(1, e.calls) > 0.25 ? '#dc2626' : PALETTE.rounds,
-          }));
+          // What each family was used for, which is the question this panel
+          // is answering. A hundred reads of one round is a different fact
+          // from a hundred rounds created.
+          const rows: BarRow[] = a.endpoints.map((e) => {
+            const parts = [
+              e.writes > 0 ? `${nf.format(e.writes)} created` : null,
+              e.reads > 0 ? `${nf.format(e.reads)} read` : null,
+              e.errors > 0 ? `${nf.format(e.errors)} failed` : null,
+            ].filter(Boolean);
+            return {
+              label: e.family,
+              value: e.calls,
+              sub: parts.join(' · ') || undefined,
+              colour:
+                e.errors > 0 && e.errors / Math.max(1, e.calls) > 0.25 ? '#dc2626' : PALETTE.rounds,
+            };
+          });
           epHost.innerHTML = rows.length
             ? barList(rows, ' calls')
             : '<p class="muted">no calls counted in this window yet.</p>';
