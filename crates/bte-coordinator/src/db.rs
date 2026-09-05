@@ -87,7 +87,11 @@ CREATE TABLE IF NOT EXISTS idempotency (
     key           TEXT PRIMARY KEY,
     round_id      TEXT NOT NULL,
     response_json TEXT NOT NULL,
-    created_at    INTEGER NOT NULL
+    created_at    INTEGER NOT NULL,
+    -- A fingerprint of the request the key was first used with. Reusing a key
+    -- with a different body is a mistake, not a retry, and returning the
+    -- original round for it hands back the wrong resource with a 200.
+    request_hash  TEXT
 );
 -- Auction rules for a round: what a bid means and what can win. The bids
 -- themselves are ordinary ciphertexts and are not here.
@@ -118,6 +122,11 @@ pub fn open(path: &str) -> Result<Connection> {
     conn.pragma_update(None, "journal_mode", "WAL").ok();
     conn.pragma_update(None, "busy_timeout", 5000)?;
     conn.execute_batch(SCHEMA)?;
+    // Migration for databases created before the fingerprint existed. Rows
+    // without one are treated as matching anything, so keys already in flight
+    // when this shipped keep working rather than starting to 422.
+    let _ = conn.execute("ALTER TABLE idempotency ADD COLUMN request_hash TEXT", []);
+
     // Migration for databases created before the tag column existed.
     conn.execute("ALTER TABLE conditions ADD COLUMN tag TEXT", [])
         .ok();
