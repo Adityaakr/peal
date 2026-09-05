@@ -94,10 +94,12 @@ const seal = await peal.seal('my sealed bid', round.id);
   {
     id: 'read',
     title: '3. Read the round',
-    note: `One URL, every stage, always 200. While the round is open you get a status and a
-           count; once it opens the same call reports <code>opened</code> and the payloads are
-           available. Send <code>If-None-Match</code> with the ETag and unchanged polls cost a
-           304 instead of a response body.`,
+    note: `One URL, every stage, always 200. While the round is open you get its status and
+           deadline and nothing about what is in it: <code>seals</code> is <code>null</code> until
+           it opens, so a live round does not announce how few sealed to it. Once it opens the same
+           call reports <code>opened</code>, the count becomes real and the payloads are readable.
+           Send <code>If-None-Match</code> with the ETag and an unchanged poll costs a 304 instead
+           of a body.`,
     code: `const res = await fetch(\`${shown}/v1/rounds/\${round.id}\`, {
   headers: etag ? { 'if-none-match': etag } : {},
 });
@@ -158,7 +160,11 @@ export const quickstart: DocsPage = {
     <p>The payload was encrypted in your browser against the committee's public parameters, whose
     digest the client checked before using them. What crossed the network was already a
     ciphertext.</p>
-    <p>The 404 before the cue is the guarantee working, not an error to handle: there is
-    genuinely nothing readable to return.</p>`,
+    <p>Nothing above returns a 404. Every call on this page answers 200 at every stage, and what
+    changes is the content: <code>seals</code> and <code>payload_b64</code> are <code>null</code>
+    until the round opens. That is the guarantee working rather than an error to handle, and null
+    is deliberate so you can tell "not yet" from "none". The older
+    <code>GET /v0/reveals/{id}</code> does answer 404 before a reveal exists, which is where that
+    status comes from if you have met it.</p>`,
   mount: (root) => wireDemos(root, demos, { bidders: 0 }),
 };

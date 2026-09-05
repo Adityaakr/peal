@@ -37,9 +37,17 @@ export const intro: DocsPage = {
 
     <pre class="doc-code"><code>import { peal } from '${esc(shown)}/peal.js';
 
-const { id } = await peal.createRound({ opens_in: 3600, tag: 'my-app' });
-await peal.seal(userSubmission, id);    // sealed from here on
-const payloads = await peal.getPayloads(id);  // all of them, at the close</code></pre>
+const { id } = await peal.createRound({ opensIn: 3600, tag: 'my-app' });
+await peal.seal(userSubmission, id);      // sealed from here on
+
+await peal.waitForOpen(id);               // returns when the deadline passes
+const payloads = await peal.getPayloads(id);   // all of them, at once</code></pre>
+
+    <p class="dev-note">Two things this snippet is careful about. The options are camelCase
+    (<code>opensIn</code>), while the HTTP body is snake_case (<code>opens_in</code>); passing the
+    wrong one now throws rather than being ignored. And <code>getPayloads</code> reads whatever is
+    readable right now, which before the deadline is nothing, so
+    <code>waitForOpen</code> is what turns it into "at the close".</p>
 
     <h2 id="where-to-go-next">Where to go next</h2>
     <ul class="doc-list">
