@@ -7135,23 +7135,29 @@ body.docs-page main {
     display: flex;
   }
 
+  /* Collapsed by height, not by grid rows.
+   *
+   * This used `grid-template-rows: 0fr`, which is the right trick for a
+   * wrapper with exactly one child. This nav has a heading and a list per
+   * group, so `0fr` sized the first row to zero and every row after it was an
+   * implicit `auto`. The result was a closed menu that still occupied about
+   * six hundred invisible pixels, pushing the page heading off a phone screen
+   * entirely. */
   .doc-side nav {
-    display: grid;
-    grid-template-rows: 0fr;
+    display: block;
+    max-height: 0;
     opacity: 0;
     overflow: hidden;
     transition:
-      grid-template-rows 300ms cubic-bezier(0.22, 1, 0.36, 1),
+      max-height 320ms cubic-bezier(0.22, 1, 0.36, 1),
       opacity 200ms ease;
   }
 
   .doc-side.is-open nav {
-    grid-template-rows: 1fr;
+    /* Tall enough for the whole menu, and scrollable if a phone is shorter. */
+    max-height: 70vh;
+    overflow-y: auto;
     opacity: 1;
-  }
-
-  .doc-side nav > * {
-    min-height: 0;
   }
 
   .doc-main h1 {
@@ -7177,6 +7183,34 @@ body.docs-page main {
    each, which is not enough for a JSON response. */
 .doc-shell.is-wide {
   grid-template-columns: 244px minmax(0, 1fr);
+}
+
+/* The collapse, repeated for the wide variant.
+ *
+ * The breakpoints above target .doc-shell, and this rule targets
+ * .doc-shell.is-wide, which is one class more specific and is declared after
+ * them. So on every page marked wide, the API reference and the activity
+ * dashboard, the sidebar kept its 244px column at every width and a phone got
+ * the documentation in what was left. That is one word per line at 390px.
+ *
+ * Written here rather than by loosening the selectors above, so the wide
+ * variant's own collapse lives next to the rule it is correcting. */
+@media (max-width: 1180px) {
+  .doc-shell.is-wide {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-shell.is-wide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .doc-shell.is-wide .doc-body > p,
+  .doc-shell.is-wide .doc-body > .doc-list,
+  .doc-shell.is-wide .doc-body > .doc-quote {
+    max-width: none;
+  }
 }
 
 .doc-shell.is-wide .doc-main {
