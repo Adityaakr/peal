@@ -86,3 +86,358 @@
     margin-bottom: 0;
   }
 }
+
+/* ---------------------------------------------------------------- sections --
+   Everything below the hero.
+   
+   The palette is the landing's own, not the documentation's: cream, ink, the
+   blue already in the hero, and the olive used as the accent. Instrument Serif
+   for the headings it already uses, Inter for reading.
+   
+   Depth in the scenes comes from translateZ under a perspective and from
+   nothing else. Rotating the planes as well looks three dimensional in a
+   thumbnail and falls apart at full size: a 1px border foreshortened along one
+   axis renders thick on one side and hairline on the other, and the type sits
+   on a slant. Moving a card along Z alone recedes properly and stays sharp. */
+
+.peal-landing main {
+  background: #f3f4ed;
+}
+
+.peal-sec {
+  /* The gap between sections is the thing that stops them reading as one wall
+     of text, so it is large and it is the same everywhere. */
+  padding: 120px 24px;
+  border-top: 1px solid rgb(42 54 22 / 10%);
+}
+
+.peal-sec-inner {
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.peal-eyebrow {
+  margin: 0 0 18px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #2a3616;
+  opacity: 0.55;
+}
+
+.peal-h2 {
+  margin: 0 0 28px;
+  font-family: 'Instrument Serif', serif;
+  font-size: clamp(30px, 5vw, 46px);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  color: #1a1a1a;
+}
+
+.peal-em {
+  font-style: italic;
+  color: #0871e7;
+}
+
+.peal-prose p {
+  margin: 0 0 22px;
+  font-size: 17.5px;
+  line-height: 1.68;
+  color: #2f3327;
+}
+
+.peal-prose p:last-child {
+  margin-bottom: 0;
+}
+
+/* ---- the two scenes ---- */
+
+.peal-scene {
+  margin: 40px 0 36px;
+}
+
+.peal-stage {
+  position: relative;
+  height: 260px;
+  perspective: 900px;
+  perspective-origin: 50% 45%;
+  transform-style: preserve-3d;
+}
+
+.peal-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 260px;
+  margin: -38px 0 0 -130px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgb(42 54 22 / 12%);
+  box-shadow: 0 18px 34px -24px rgb(26 26 26 / 45%);
+  transition:
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 500ms ease,
+    border-color 500ms ease;
+}
+
+.peal-card-v {
+  font-family: var(--font-sans);
+  font-size: 21px;
+  font-weight: 620;
+  color: #1a1a1a;
+  font-variant-numeric: tabular-nums;
+}
+
+.peal-card-w {
+  font-size: 12.5px;
+  color: #6b7063;
+}
+
+/* The open queue: four arrivals, stepped down and back, every one legible.
+   The last one is the point, so it is nearer the viewer and picked out. */
+/* One placement, shared by both scenes.
+ *
+ * The same four submissions appear twice, once legible and once sealed, so
+ * they sit in the same arrangement both times and only their state changes.
+ *
+ * Later cards are nearer the viewer, which is what keeps this readable: each
+ * one covers the BOTTOM of the one behind it, leaving every value visible. The
+ * sealed scene originally ran its depth the other way, so the front card hid
+ * the three values behind it and three of four cards read only "sealed".
+ *
+ * The step down is larger than the value row so the label under it survives
+ * too. */
+.peal-card-open,
+.peal-card-seal {
+  transform: translate3d(calc(-116px + var(--i) * 36px), calc(-104px + var(--i) * 54px),
+    calc(-36px + var(--i) * 26px));
+  animation: peal-rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i) * 130ms);
+}
+
+.peal-card-open.peal-card-last {
+  border-color: #0871e7;
+  box-shadow: 0 0 0 4px rgb(8 113 231 / 10%), 0 18px 34px -22px rgb(8 113 231 / 45%);
+}
+
+.peal-card-last .peal-card-w {
+  color: #0871e7;
+}
+
+/* Fades in without touching transform, which is where the card's place in
+   space lives. */
+@keyframes peal-rise {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Sealed: same places, faces hidden, values blurred until the deadline. */
+.peal-card-seal {
+  background: #eceee2;
+  border-color: rgb(42 54 22 / 18%);
+}
+
+.peal-card-seal .peal-card-v {
+  filter: blur(7px);
+  opacity: 0.55;
+  transition: filter 700ms ease, opacity 700ms ease;
+}
+
+.peal-card-lock {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 11px;
+  height: 9px;
+  border-radius: 2px;
+  background: #2a3616;
+  opacity: 0.5;
+}
+
+.peal-card-lock::before {
+  content: '';
+  position: absolute;
+  left: 2.5px;
+  top: -5px;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid #2a3616;
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+}
+
+/* The deadline: every card opens at the same instant, which is the whole
+   claim, so they share one transition rather than being staggered. */
+.peal-scene-sealed.is-open .peal-card-seal {
+  background: #fff;
+  border-color: #0871e7;
+}
+
+.peal-scene-sealed.is-open .peal-card-v {
+  filter: blur(0);
+  opacity: 1;
+}
+
+.peal-scene-sealed.is-open .peal-card-lock {
+  opacity: 0;
+}
+
+.peal-scene-cap {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: #6b7063;
+  transition: color 400ms ease;
+}
+
+.peal-scene-sealed.is-open .peal-scene-cap {
+  color: #0871e7;
+}
+
+/* ---- what people build ---- */
+
+.peal-uses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.peal-uses li {
+  padding: 22px 0;
+  border-bottom: 1px solid rgb(42 54 22 / 10%);
+}
+
+.peal-uses li:first-child {
+  border-top: 1px solid rgb(42 54 22 / 10%);
+}
+
+.peal-uses h3 {
+  margin: 0 0 7px;
+  font-size: 17px;
+  font-weight: 620;
+  color: #1a1a1a;
+}
+
+.peal-uses p {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.62;
+  color: #5c6154;
+}
+
+/* ---- the three calls ---- */
+
+.peal-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 26px;
+}
+
+.peal-calls code {
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #1a1a1a;
+  color: #f3f4ed;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13.5px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* ---- the close ---- */
+
+.peal-close {
+  text-align: center;
+  padding-bottom: 140px;
+}
+
+.peal-cta-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.peal-cta {
+  padding: 13px 24px;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #f3f4ed;
+  font-size: 15px;
+  font-weight: 550;
+  text-decoration: none;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), background 200ms ease;
+}
+
+.peal-cta:hover {
+  transform: translateY(-1px);
+  background: #0871e7;
+}
+
+.peal-cta-quiet {
+  background: transparent;
+  color: #1a1a1a;
+  border: 1px solid rgb(42 54 22 / 22%);
+}
+
+.peal-cta-quiet:hover {
+  background: #fff;
+  color: #1a1a1a;
+}
+
+.peal-close-note {
+  margin: 22px 0 0;
+  font-size: 14px;
+  color: #6b7063;
+}
+
+@media (max-width: 720px) {
+  .peal-sec {
+    padding: 76px 20px;
+  }
+
+  .peal-stage {
+    height: 300px;
+    perspective: 700px;
+  }
+
+  .peal-card {
+    width: 210px;
+    margin-left: -105px;
+  }
+
+  /* The desktop offsets are wider than a phone, so the first and last cards
+     hung off the edge. Stepped tighter here: at 390px this keeps every card
+     inside the section's own padding. */
+  .peal-card-open,
+  .peal-card-seal {
+    transform: translate3d(calc(-64px + var(--i) * 26px), calc(-96px + var(--i) * 50px),
+      calc(-30px + var(--i) * 22px));
+  }
+}
+
+/* The scenes illustrate a sequence. Without motion they are a still picture of
+   the end state, which is still true, so nothing is hidden. */
+@media (prefers-reduced-motion: reduce) {
+  .peal-card,
+  .peal-card-v,
+  .peal-scene-cap,
+  .peal-cta {
+    transition: none;
+  }
+}
