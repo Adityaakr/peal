@@ -877,6 +877,19 @@ async fn list_seals(State(app): State<App>, Path(round_id): Path<String>) -> Res
         .collect::<std::result::Result<Vec<_>, _>>()
         .map_err(Problem::internal)?;
 
+    // The list is the same disclosure as the count, one level down: eight ids
+    // on an open round is eight submissions. A caller who sealed something has
+    // its id from the response to their own POST and can read it back at
+    // /v1/seals/{id}; nobody needs the whole list before the round opens.
+    if !opened {
+        return Ok(Json(json!({
+            "data": Value::Null,
+            "available_at": round.get("opens_at").cloned().unwrap_or(Value::Null),
+            "note": "sealed submissions are listed once the round opens. \
+                     Read your own with GET /v1/seals/{id}.",
+        })));
+    }
+
     let data: Vec<Value> = rows
         .into_iter()
         .map(|(hash, position, _)| {
@@ -1251,10 +1264,29 @@ fn round_json(
             o.insert("opens_at".into(), Value::Null);
         }
     }
-    o.insert("seals".into(), json!(seals));
+    // Not published until the round opens.
+    //
+    // The documentation says in four places that a quiet round does not
+    // announce how few sealed to it, and this field announced it exactly:
+    // `seals: 2` on an open round is the number a competitor in a sealed
+    // auction most wants, at the only time it is worth anything. The decoy
+    // padding hides which slots were real once a batch is revealed; it does
+    // nothing about a live count served straight from the table.
+    //
+    // Null rather than absent, and null rather than zero, following what
+    // auction results already do with `bids` before the close: a caller can
+    // tell "not yet" from "none", which is the distinction that matters.
+    let public = status == "opened" || status == "stalled";
+    o.insert(
+        "seals".into(),
+        if public { json!(seals) } else { Value::Null },
+    );
     // Named for what it is. Callers kept reading a slot count as a participant
     // count, and it is not: the batch is padded so it cannot be one.
-    o.insert("slots_including_decoys".into(), json!(slots));
+    o.insert(
+        "slots_including_decoys".into(),
+        if public { json!(slots) } else { Value::Null },
+    );
     o.insert("created_at".into(), json!(iso(created_at)));
     o.insert("created_at_unix".into(), json!(created_at));
     match opened_at {

@@ -1036,7 +1036,10 @@ async fn v1_round_reports_every_stage_on_one_url() {
     let id = round["id"].as_str().unwrap().to_string();
     assert_eq!(round["status"], "open");
     assert_eq!(round["tag"], "shop");
-    assert_eq!(round["seals"], 0);
+    // Withheld until the round opens, so a live round does not announce how few
+    // sealed to it. Null rather than zero: a caller can tell "not yet" from
+    // "none".
+    assert_eq!(round["seals"], Value::Null);
     // ISO for people, unix for arithmetic, and never a relative time on the way
     // out.
     assert!(
@@ -1062,14 +1065,28 @@ async fn v1_round_reports_every_stage_on_one_url() {
     let (status, open) = h.get(&format!("/v1/rounds/{id}")).await;
     assert_eq!(status, 200);
     assert_eq!(open["status"], "open");
-    assert_eq!(open["seals"], 1);
+    // The seal landed, and the round still will not say so. This is the property
+    // four pages of documentation claim and the API used to break.
+    assert_eq!(open["seals"], Value::Null);
+    assert_eq!(open["slots_including_decoys"], Value::Null);
     assert_eq!(open["opened_at"], Value::Null);
 
-    // While open, seals list without payloads. There is nothing to leak: the
-    // coordinator does not hold one.
+    // While open, the list is withheld too. Publishing ids one at a time is the
+    // same disclosure as publishing the count: eight ids on an open round is
+    // eight submissions. A caller reads their own back at /v1/seals/{id}, whose
+    // id they got from their own POST.
     let (_, listed) = h.get(&format!("/v1/rounds/{id}/seals")).await;
-    assert_eq!(listed["data"].as_array().unwrap().len(), 1);
-    assert!(listed["data"][0].get("payload_b64").is_none(), "{listed}");
+    assert_eq!(listed["data"], Value::Null, "{listed}");
+    assert_ne!(listed["available_at"], Value::Null, "{listed}");
+
+    let own = hex::encode(ct.hash());
+    let (status, mine) = h.get(&format!("/v1/seals/{own}")).await;
+    assert_eq!(
+        status, 200,
+        "a caller must still be able to read their own seal"
+    );
+    assert_eq!(mine["id"], own);
+    assert!(mine.get("payload_b64").is_none(), "{mine}");
 }
 #[tokio::test]
 async fn v1_round_opens_and_carries_the_payload() {
@@ -1258,7 +1275,9 @@ async fn v1_refuses_anything_that_is_not_a_ciphertext() {
 #[tokio::test]
 async fn v1_reposting_a_seal_is_the_same_seal() {
     let h = harness().await;
-    let (_, round) = h.post("/v1/rounds", json!({"opens_in": 600})).await;
+    // Short, because the count that proves the dedupe is only published once
+    // the round opens.
+    let (_, round) = h.post("/v1/rounds", json!({"opens_in": 3})).await;
     let id = round["id"].as_str().unwrap();
     let mut rng = bte_crypto::os_rng();
     let ct = seal(&h.params, b"once", &mut rng).unwrap();
@@ -1272,6 +1291,15 @@ async fn v1_reposting_a_seal_is_the_same_seal() {
     assert_eq!(second, 200);
     assert_eq!(a["id"], b["id"]);
 
+    // The count is not published while the round is open, so the dedupe is
+    // checked where it becomes visible: after the round opens.
+    let (_, open) = h.get(&format!("/v1/rounds/{id}")).await;
+    assert_eq!(
+        open["seals"],
+        Value::Null,
+        "an open round must not publish a count"
+    );
+    h.drive_to_reveal(id).await;
     let (_, round) = h.get(&format!("/v1/rounds/{id}")).await;
     assert_eq!(round["seals"], 1, "a retry created a second seal");
 }
@@ -1279,7 +1307,10 @@ async fn v1_reposting_a_seal_is_the_same_seal() {
 #[tokio::test]
 async fn v1_etag_lets_a_poller_wait_cheaply() {
     let h = harness().await;
-    let (_, round) = h.post("/v1/rounds", json!({"opens_in": 600})).await;
+    // Short, because this test drives the round all the way open at the end.
+    // Long enough that the seal below lands while it is still open, which is
+    // the case being tested.
+    let (_, round) = h.post("/v1/rounds", json!({"opens_in": 3})).await;
     let id = round["id"].as_str().unwrap().to_string();
 
     let (status, _, headers) = h.get_full(&format!("/v1/rounds/{id}")).await;
@@ -1295,7 +1326,12 @@ async fn v1_etag_lets_a_poller_wait_cheaply() {
         .unwrap();
     assert_eq!(unchanged.status().as_u16(), 304);
 
-    // Something actually happened, so the tag must move.
+    // A seal must NOT move the tag while the round is open.
+    //
+    // Hiding the count and then changing the ETag on every seal would leak the
+    // same number one step removed: a poller counts tag changes. The tag covers
+    // the published representation, and while a round is open a new seal does
+    // not change it.
     let mut rng = bte_crypto::os_rng();
     let ct = seal(&h.params, b"changes things", &mut rng).unwrap();
     h.post(
@@ -1303,6 +1339,21 @@ async fn v1_etag_lets_a_poller_wait_cheaply() {
         json!({"ciphertext_b64": B64.encode(ct.to_bytes())}),
     )
     .await;
+    let quiet = h
+        .client
+        .get(format!("{}/v1/rounds/{id}", h.base))
+        .header("if-none-match", &tag)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        quiet.status().as_u16(),
+        304,
+        "a new seal must not be observable through the etag"
+    );
+
+    // Opening it is a change a poller is entitled to see.
+    h.drive_to_reveal(&id).await;
     let changed = h
         .client
         .get(format!("{}/v1/rounds/{id}", h.base))
@@ -1652,7 +1703,7 @@ async fn v1_seal_until_creates_a_round_of_one() {
 
     let round_id = body["round_id"].as_str().unwrap().to_string();
     let (_, round) = h.get(&format!("/v1/rounds/{round_id}")).await;
-    assert_eq!(round["seals"], 1);
+    assert_eq!(round["seals"], Value::Null, "not published while open");
     assert_eq!(round["tag"], "agent");
 
     // It validates exactly as the two-step form does, because it is the same
