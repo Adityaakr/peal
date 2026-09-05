@@ -67,7 +67,7 @@ export const ENDPOINTS: Endpoint[] = [
       { name: 'title', in: 'body', type: 'string', description: 'Public from creation, unlike anything sealed to the round. Up to 120 characters.', example: 'Signed tour poster' },
       { name: 'description', in: 'body', type: 'string', description: 'Public. Up to 2000 characters.' },
       { name: 'image_url', in: 'body', type: 'string', description: 'Public. https only, up to 500 characters.' },
-      { name: 'Idempotency-Key', in: 'header', type: 'string', description: 'Send one and a retry returns the same round with 200 rather than creating a second.' },
+      { name: 'Idempotency-Key', in: 'header', type: 'string', description: 'Send one and a retry returns the same round with 200 rather than creating a second. Reusing a key with a different body is a mistake, not a retry, and answers 422 idempotency_key_reused.' },
     ],
     response: `{
   "id": "cond_…",

@@ -7,6 +7,11 @@ contract. `field` names the input at fault when one input is.
 
 | code | meaning |
 | --- | --- |
+| `malformed_json` | the body is not valid JSON (400) |
+| `invalid_body` | valid JSON, wrong shape: a string where a number belongs (422) |
+| `unsupported_media_type` | no `Content-Type: application/json` (415) |
+| `payload_too_large` | the body is bigger than the endpoint accepts (413) |
+| `idempotency_key_reused` | that key was used with a different request (422). Use a new key, or resend the original |
 | `missing_deadline` | no `opens_in`, `opens_at` or `opens_at_block` |
 | `opens_in_past` | the deadline has already passed; nothing could be sealed to it |
 | `invalid_time` | not RFC 3339 with an offset, and not unix seconds |

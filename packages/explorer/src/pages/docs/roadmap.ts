@@ -71,9 +71,11 @@ const proof = await peal.getProof(id);</code></pre>
           <li><span class="dev-st dev-st-planned">planned</span>MCP tool
             <code>seal_until(payload, unlockAt)</code> <em>so an agent can reach this without an
             SDK</em></li>
-          <li><span class="dev-st dev-st-planned">planned</span>paid access over
+          <li><span class="dev-st dev-st-live">live</span>paid access over
             <a href="https://docs.x402.org/introduction" target="_blank" rel="noopener">x402</a>
-            <em>pay per call in a request, no account; the devnet is free and unmetered</em></li>
+            <em>every <code>/v1</code> route has a metered twin at <code>/v1/x402</code> that
+            answers 402 until it is shown an on chain payment. The free API is unchanged and still
+            needs no account. See <a href="#/developers/x402">metered calls</a></em></li>
           <li><span class="dev-st dev-st-planned">planned</span>typed SDKs for TypeScript, Python
             and Go <em>peal.js and plain HTTP cover it today</em></li>
           <li><span class="dev-st dev-st-live">live</span>sealed bid auctions

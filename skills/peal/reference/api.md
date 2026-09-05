@@ -21,6 +21,10 @@ Send an `Idempotency-Key` header and a retry returns the same round with 200
 instead of creating a second one. Agents retry on timeouts and a duplicate round
 is a split auction.
 
+Reusing that key with a **different** body is a mistake rather than a retry, and
+answers `422 idempotency_key_reused`. It used to hand back the first round with
+a 200, so an agent retrying with a new deadline silently got the old one.
+
 201 and a `Location` on success.
 
 ### GET /v1/rounds
