@@ -141,6 +141,27 @@ export interface PealOptions {
   url?: string;
 }
 
+/**
+ * Refuse an option spelled the way the HTTP body spells it.
+ *
+ * Every option here is camelCase because the client is JavaScript, and the wire
+ * format is snake_case because the API is HTTP. That is a reasonable pair of
+ * conventions and a bad trap: the wrong spelling is not a type error, it is a
+ * property nothing reads.
+ */
+function rejectSnakeCase(opts: Record<string, unknown>, pairs: Record<string, string>): void {
+  for (const [wrong, right] of Object.entries(pairs)) {
+    if (opts[wrong] !== undefined) {
+      throw new PealError(
+        `use ${right} rather than ${wrong}: this client takes camelCase options, ` +
+          `the HTTP body takes snake_case`,
+        'unknown_option',
+        0,
+      );
+    }
+  }
+}
+
 export class Peal {
   readonly url: string;
   private params: Promise<{ seal(bytes: Uint8Array): Uint8Array }> | null = null;
@@ -151,6 +172,17 @@ export class Peal {
 
   /** Name the moment things open. Nothing is encrypted yet. */
   async createRound(opts: CreateRoundOptions = {}): Promise<Round> {
+    // The HTTP body is snake_case and this client is camelCase, so `opens_in`
+    // is the natural thing to type and it used to be ignored in silence. The
+    // one hour default then filled the gap, so a caller asking for sixty
+    // seconds got an hour and no error. Say so instead.
+    rejectSnakeCase(opts as Record<string, unknown>, {
+      opens_in: 'opensIn',
+      opens_at: 'opensAt',
+      opens_at_block: 'opensAtBlock',
+      image_url: 'imageUrl',
+      idempotency_key: 'idempotencyKey',
+    });
     const body: Record<string, unknown> = {};
     if (opts.opensIn !== undefined) body.opens_in = opts.opensIn;
     if (opts.opensAt !== undefined) {
@@ -245,10 +277,14 @@ export class Peal {
 
   /** Every seal in a round: ids while it is open, payloads once it has opened. */
   async listSeals(roundId: string): Promise<Seal[]> {
-    const body = await this.request<{ data: Seal[] }>(
+    const body = await this.request<{ data: Seal[] | null }>(
       `/v1/rounds/${encodeURIComponent(roundId)}/seals`,
     );
-    return body.data;
+    // `data` is null until the round opens, because a list of ids is the same
+    // disclosure as a count of them. Empty rather than null here: a caller
+    // looping over it should get nothing, not a crash. `getRound().status`
+    // tells them why it is empty.
+    return body.data ?? [];
   }
 
   /**
