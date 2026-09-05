@@ -29,6 +29,22 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Config {
         let mut rpc_urls = std::collections::HashMap::new();
+
+        // Tempo Moderato, watched by default.
+        //
+        // opens_at_block was documented in the meta description, the
+        // introduction, the quickstart, how it works, the API reference and the
+        // SDK, and every chain id answered unsupported_chain, because no RPC
+        // was ever configured. The engine that watches heights and fires the
+        // condition has been there the whole time; it had nothing to watch.
+        //
+        // Tempo is the right default rather than a new dependency: this network
+        // already talks to it for the registry and for x402 settlement, so a
+        // chain that was already required is now also one you can open a round
+        // on. Set BTE_RPC_URL_42431 to point it somewhere else, or to an empty
+        // string to stop watching it.
+        rpc_urls.insert(42431, "https://rpc.moderato.tempo.xyz".to_string());
+
         if let Ok(url) = std::env::var("SEPOLIA_RPC_URL") {
             if !url.is_empty() {
                 rpc_urls.insert(11155111, url);
@@ -37,7 +53,17 @@ impl Config {
         for (key, value) in std::env::vars() {
             if let Some(chain_id) = key.strip_prefix("BTE_RPC_URL_") {
                 if let Ok(chain_id) = chain_id.parse::<i64>() {
-                    rpc_urls.insert(chain_id, value);
+                    // An empty value removes a chain, including a default.
+                    if value.is_empty() {
+                        rpc_urls.remove(&chain_id);
+                    } else {
+                        // An empty value removes a chain, including a default.
+                        if value.is_empty() {
+                            rpc_urls.remove(&chain_id);
+                        } else {
+                            rpc_urls.insert(chain_id, value);
+                        }
+                    }
                 }
             }
         }
