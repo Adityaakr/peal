@@ -2153,9 +2153,17 @@ input[type='datetime-local'] {
    rises from the bottom edge and is cropped by the fold. */
 
 body.landing-page {
-  background: #eef4fc;
-  overflow: hidden;
+  /* The cream the landing itself is built on, so an overscroll bounce shows
+     the page's own colour rather than the documentation's blue behind it. */
+  background: #f3f4ed;
 }
+
+/* No `overflow: hidden` here any more.
+ *
+ * It was correct when the landing was one full-screen hero: the page was
+ * exactly the viewport and locking the scroll stopped a pointless one pixel
+ * drift. The landing now carries eight sections under that hero, and this one
+ * declaration made every one of them unreachable. */
 
 body.landing-page .site-header {
   display: none;
