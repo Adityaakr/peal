@@ -43,7 +43,6 @@
           <a href="#/mempool">encrypted mempool</a>
           <a href="#/create">create an auction</a>
           <a href="#/auction">sealed-bid auctions</a>
-          <a href="#/auctions">browse auctions</a>
           <a href="#/developers">developers</a>
           <a href="#/philosophy">philosophy</a>
         </div>
@@ -51,13 +50,5 @@
     </header>
     <main id="app"></main>
     <script type="module" src="/src/main.ts"></script>
-  <script>setTimeout(function(){
-  var a=document.querySelector('.site-title');
-  if(a) a.click();
-  setTimeout(function(){
-    document.title='landedAt='+location.pathname+location.hash
-      +' isLanding='+(document.querySelector('.peal-landing')?'yes':'no')
-      +' h1="'+((document.querySelector('h1')||{textContent:''}).textContent.trim().slice(0,28))+'"';
-  },2500);
-},3500);</script></body>
+  </body>
 </html>
