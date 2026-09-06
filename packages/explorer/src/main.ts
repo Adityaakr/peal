@@ -7,7 +7,6 @@ import { resolveSeal } from './api';
 import { renderHome } from './pages/home';
 import { renderAuction, renderAuctionAt } from './pages/auction';
 import { renderSealbidLanding } from './pages/sealbid-landing';
-import { renderAuctionsList } from './pages/auctions-list';
 import { renderAuctionCreate } from './pages/auction-create';
 import { renderCondition } from './pages/condition';
 import { renderExecution } from './pages/execution';
@@ -148,7 +147,7 @@ const PAGE_PATHS = new Set([
   'developers/auctions', 'developers/createauction', 'developers/usecases',
   'developers/api', 'developers/x402', 'developers/limits', 'developers/network',
   'developers/roadmap',
-  'protocol', 'mempool', 'auction', 'auctions', 'execution', 'philosophy', 'create', 'app',
+  'protocol', 'mempool', 'auction', 'execution', 'philosophy', 'create', 'app',
 ]);
 
 /** Whether a fragment names a developer page, so it can be upgraded to a path. */
@@ -270,8 +269,6 @@ function route(): void {
     // Mirrors the mempool split: #/auction is the landing, the product page
     // lives at its own route. See main.ts's #/mempool vs #/encrypted-mempool.
     cleanup = renderSealbidLanding(root);
-  } else if (hash === '#/auctions') {
-    cleanup = renderAuctionsList(root);
   } else if (hash === '#/create') {
     cleanup = renderAuctionCreate(root);
   } else if (hash === '#/live') {

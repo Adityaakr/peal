@@ -291,16 +291,6 @@ pub const PAGES: &[Page] = &[
         share: None,
     },
     Page {
-        path: "auctions",
-        route: "#/auctions",
-        title: "Live sealed bid auctions on Peal.",
-        description: "Auctions open on Peal right now, and the ones that have already opened.",
-        schema: "WebPage",
-        index: false,
-        image: None,
-        share: None,
-    },
-    Page {
         path: "app",
         route: "#/app",
         title: "Peal network explorer. Every condition and reveal.",

@@ -871,7 +871,7 @@ export function renderAuctionAt(root: HTMLElement, auction: Address): Cleanup {
       if (cancelled) return;
       root.innerHTML = `<section class="ak"><div class="ak-hero"><h1>Sealed-bid auction</h1>
         <p class="ak-status ak-error">Could not read an auction at ${esc(truncMiddle(auction, 8, 6))}. ${esc(briefly(e))}</p>
-        <div class="ml-hero-ctas"><a class="ak-btn" href="#/auctions">see every auction</a></div>
+        <div class="ml-hero-ctas"><a class="ak-btn" href="#/create">create an auction</a></div>
       </div></section>`;
     }
   })();
