@@ -15,6 +15,20 @@
 		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
 	}
 
+	# peal.js is imported by URL from other people's pages, and a browser
+	# fetches a module script in CORS mode whether or not the page is on this
+	# origin. Without this header the import in the quickstart worked from
+	# peal.network and from nowhere else, which is the one origin that never
+	# needed it, and the failure arrives as a bare console message rather than
+	# anything the calling code can catch. The workaround is to vendor a copy,
+	# which is how a file:// page ends up loading a stale SDK.
+	#
+	# Same reasoning as the CORS on /v0 and /v1 in api.rs, and the same answer:
+	# this file is public, read only, and carries no cookies. A GET for a
+	# script is a simple request, so there is no preflight to answer.
+	@sdk path /peal.js /peal.js.map
+	header @sdk Access-Control-Allow-Origin *
+
 	# Crawler documents, generated from the page table so the sitemap cannot
 	# fall behind the pages. Without these, /robots.txt fell through to the SPA
 	# fallback and answered with an HTML page, which is a worse answer than a
