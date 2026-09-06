@@ -803,8 +803,7 @@ mod tests {
     /// is the only way to notice that from here.
     #[test]
     fn the_landing_faq_markup_matches_the_landing() {
-        const LANDING_TSX: &str =
-            include_str!("../../../packages/explorer/src/pages/landing.tsx");
+        const LANDING_TSX: &str = include_str!("../../../packages/explorer/src/pages/landing.tsx");
 
         let home = crate::pages::PAGES
             .iter()
@@ -814,7 +813,11 @@ mod tests {
         assert!(html.contains("FAQPage"), "the landing must emit FAQPage");
 
         let faqs = crate::pages::faqs_for("").expect("the landing has FAQs");
-        assert!(faqs.len() >= 8, "a landing FAQ of {} is too thin", faqs.len());
+        assert!(
+            faqs.len() >= 8,
+            "a landing FAQ of {} is too thin",
+            faqs.len()
+        );
 
         for (question, answer) in faqs {
             assert!(
@@ -828,7 +831,11 @@ mod tests {
             // The answers are wrapped across lines by the formatter in the TSX,
             // so a whole-string match would fail on whitespace alone. The first
             // clause is enough to catch an answer that was rewritten on one side.
-            let opening: String = answer.split(&['.', ','][..]).next().unwrap_or(answer).into();
+            let opening: String = answer
+                .split(&['.', ','][..])
+                .next()
+                .unwrap_or(answer)
+                .into();
             assert!(
                 LANDING_TSX.contains(opening.trim()),
                 "the markup answers differently from the landing: {opening}"
