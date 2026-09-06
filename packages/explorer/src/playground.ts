@@ -161,19 +161,34 @@ export function renderPlayground(host: HTMLElement): () => void {
           <p class="scenario-kicker">Try Peal Playground</p>
           <p class="scenario-prompt">Choose a use case, add something private, then watch it reveal on cue.</p>
         </div>
-        <div class="chips" role="tablist" aria-label="choose a use case">
-          <button type="button" class="chip-btn" id="scenario-bid" role="tab" data-scenario="bid"
-                  aria-selected="false" aria-controls="pg-fields" tabindex="-1">
-            <span class="scenario-number" aria-hidden="true">1</span><span>sealed bid</span>
-          </button>
-          <button type="button" class="chip-btn" id="scenario-vote" role="tab" data-scenario="vote"
-                  aria-selected="false" aria-controls="pg-fields" tabindex="-1">
-            <span class="scenario-number" aria-hidden="true">2</span><span>hidden vote</span>
-          </button>
-          <button type="button" class="chip-btn" id="scenario-note" role="tab" data-scenario="note"
-                  aria-selected="true" aria-controls="pg-fields" tabindex="0">
-            <span class="scenario-number" aria-hidden="true">3</span><span>time capsule</span>
-          </button>
+        <div class="chips">
+          <div class="chips-tabs" role="tablist" aria-label="choose a use case">
+            <button type="button" class="chip-btn" id="scenario-vote" role="tab" data-scenario="vote"
+                    aria-selected="false" aria-controls="pg-fields" tabindex="-1">
+              <span class="scenario-number" aria-hidden="true">1</span><span>hidden vote</span>
+            </button>
+            <button type="button" class="chip-btn" id="scenario-note" role="tab" data-scenario="note"
+                    aria-selected="true" aria-controls="pg-fields" tabindex="0">
+              <span class="scenario-number" aria-hidden="true">2</span><span>time capsule</span>
+            </button>
+          </div>
+          <div class="chips-more">
+            <a class="chip-btn chip-link" href="#/auction">
+              <span class="scenario-number" aria-hidden="true">3</span>
+              <span>sealed bid auction</span>
+              <span class="chip-link-out" aria-hidden="true"></span>
+            </a>
+            <a class="chip-btn chip-link" href="#/mempool">
+              <span class="scenario-number" aria-hidden="true">4</span>
+              <span>encrypted mempool</span>
+              <span class="chip-link-out" aria-hidden="true"></span>
+            </a>
+            <a class="chip-btn chip-link" href="/developers">
+              <span class="scenario-number" aria-hidden="true">5</span>
+              <span>developer docs</span>
+              <span class="chip-link-out" aria-hidden="true"></span>
+            </a>
+          </div>
         </div>
         <div id="pg-fields" role="tabpanel" aria-labelledby="scenario-note"></div>
         <p class="field-hint" id="pg-hint"></p>
@@ -421,7 +436,7 @@ export function renderPlayground(host: HTMLElement): () => void {
       : `starts a new ${forScenario} round with the length you pick. open this page in another tab to compete.`;
   }
 
-  const scenarioButtons = Array.from(host.querySelectorAll<HTMLButtonElement>('.chip-btn'));
+  const scenarioButtons = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
 
   function selectScenario(btn: HTMLButtonElement): void {
     scenario = btn.dataset.scenario as Scenario;
