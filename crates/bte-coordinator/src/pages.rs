@@ -398,7 +398,7 @@ fn faq(q: &str, a: &str) -> String {
     )
 }
 
-fn escaped(s: &str) -> String {
+pub(crate) fn escaped(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
@@ -407,17 +407,29 @@ fn escaped(s: &str) -> String {
 /// Kept as data next to the page table because they go stale the same way a
 /// description does: the moment the product changes underneath them. Every
 /// answer here is checkable against the API on the same page.
-fn faqs_for(path: &str) -> Option<&'static [(&'static str, &'static str)]> {
+pub(crate) fn faqs_for(path: &str) -> Option<&'static [(&'static str, &'static str)]> {
     Some(match path {
         "" => &[
-            ("What is Peal?",
-             "Peal is an API for collecting encrypted submissions and opening them all at the same moment. A caller encrypts a payload in their own process and sends only the ciphertext, so nobody can read it early, including the operators who run the network."),
-            ("What can I build with it?",
-             "Sealed bid auctions, private voting, encrypted mempools, quote and procurement rounds, prediction tournaments, bounty submissions, and agent actions that must not be front run. Anything where people submit something others must not see until a deadline."),
-            ("Do participants need a wallet or any crypto?",
-             "No. Sealing runs in the browser or in your own process and submits over ordinary HTTPS. Participants need no wallet, no account and no gas, and they never touch a chain."),
-            ("Is Peal free to use?",
-             "Yes. The API needs no key, no account and no payment. There is an optional metered twin of every endpoint for anyone who wants to charge per call, and the free API is unchanged by it."),
+            ("What is Peal, in one sentence?",
+             "The programmable confidentiality layer for digital markets. You collect encrypted bids, offers, votes, commitments and agent intents, and they open only when a condition you set is met."),
+            ("Do the people submitting need a wallet or any crypto?",
+             "No. Sealing happens in their browser or in your own code and goes over ordinary HTTPS. No wallet, no account, no gas, and they never touch a chain. That is usually the difference between a mechanism you can ship to your users and one you can only ship to crypto users."),
+            ("Who can read a submission before the deadline?",
+             "Nobody. Not the other participants, not you as the application owner, and not the operators running the network. The decryption key is split across five independent operators and no three of them combine their shares until the condition fires."),
+            ("What stops somebody refusing to reveal when they see they have lost?",
+             "There is nothing for them to refuse. Opening a round is not a participant's move, so a losing bidder walking away costs everyone else nothing. That single difference is what separates this from every commit and reveal scheme, all of which break in exactly that spot."),
+            ("What if an operator goes offline?",
+             "Three of the five are enough, so two can be down, unreachable or actively refusing and the round still opens on time."),
+            ("How can someone start building using Peal?",
+             "Fastest is the quickstart, which runs the three calls against the live network from the page itself, so you can watch a round open before you have written anything. If you build with an agent or a coding assistant, curl -fsSL https://peal.network/skill/install.sh | sh installs a skill carrying a reference for the API, the errors, timing, payments, verification and building the interface, and the assistant then knows the endpoints without you pasting documentation at it. There is an llms.txt at the root for any model that reads one, and peal.js if you would rather seal in the visitor's own browser with no build step. If none of that appeals, it is three HTTP calls with no key and no account, so curl is a perfectly good client."),
+            ("What does it cost?",
+             "Nothing. No key, no account, no signup and no card. Every route is also mounted at /v1/x402 for callers who want to pay per request, currently 0.001 USD, and that twin is opt in. The free API is not degraded to make the paid one look better."),
+            ("Is this actually running, or is it a paper?",
+             "Running. The quickstart executes against the live network from the documentation page itself, the encrypted mempool demo settles real transactions against real contracts on a public testnet, and the committee, parameters and endpoints are published. It is a devnet, so none of it is carrying real money yet."),
+            ("How is this different from encrypting something and handing over the key later?",
+             "Somebody has to be holding that key, and holding it is the same thing as being able to use it early, lose it, or be compelled to produce it. Here no single party ever holds the key, and the release is triggered by the condition rather than by a person deciding the moment has come."),
+            ("How much can one round hold?",
+             "Sixty-four slots, opened by a single threshold decryption, so a round holding sixty submissions costs what a round holding one costs. Slots that carried nothing are padding and are indistinguishable from the ones that did, which is why an open round will not tell you how many submissions it is holding."),
         ],
         "developers" => &[
             ("What is Peal?",
