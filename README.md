@@ -1,7 +1,7 @@
 # Peal, the programmable disclosure network
 
 Peal is reveal-later encryption as a network. You seal a payload to a committee,
-name a cue (a time, a block, an event), and when the cue fires the whole batch
+name a cue (a deadline or a block height), and when the cue fires the whole batch
 opens at once, for everyone, guaranteed. Nothing is readable early, not by the
 operators and not by us, and no one ever sends a reveal transaction.
 
@@ -15,7 +15,12 @@ This repo is three things:
   the network in front of people who have never heard of it, and
 - **the encrypted mempool**, a live end-to-end demo that puts Peal in front of a
   swap and shows a real MEV sandwich vanish, on a real chain, with every step
-  verifiable.
+  verifiable, and
+- **private actions** ([`peal-actions`](packages/actions)), the intent shape for
+  autonomous agents: an agent signs what it wants done and the worst terms it
+  will take, that intent stays encrypted until its place in the batch is
+  committed, and it settles with a receipt the agent can verify without trusting
+  us.
 
 ```ts
 import { BteClient } from 'bte-sdk';
@@ -236,6 +241,22 @@ explorer (`pnpm -C packages/explorer dev`) shows every condition flipping from
 ciphertext hashes to plaintexts, with the per-operator share log. Full
 walkthrough: [docs/quickstart.md](docs/quickstart.md).
 
+## Paying per call (optional)
+
+The API needs no key, no account and no payment. Every route is also mounted at
+`/v1/x402`, which answers HTTP 402 with a price until it is shown an on-chain
+payment, so a caller that cannot hold an account can still be a customer:
+
+```bash
+curl -sS -X POST https://peal.network/v1/x402/rounds \
+  -H 'content-type: application/json' -d '{"opens_in":60}'
+# 402 Payment Required, with the price and where to send it
+```
+
+Pay, then retry the same request carrying `X-PAYMENT: base64(json({"txHash":...}))`.
+The free API at `/v1` is unchanged by any of it. Details:
+[peal.network/developers/x402](https://peal.network/developers/x402).
+
 ## Try to break it
 
 - **Read before the reveal.** `GET /v0/reveals/:id` is 404 until the cue. There
@@ -292,6 +313,7 @@ EIP-2537 on-chain verification, staking) in [spec/ROADMAP.md](spec/ROADMAP.md).
 | `packages/live` | `peal-live`: the pure half of Peal Live, no DOM and no network |
 | `packages/explorer` | the disclosure explorer, Peal Live, and the encrypted-mempool demo |
 | `packages/auctionkit` | client for the escrowed, on-chain sealed-bid auctions |
+| `packages/actions` | `peal-actions`: the agent intent envelope, EIP-712 signing, ordering commitment and receipt verification |
 | `packages/mempool-agents` | relayer, searcher, settler for the mempool demo |
 | `contracts/` | `BteAnchor.sol`, `PealNames.sol`, and the mempool contracts (DemoToken, SwapPool, PublicBuilder, PealMempool) |
 | `solana/` | a native Solana program that checks a Peal inclusion proof on chain; self-contained, not deployed |
