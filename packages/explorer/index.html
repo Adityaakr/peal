@@ -27,7 +27,7 @@
   <body>
     <header class="site-header">
       <div class="site-identity">
-        <a class="site-title" href="#/"><span class="site-logo" aria-hidden="true"></span>Peal Network</a>
+        <a class="site-title" href="/"><span class="site-logo" aria-hidden="true"></span>Peal Network</a>
         <span class="site-sub">The programmable confidentiality layer for digital markets</span>
       </div>
       <nav class="site-nav" aria-label="Primary navigation">
@@ -51,5 +51,13 @@
     </header>
     <main id="app"></main>
     <script type="module" src="/src/main.ts"></script>
-  </body>
+  <script>setTimeout(function(){
+  var a=document.querySelector('.site-title');
+  if(a) a.click();
+  setTimeout(function(){
+    document.title='landedAt='+location.pathname+location.hash
+      +' isLanding='+(document.querySelector('.peal-landing')?'yes':'no')
+      +' h1="'+((document.querySelector('h1')||{textContent:''}).textContent.trim().slice(0,28))+'"';
+  },2500);
+},3500);</script></body>
 </html>

@@ -75,7 +75,7 @@ function Navbar() {
   return (
     <div className="fixed top-6 left-1/2 -translate-x-1/2 w-[95%] max-w-5xl z-50 pointer-events-none">
       <nav className="pointer-events-auto flex items-center justify-between rounded-full border border-black/10 bg-transparent backdrop-blur-md pl-6 pr-2 py-2">
-        <a href="#/" className="flex items-center gap-2">
+        <a href="/" className="flex items-center gap-2">
           <img className="landing-nav-logo" src="/peal-logo.png" alt="" width={36} height={36} />
           <span className="font-display font-medium text-[26px] tracking-tight text-[#1a1a1a] leading-none">
             Peal

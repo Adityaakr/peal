@@ -44,7 +44,7 @@ export function renderSealView(
         </div>
       </div>
       <p class="seal-footnote">encrypted to a threshold committee. nobody could read it before the
-      cue, the operators included. <a class="link" href="#/">seal your own</a></p>
+      cue, the operators included. <a class="link" href="/#/app">seal your own</a></p>
     </section>
   `;
 

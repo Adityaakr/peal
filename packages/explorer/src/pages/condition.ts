@@ -27,7 +27,7 @@ const POLL_MS = 2000;
 
 export function renderCondition(root: HTMLElement, id: string): () => void {
   root.innerHTML = `
-    <p class="backlink-row"><a class="link" href="#/">&larr; all conditions</a></p>
+    <p class="backlink-row"><a class="link" href="/#/app">&larr; all conditions</a></p>
     <section class="section">
       <h1>condition
         <button type="button" class="hash-copy mono" data-copy="${esc(id)}" title="copy condition id">${esc(
@@ -113,7 +113,7 @@ export function renderCondition(root: HTMLElement, id: string): () => void {
     try {
       condition = await getCondition(id);
     } catch (e) {
-      metaEl.innerHTML = `<p class="error">could not load this condition (${esc(String(e))}). <a class="link" href="#/">back to the list</a></p>`;
+      metaEl.innerHTML = `<p class="error">could not load this condition (${esc(String(e))}). <a class="link" href="/#/app">back to the list</a></p>`;
       return;
     }
     metaEl.innerHTML = metaCard(condition);
