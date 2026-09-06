@@ -7017,7 +7017,17 @@ body.docs-page main {
   cursor: pointer;
 }
 
-.doc-side-toggle span {
+/* Its own column, so the bars stack. The button itself is a row because the
+   label sits beside them, and three bars in a row is three dashes. */
+.doc-burger {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  flex: none;
+}
+
+.doc-burger span {
   display: block;
   width: 16px;
   height: 1.5px;
@@ -7025,20 +7035,17 @@ body.docs-page main {
   transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease;
 }
 
-.doc-side-toggle span:nth-child(1) { margin-bottom: 4px; }
-.doc-side-toggle span:nth-child(2) { margin-bottom: 4px; }
-
 /* The same easing as the site header's menu, so the two do not feel like
    different products. */
-.doc-side.is-open .doc-side-toggle span:nth-child(1) {
+.doc-side.is-open .doc-burger span:nth-child(1) {
   transform: translateY(5.5px) rotate(45deg);
 }
 
-.doc-side.is-open .doc-side-toggle span:nth-child(2) {
+.doc-side.is-open .doc-burger span:nth-child(2) {
   opacity: 0;
 }
 
-.doc-side.is-open .doc-side-toggle span:nth-child(3) {
+.doc-side.is-open .doc-burger span:nth-child(3) {
   transform: translateY(-5.5px) rotate(-45deg);
 }
 

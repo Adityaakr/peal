@@ -195,7 +195,7 @@ export function renderDocs(root: HTMLElement, page: DocsPage, activeHref: string
       <aside class="doc-side" aria-label="documentation">
         <button class="doc-side-toggle" type="button" id="doc-side-toggle"
                 aria-expanded="false" aria-controls="doc-side-nav">
-          <span></span><span></span><span></span>
+          <span class="doc-burger"><span></span><span></span><span></span></span>
           <em>Documentation</em>
         </button>
         <nav id="doc-side-nav">
