@@ -121,6 +121,20 @@ const { winner, queue, bids } = await peal.results(pealAuctionId);
 
 Store `auction.id` against your listing. Everything else is derivable.
 
+**If what they are sealing is not a bid**, a vote, an offer, a model output, a
+set of numbers to reconcile, you are writing the payload format yourself and
+`peal.bid` does not apply. Use `peal.seal(payload, roundId, { padTo })` and read
+"Your own payload, not a bid" in `reference/recipes.md` first. It is four moves,
+and skipping any of them produces something that works in a demo and leaks in
+production: version the record, pin its width with an explicit `padTo`, put the
+round id inside it, and discard on open what does not parse or names another
+round. Note the argument order, which is not `bid`'s:
+
+```js
+await peal.bid(roundId, { amountMinor: 125_00 });   // id first
+await peal.seal(payload, roundId, { padTo: 133 });  // payload FIRST, then id
+```
+
 ### 6. Verify before you say it is done
 
 Do not report success on code that has not run. `reference/verify.md` is a
@@ -142,9 +156,14 @@ the integration end to end against the live network.
 
 3. **Pad payloads or the length leaks the value.** The ciphertext body is a
    keystream over the plaintext, so a sealed blob's length is public the moment
-   it is submitted. `peal.js` pads for you. Write your own client without
-   padding and a sealed bid auction has its bids in order of size before
-   anything opens.
+   it is submitted. Write your own client without padding and a sealed bid
+   auction has its bids in order of size before anything opens.
+
+   `peal.bid` is safe without thinking: the record is a fixed 320 bytes
+   whatever the amount. `peal.seal` pads to the next bucket of 256, 1024, 4096,
+   16384 or 65536, which is a floor and not a plan, because two payloads in
+   different buckets are still told apart. For your own format pass
+   `{ padTo: n }` and use the same `n` for every seal in the round.
 
 4. **A `Date` in the wrong timezone.** `setHours(18)` uses the timezone the
    code runs in, which on a server is usually UTC and not the seller's evening.
@@ -198,7 +217,8 @@ asset rather than only the amount.
 
 ## Reference files
 
-- `reference/recipes.md`: working integrations per stack
+- `reference/recipes.md`: working integrations per stack, and sealing your own
+  payload format rather than a bid
 - `reference/time.md`: natural deadlines into exact instants
 - `reference/verify.md`: the end to end check to run before reporting success
 - `reference/api.md`: every endpoint

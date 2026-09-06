@@ -99,6 +99,14 @@ function unwrap(b64) {
 Anything that is not this envelope comes back untouched: a round can hold
 payloads from clients that never used one.
 
+The buckets are 256, 1024, 4096, 16384 and 65536 bytes, and past the largest one
+the exact size is sent, because hiding a length there would mean shipping
+megabytes to conceal kilobytes. A bucket is a floor rather than a plan: two
+payloads that land in different buckets are still told apart. `peal.js` takes
+`{ padTo: n }` on `seal`, `encrypt` and `sealUntil` to fix the width yourself,
+which is what you want for a format of your own. See "Your own payload, not a
+bid" in `reference/recipes.md`.
+
 ### GET /v1/seals/{id}/proof
 
 What can be checked: `ordering_root` and `ordering_committed_at`, `merkle_root`,
