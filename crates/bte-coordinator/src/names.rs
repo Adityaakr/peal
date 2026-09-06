@@ -792,6 +792,50 @@ mod tests {
         assert!(plain.contains(r#"content="summary""#));
     }
 
+    /// The landing's FAQ markup has to describe the landing's FAQ section.
+    ///
+    /// The questions are written twice on purpose: once in `faqs_for("")` here,
+    /// which becomes the FAQPage structured data, and once in the `Faq` section
+    /// of packages/explorer/src/pages/landing.tsx, which is what a person
+    /// actually sees. Structured data is only allowed to describe content that
+    /// is on the page, so an edit to one side without the other turns this
+    /// markup into a claim about a page nobody is being served. Reading the TSX
+    /// is the only way to notice that from here.
+    #[test]
+    fn the_landing_faq_markup_matches_the_landing() {
+        const LANDING_TSX: &str =
+            include_str!("../../../packages/explorer/src/pages/landing.tsx");
+
+        let home = crate::pages::PAGES
+            .iter()
+            .find(|p| p.path.is_empty())
+            .expect("home page");
+        let html = page_html(SHELL, home, Some("https://peal.network"));
+        assert!(html.contains("FAQPage"), "the landing must emit FAQPage");
+
+        let faqs = crate::pages::faqs_for("").expect("the landing has FAQs");
+        assert!(faqs.len() >= 8, "a landing FAQ of {} is too thin", faqs.len());
+
+        for (question, answer) in faqs {
+            assert!(
+                html.contains(&crate::pages::escaped(question)),
+                "question missing from the markup: {question}"
+            );
+            assert!(
+                LANDING_TSX.contains(question),
+                "the markup asks a question the landing does not: {question}"
+            );
+            // The answers are wrapped across lines by the formatter in the TSX,
+            // so a whole-string match would fail on whitespace alone. The first
+            // clause is enough to catch an answer that was rewritten on one side.
+            let opening: String = answer.split(&['.', ','][..]).next().unwrap_or(answer).into();
+            assert!(
+                LANDING_TSX.contains(opening.trim()),
+                "the markup answers differently from the landing: {opening}"
+            );
+        }
+    }
+
     #[test]
     fn writes_the_auction_into_the_shell() {
         let html = inject_for_test(
