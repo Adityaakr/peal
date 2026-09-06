@@ -31,3 +31,6 @@ tempo-keys.env
 # Built by `pnpm build` (scripts/build-peal-js.mjs). Generated, not source.
 packages/explorer/public/peal.js
 packages/explorer/public/skill/
+
+# local dev server logs and pids
+.dev-state/
