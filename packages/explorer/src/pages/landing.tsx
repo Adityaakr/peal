@@ -726,16 +726,13 @@ function Problem() {
       }
     >
       <p>
-        Everything you send arrives readable. So the order you send in decides what happens to you.
-        Bid early and your number is public while the auction is still running. Broadcast a
-        transaction and it waits in a queue anyone can read and act on before it settles. Send a
-        quote, a vote, a salary offer, and whoever moves next has seen it.
+        Everything you send arrives readable, so the order you send in decides what happens to
+        you. Bid early and your number is public while the auction is still running.
       </p>
       <OpenQueueScene />
       <p>
-        The usual answer is to ask everyone to commit now and reveal later. That fails the same way
-        every time: revealing is a move, and whoever is losing simply declines to make it. You are
-        left with a protocol that works exactly when nobody minds the outcome.
+        The usual answer is commit now, reveal later. It fails the same way every time: revealing
+        is a move, and whoever is losing declines to make it.
       </p>
     </Section>
   );
@@ -755,16 +752,14 @@ function Solution() {
     >
       <p>
         A round is a moment. Everything sealed to it is encrypted in your own process, so what
-        crosses the network is already a ciphertext. Nobody can read it early: not the other
-        participants, not the application owner, not the operators who run the network. While the
-        round is open it will not even say how many submissions it is holding.
+        crosses the network is already a ciphertext. Nobody reads it early: not the other
+        participants, not you, not the operators.
       </p>
       <SealedScene />
       <p>
-        When the deadline arrives, three of five independent operators combine their shares and
-        every submission opens at once. The reveal is not a participant&rsquo;s move, so there is
-        nothing to withhold and nothing to decline. That single difference is what separates this
-        from commit and reveal.
+        At the deadline, three of five independent operators combine their shares and every
+        submission opens at once. The reveal is not a participant&rsquo;s move, so there is
+        nothing to withhold.
       </p>
     </Section>
   );
@@ -782,16 +777,14 @@ function Committee() {
       }
     >
       <p>
-        No single party holds a key that opens anything, and that includes us. The decryption key
-        is split across five independent operators, and a payload opens only when three of them
-        combine their shares after the deadline has fired. Two can be offline, or compromised, or
-        simply refuse, and the round still opens on time.
+        No single party holds a key that opens anything, us included. It is split across five
+        operators and takes three of them to use. Two can be offline, compromised or simply
+        refusing, and the round still opens on time.
       </p>
       <CommitteeScene />
       <p>
-        This is the claim you should be most sceptical of, so the thing above is not a diagram.
-        Turn operators on and off and watch what happens: two never opens it, and any three do,
-        whichever three you pick.
+        This is the claim to be most sceptical of, so it is not a diagram. Turn operators off and
+        watch: two never opens it, any three do.
       </p>
     </Section>
   );
@@ -809,16 +802,13 @@ function Deadline() {
       }
     >
       <p>
-        Every commit and reveal scheme has the same hole in it. Revealing is a move, so it can be
-        declined, and the person most likely to decline is the one who has just worked out they
-        lost. You find out your protocol had a hole at the exact moment it mattered.
+        Every commit and reveal scheme has the same hole. Revealing can be declined, and the
+        person most likely to decline is the one who has just worked out they lost.
       </p>
       <DeadlineScene />
       <p>
-        A Peal round opens because the deadline arrived, not because anyone chose to open it.
-        There is no reveal step to skip, no bond to slash for skipping it, and no timeout branch to
-        write. That is one fewer failure mode in your application, and it is the reason the
-        guarantee holds when somebody has an incentive to break it.
+        A Peal round opens because the deadline arrived, not because anyone chose to. No reveal
+        step to skip, no bond to slash for skipping it, no timeout branch to write.
       </p>
     </Section>
   );
@@ -836,17 +826,13 @@ function Batch() {
       }
     >
       <p>
-        A round is not opened one submission at a time. Every round is a batch of sixty-four slots,
-        and the committee performs a single threshold decryption for the batch. Each slot opens out
-        of that one operation, so opening a round holding sixty submissions costs what opening a
-        round holding one costs.
+        A round is not opened one submission at a time. Sixty-four slots share a single threshold
+        decryption, so a round holding sixty submissions costs what a round holding one costs.
       </p>
       <BatchScene />
       <p>
-        The slots that carried nothing are padding, and while the round is open they are
-        indistinguishable from the slots that did. That is the reason a round will not tell you how
-        many submissions it is holding: from outside, a full slot and an empty one are the same
-        ciphertext.
+        The slots that carried nothing are padding, indistinguishable from the ones that did. From
+        outside, a full slot and an empty one are the same ciphertext.
       </p>
     </Section>
   );
@@ -884,17 +870,15 @@ function Mempool() {
       }
     >
       <p>
-        A searcher earns in a public mempool by reading a pending swap and placing one order in
-        front of it and one behind it. The swap buys higher and sells lower, and the difference is
-        the searcher&rsquo;s. Nothing about it is exotic. It is the ordinary cost of a queue that is
-        legible before it settles.
+        A searcher reads a pending swap, buys in front of it and sells behind it. The swap fills
+        worse and the difference is the searcher&rsquo;s. It is the ordinary cost of a queue that
+        is legible before it settles.
       </p>
       <MempoolScene />
       <p>
-        Peal seals the order to the block it belongs in. While it is pending it is a ciphertext, so
-        there is no number to trade in front of, and the block&rsquo;s worth of orders opens
-        together when the block is due. The searcher is not blocked from acting. There is simply
-        nothing there to act on.
+        Peal seals the order to the block it belongs in. While it is pending it is a ciphertext,
+        so there is no number to trade in front of. The searcher is not blocked from acting. There
+        is nothing to act on.
       </p>
       <TryRow
         href="#/encrypted-mempool"
@@ -925,17 +909,14 @@ function Auction() {
       }
     >
       <p>
-        An open book turns an auction into a waiting game. The bid that wins is often not the one
-        that valued the thing most, it is the one that arrived last with everybody else&rsquo;s
-        number in front of it. Anti-sniping extensions, hidden reserves and proxy bidding are all
-        attempts to buy back a property that a sealed book has for nothing.
+        An open book turns an auction into a waiting game. The winning bid is often not the one
+        that valued the thing most, just the one that arrived last with everybody else&rsquo;s
+        number in front of it.
       </p>
       <AuctionScene />
       <p>
-        A Peal auction has a close rather than a race. Bids go in sealed, the round opens on the
-        deadline, and the ranking is computed from bids that nobody could read while bidding was
-        open, the seller included. Bidders do not have to come back to reveal, so a losing bidder
-        cannot cost everyone the result by walking away.
+        A Peal auction has a close rather than a race. Bids go in sealed and rank on the deadline,
+        from numbers nobody could read while bidding was open, the seller included.
       </p>
       <TryRow
         href="#/create"
@@ -964,22 +945,19 @@ function Agents() {
       }
     >
       <p>
-        An autonomous agent is a poor fit for every part of how an API is normally sold. It cannot
-        accept terms, cannot hold a key it did not earn, and cannot wait for somebody to approve an
-        invoice. It can do exactly one commercial thing well, which is pay for a single request.
+        An agent cannot accept terms, hold a key it did not earn, or wait for somebody to approve
+        an invoice. It can do exactly one commercial thing well, which is pay for a single
+        request.
       </p>
       <p>
-        x402 is HTTP 402 used as it was specified: the server refuses and states the price, the
-        caller pays on chain, and the caller asks again carrying the proof. Every Peal route is
-        mounted twice, free at <code>/v1</code> and metered at <code>/v1/x402</code>, and the
-        metered twin is opt in.
+        x402 is HTTP 402 used as specified: the server states a price, the caller pays on chain,
+        then asks again carrying the proof. Every route is mounted twice, free at <code>/v1</code>
+        and metered at <code>/v1/x402</code>.
       </p>
       <X402Scene />
       <p>
-        That is the entire handshake. No account was created, no key was issued and no invoice
-        exists, which is what makes it usable by software that did not exist when the signup form
-        was written. The agent that needs this most is the one submitting into a queue other agents
-        can read, which is the same problem the rest of this page is about.
+        No account was created, no key was issued and no invoice exists. That is what makes it
+        usable by software that did not exist when your signup form was written.
       </p>
       <TryRow
         href="/developers/x402"
@@ -999,52 +977,52 @@ function Uses() {
   const items = [
     {
       k: 'Procurement and tenders',
-      v: 'Suppliers price the work instead of pricing each other. No bidder sees another number before the deadline and neither does the buyer running the round, which removes the one thing that makes a losing supplier suspect the process rather than the price.',
+      v: 'Suppliers price the work instead of pricing each other. Nobody sees another number before the deadline, the buyer included.',
       how: "tag: 'rfq:<tender>' · one condition per tender",
     },
     {
       k: 'Sealed bid auctions',
-      v: 'Spectrum, carbon allowances, freight capacity, secondary equity, domain names, liquidations. Every bid opens at the close and ranks at once, so arriving last buys no information and an anti-sniping extension stops being necessary.',
+      v: 'Spectrum, carbon, freight, secondary equity, domain names, liquidations. Every bid opens at the close and ranks at once, so arriving last buys nothing.',
       how: "tag: 'auction:<id>' · one seal per bid",
     },
     {
       k: 'Encrypted order flow',
-      v: 'Orders seal to the block they belong in, so the queue is fixed before it is readable. A searcher cannot trade in front of a number nobody can see, and the venue does not have to promise it is not reading the book itself.',
+      v: 'Orders seal to the block they belong in, so the queue is fixed before it is readable. There is no number to trade in front of.',
       how: "kind: 'at_block' · one condition per block height",
     },
     {
       k: 'Agent commitments, paid per call',
-      v: 'Two autonomous parties commit to a price or an action, sealed until a stated moment, with neither able to read the other first and neither holding an account with the other. x402 settles the call, so the agent needs no key and no signup.',
+      v: 'Two agents commit to a price or an action, sealed until a stated moment, neither able to read the other first. x402 settles the call, so neither needs an account.',
       how: 'POST /v1/x402/rounds · 0.001 USD per call',
     },
     {
       k: 'Compensation and offers',
-      v: 'Offers, counter-offers and salary bands open together on a stated date. Nobody negotiates against a number they were shown early, and an employer cannot quietly reprice a role after seeing what a candidate would accept.',
+      v: 'Offers, counter-offers and salary bands open together on a stated date. Nobody negotiates against a number they were shown early.',
       how: "tag: 'offer:<req>' · one condition per requisition",
     },
     {
       k: 'Governance and voting',
-      v: 'Ballots stay sealed until the poll closes, so no running tally can start a bandwagon and no voter can be shown to have voted a particular way while voting is still open. The count is computable by anyone afterwards.',
+      v: 'Ballots stay sealed until the poll closes, so no running tally can start a bandwagon. The count is computable by anyone afterwards.',
       how: "tag: 'vote:<proposal>' · one condition per poll",
     },
     {
       k: 'Forecasts and research calls',
-      v: 'Analysts, desks and prediction tournaments submit into a sealed window. Nobody copies a better forecaster, nobody edits after the outcome, and the scoreboard is reproducible from the reveal rather than from an administrator saying so.',
+      v: 'Analysts, desks and prediction tournaments submit into a sealed window. Nobody copies a better forecaster and nobody edits after the outcome.',
       how: "tag: 'round:<n>' · one condition per window",
     },
     {
       k: 'Grants, bounties and admissions',
-      v: 'Applications and reviewer scores open together. Reviewers do not anchor on each other, applicants cannot be ranked by who submitted first, and the panel can prove afterwards that nothing was read early.',
+      v: 'Applications and reviewer scores open together, so reviewers do not anchor on each other and nobody is ranked by who submitted first.',
       how: "tag: 'panel:<cycle>' · scores as payloads",
     },
     {
       k: 'Embargoed disclosure',
-      v: 'Earnings, a security advisory, an index rebalance, a press release. The embargo holds itself instead of depending on every recipient honouring it, and it lifts for everybody at the same instant rather than for whoever refreshed first.',
+      v: 'Earnings, a security advisory, an index rebalance, a press release. The embargo holds itself, and lifts for everybody at the same instant.',
       how: "kind: 'at_time' · one condition per embargo",
     },
     {
       k: 'Token launches and allocations',
-      v: 'Allocation requests are sealed until the window shuts, so the size of the book cannot be traded on while it is filling and a late request carries no advantage over an early one.',
+      v: 'Allocation requests are sealed until the window shuts, so the size of the book cannot be traded on while it is filling.',
       how: "tag: 'sale:<round>' · slots padded to the batch",
     },
   ];
@@ -1091,8 +1069,7 @@ function Cost() {
     >
       <p>
         No API key, no account, no signup, no payment. Open a round, seal a payload to it, read it
-        back after the deadline. The people submitting need no wallet, hold no tokens and pay no
-        gas: sealing happens in their browser and arrives over ordinary HTTPS.
+        back after the deadline. That is the whole integration.
       </p>
       <div className="peal-calls">
         <code>POST /v1/rounds</code>
@@ -1100,9 +1077,8 @@ function Cost() {
         <code>GET&nbsp; /v1/rounds/ID</code>
       </div>
       <p>
-        The client is one file with the encryption compiled into it, served from this site. If you
-        would rather not add a dependency, every call above is plain JSON over HTTP and works from
-        curl.
+        The client is one file with the encryption compiled in, served from this site. Skip it and
+        every call above is plain JSON over HTTP.
       </p>
     </Section>
   );
@@ -1137,9 +1113,7 @@ function Boundary() {
     >
       <p>
         Peal is not a way to keep something secret for ever, and that is the product rather than a
-        gap in it. A round is unreadable until the moment it names and public from then on, which
-        is what makes the reveal something you can prove happened rather than something you have
-        to be told.
+        gap in it. A round is unreadable until the moment it names, and public from then on.
       </p>
       <ul className="peal-boundary">
         {rows.map((r, i) => (
@@ -1157,9 +1131,8 @@ function Boundary() {
         ))}
       </ul>
       <p>
-        If you need data that is never disclosed to anyone, this is the wrong tool and you should
-        not use it. If you need data that nobody can act on early and everybody can verify
-        afterwards, this is the whole of it.
+        If you need data nobody ever sees, this is the wrong tool. If you need data nobody can act
+        on early and everybody can verify afterwards, this is the whole of it.
       </p>
     </Section>
   );
