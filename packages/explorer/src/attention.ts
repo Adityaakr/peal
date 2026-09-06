@@ -47,13 +47,45 @@ export function fmtCountdownShort(secs: number): string {
 
 // -- calendar ----------------------------------------------------------------
 
+/**
+ * A seal link with its share key removed.
+ *
+ * A private seal's key is the last segment of the fragment, and it is the only
+ * thing that decrypts the payload. The whole reason it rides in the fragment is
+ * that a fragment is never sent to a server. A calendar reminder breaks that on
+ * both routes: `gcalUrl` hands its argument to calendar.google.com inside a
+ * query parameter, and the .ics from `icsHref` lands in whatever calendar the
+ * reader syncs, which for most people is a hosted one.
+ *
+ * So the reminder carries the link without the key. It still opens the page at
+ * the right moment; the reader keeps the original link to read the content.
+ *
+ * The key is matched by identity rather than by shape, because a bare seal link
+ * ends in a 64 character hash that a shape rule would strip just as happily.
+ */
+export function withoutShareKey(href: string, shareKey?: string): string {
+  if (!shareKey) return href;
+  const url = new URL(href);
+  const tail = `/${shareKey}`;
+  if (!url.hash.endsWith(tail)) return href;
+  url.hash = url.hash.slice(0, -tail.length);
+  return url.toString();
+}
+
 function icsStamp(unixSecs: number): string {
   return new Date(unixSecs * 1000).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
 /** A data: href for an .ics event at the fire time, with a display alarm.
  * Use as <a href=... download="peal-seal.ics">. */
-export function icsHref(opts: { conditionId: string; firesAt: number; url: string }): string {
+export function icsHref(opts: {
+  conditionId: string;
+  firesAt: number;
+  url: string;
+  /** Passed so this function can drop it, not so it can be written down. */
+  shareKey?: string;
+}): string {
+  const url = withoutShareKey(opts.url, opts.shareKey);
   const start = icsStamp(opts.firesAt);
   const end = icsStamp(opts.firesAt + 5 * 60);
   const ics = [
@@ -66,8 +98,8 @@ export function icsHref(opts: { conditionId: string; firesAt: number; url: strin
     `DTSTART:${start}`,
     `DTEND:${end}`,
     'SUMMARY:a seal opens',
-    `DESCRIPTION:the sealed content unlocks. open the link:\\n${opts.url}`,
-    `URL:${opts.url}`,
+    `DESCRIPTION:the sealed content unlocks. open the link:\\n${url}`,
+    `URL:${url}`,
     'BEGIN:VALARM',
     'TRIGGER:PT0S',
     'ACTION:DISPLAY',
@@ -80,12 +112,17 @@ export function icsHref(opts: { conditionId: string; firesAt: number; url: strin
 }
 
 /** Google Calendar "add event" URL for the fire time. */
-export function gcalUrl(opts: { firesAt: number; url: string }): string {
+export function gcalUrl(opts: {
+  firesAt: number;
+  url: string;
+  /** Passed so this function can drop it, not so it can be written down. */
+  shareKey?: string;
+}): string {
   const p = new URLSearchParams({
     action: 'TEMPLATE',
     text: 'a seal opens',
     dates: `${icsStamp(opts.firesAt)}/${icsStamp(opts.firesAt + 5 * 60)}`,
-    details: `the sealed content unlocks. open the link: ${opts.url}`,
+    details: `the sealed content unlocks. open the link: ${withoutShareKey(opts.url, opts.shareKey)}`,
   });
   return `https://calendar.google.com/calendar/render?${p.toString()}`;
 }

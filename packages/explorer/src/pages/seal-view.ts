@@ -85,16 +85,25 @@ export function renderSealView(
   };
 
   const pendingActions = (firesAt: number): string => {
+    // `shareKey` is handed over so the helpers can DROP it. A reminder is a
+    // written-down copy of this link, and a private seal's key is the last
+    // segment of the fragment: written into a calendar it reaches Google in a
+    // query parameter, or whatever hosted calendar the reader syncs to. See
+    // withoutShareKey in attention.ts.
     const url = location.href;
     return `<p class="sv-actions">
       ${notifyControl()}
       <a class="btn" download="peal-seal.ics"
-         href="${esc(icsHref({ conditionId, firesAt, url }))}">add to calendar</a>
+         href="${esc(icsHref({ conditionId, firesAt, url, shareKey }))}">add to calendar</a>
       <a class="btn" target="_blank" rel="noopener"
-         href="${esc(gcalUrl({ firesAt, url }))}">google calendar</a>
+         href="${esc(gcalUrl({ firesAt, url, shareKey }))}">google calendar</a>
     </p>
     <p class="field-hint">closing this tab is fine: the calendar event or the notification
-    brings you back the moment it opens.</p>`;
+    brings you back the moment it opens.${
+      shareKey
+        ? ' the reminder leaves out the key part of this link, which a calendar would store, so keep the link itself to read the content.'
+        : ''
+    }</p>`;
   };
 
   const renderPending = () => {

@@ -843,6 +843,65 @@ mod tests {
         }
     }
 
+    /// A seal's share key must never reach a calendar.
+    ///
+    /// A private seal link is `#/s/<id>/<hash>/<key>`, and the key is the only
+    /// thing that decrypts the payload. It rides in the FRAGMENT precisely
+    /// because a fragment is never sent to a server, a promise this product
+    /// makes in the auction docs and in the skill. The two calendar buttons on
+    /// the seal page were the one place it was broken: `gcalUrl` puts its
+    /// argument in a query parameter on calendar.google.com, and the .ics from
+    /// `icsHref` is written into whatever calendar the reader syncs.
+    ///
+    /// Nothing in Rust can observe that, and the explorer has no test runner in
+    /// CI, so this reads the two files. It is a coarse check for one specific
+    /// regression: writing the caller's raw url into the event body again.
+    #[test]
+    fn the_calendar_helpers_never_write_down_a_share_key() {
+        const ATTENTION_TS: &str = include_str!("../../../packages/explorer/src/attention.ts");
+        const SEAL_VIEW_TS: &str =
+            include_str!("../../../packages/explorer/src/pages/seal-view.ts");
+
+        // The stripper exists and both helpers accept the key so they can drop it.
+        assert!(
+            ATTENTION_TS.contains("export function withoutShareKey("),
+            "withoutShareKey is gone; the calendar helpers have nothing to strip with"
+        );
+        assert_eq!(
+            ATTENTION_TS.matches("shareKey?: string;").count(),
+            2,
+            "icsHref and gcalUrl must each take the share key, so each can drop it"
+        );
+
+        // The regression itself: the raw url interpolated into the event body.
+        // Both helpers must read through withoutShareKey instead.
+        for leak in ["${opts.url}", "opts.url}`,"] {
+            assert!(
+                !ATTENTION_TS.contains(leak),
+                "a calendar helper writes the caller's url verbatim ({leak}); \
+                 it must go through withoutShareKey"
+            );
+        }
+        assert_eq!(
+            ATTENTION_TS
+                .matches("withoutShareKey(opts.url, opts.shareKey)")
+                .count(),
+            2,
+            "both calendar helpers must strip the key before writing the link"
+        );
+
+        // And the seal page has to hand the key over for that to do anything.
+        for call in [
+            "icsHref({ conditionId, firesAt, url, shareKey })",
+            "gcalUrl({ firesAt, url, shareKey })",
+        ] {
+            assert!(
+                SEAL_VIEW_TS.contains(call),
+                "the seal page stopped passing shareKey: {call}"
+            );
+        }
+    }
+
     #[test]
     fn writes_the_auction_into_the_shell() {
         let html = inject_for_test(
