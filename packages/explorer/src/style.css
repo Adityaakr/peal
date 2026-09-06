@@ -4229,24 +4229,22 @@ body.landing-page main {
 .st-partial { background: #c99a2e; }
 .st-planned { background: rgba(0, 0, 0, 0.25); }
 
-.exec-input {
-  width: 100%;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.82rem;
-  line-height: 1.5;
-  padding: 0.75rem;
-  border-radius: 0.5rem;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  resize: vertical;
-}
 .exec-actions { display: flex; gap: 0.6rem; margin-top: 0.75rem; }
 .exec-result { margin-top: 1.25rem; }
 
 .vr-verdict { font-weight: 600; margin: 0 0 0.75rem; }
 .vr-verdict.vr-ok { color: #1a7f4b; }
 .vr-verdict.vr-bad { color: #b3261e; }
-.vr-list { list-style: none; padding: 0; margin: 0; }
-.vr-check {
+/* The live run's step list. Same visual grammar as the verifier's check list,
+   because they are the same kind of statement: a thing that either happened or
+   did not, with the evidence beside it. */
+.run-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+
+.run-step {
   display: grid;
   grid-template-columns: 1.25rem minmax(0, 14rem) 1fr;
   gap: 0.5rem;
@@ -4255,14 +4253,78 @@ body.landing-page main {
   font-size: 0.87rem;
   align-items: baseline;
 }
-.vr-check.vr-ok .vr-mark { color: #1a7f4b; }
-.vr-check.vr-bad .vr-mark { color: #b3261e; }
-.vr-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.vr-detail { opacity: 0.6; font-size: 0.82rem; overflow-wrap: anywhere; }
+
+.run-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.run-label {
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* The sentence carries the meaning; the identifier beside it is only evidence
+   for the sentence. Previously the identifier was the whole row. */
+.run-means {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.run-mark {
+  text-align: center;
+}
+
+.run-step.run-idle {
+  opacity: 0.42;
+}
+
+.run-step.run-doing .run-mark {
+  color: var(--accent);
+  animation: run-pulse 1s ease-in-out infinite;
+}
+
+.run-step.run-done .run-mark {
+  color: #1a7f4b;
+}
+
+.run-step.run-failed .run-mark {
+  color: #b3261e;
+}
+
+.run-detail {
+  align-self: start;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+  opacity: 0.6;
+  overflow-wrap: anywhere;
+}
+
+a.run-link {
+  color: var(--accent);
+  opacity: 1;
+  text-decoration: none;
+  border-bottom: 1px solid rgb(37 99 235 / 28%);
+}
+
+a.run-link:hover {
+  border-bottom-color: var(--accent);
+}
+
+@keyframes run-pulse {
+  50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-step.run-doing .run-mark { animation: none; }
+}
 
 @media (max-width: 640px) {
-  .vr-check { grid-template-columns: 1.25rem 1fr; }
-  .vr-detail { grid-column: 2; }
+  .run-step { grid-template-columns: 1.25rem 1fr; }
+  .run-detail { grid-column: 2; }
 }
 
 /* ---------- auctionkit (/auction) ----------
@@ -8933,4 +8995,571 @@ body.docs-page main {
 
 .act-total:empty {
   display: none;
+}
+
+
+/* An .ml-btn that is busy or not yet available. Anchors have no disabled state,
+   so it is carried here and the handlers check for it. */
+.ml-btn.is-off {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.ml-btn[role='button'] {
+  cursor: pointer;
+  display: inline-block;
+}
+
+/* This page's own bits, sitting inside .ml-section like everything else. */
+.exec-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 18px 0 0;
+}
+
+.exec-hint {
+  margin: 0;
+}
+
+
+/* The 402 answer, read out of the real response. Rows rather than a JSON dump:
+   the status and the price are the point, the rest is deployment detail. */
+.x4 {
+  margin: 20px 0 0;
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+
+.x4-row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+  align-items: baseline;
+}
+
+.x4-k {
+  font-family: var(--body);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.x4-row b {
+  font-family: var(--body);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.x4-code {
+  font-family: var(--mono) !important;
+  font-size: 14px !important;
+  color: var(--accent) !important;
+}
+
+@media (max-width: 620px) {
+  .x4-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}
+
+/* The run's live facts: what the round is, how long is left, what it takes to
+   open it, and where it landed. A countdown that a reader is watching has to
+   tick every second, so it runs on its own clock and not on the poll. */
+.rn-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 18px 0 0;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.rn-meta > div {
+  background: #fff;
+  padding: 11px 13px;
+  min-width: 0;
+}
+
+.rn-meta dt {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+  margin-bottom: 4px;
+}
+
+.rn-meta dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rn-meta dd a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.rn-meta dd a:hover {
+  text-decoration: underline;
+}
+
+/* The one number on the page somebody is actually watching. */
+#rn-m-clock.is-counting {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .rn-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* The two queues. Structure comes from .ml-stage / .ml-col / .ml-pub-card /
+   .ml-sealed, which the mempool and sealbid pages already own; only the beats
+   are new. */
+
+/* The searcher is absent at rest. It arrives when there is something to read,
+   which is the argument in one movement. */
+.ex-searcher {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+  transition:
+    max-height 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 320ms ease,
+    padding 420ms ease;
+}
+
+#ex-stage.is-snipe .ex-searcher {
+  max-height: 48px;
+  opacity: 1;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.ex-oord {
+  transition:
+    opacity 420ms ease,
+    border-color 420ms ease,
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The order that got read lifts and turns, so the cost lands on one card
+   rather than on the column. */
+#ex-stage.is-scan .ex-oord-victim {
+  transform: translateZ(40px);
+  border-color: rgba(210, 84, 42, 0.45);
+}
+
+#ex-stage.is-snipe .ex-oord-victim {
+  transform: translateZ(24px);
+  border-color: var(--red-border);
+}
+
+.ex-outbid {
+  position: absolute;
+  top: 9px;
+  right: 11px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--red-text);
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+
+#ex-stage.is-snipe .ex-outbid {
+  opacity: 1;
+}
+
+/* Sealed values swap in place, so the card does not resize when it opens. */
+.ex-sq {
+  position: relative;
+  display: inline-grid;
+}
+
+.ex-q-sealed,
+.ex-q-open {
+  grid-area: 1 / 1;
+  transition: opacity 320ms ease;
+}
+
+.ex-q-open {
+  opacity: 0;
+  color: var(--accent);
+}
+
+#ex-stage.is-open .ex-q-sealed {
+  opacity: 0;
+}
+
+#ex-stage.is-open .ex-q-open {
+  opacity: 1;
+}
+
+.ex-sord {
+  transition: border-color 420ms ease, transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#ex-stage.is-locked .ex-sord {
+  border-color: var(--accent-border);
+}
+
+.ex-lockbar {
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 380ms ease, transform 380ms ease;
+}
+
+#ex-stage.is-locked .ex-lockbar {
+  opacity: 1;
+  transform: none;
+}
+
+/* The captions swap with the beat, the way sealbid's do. */
+.ml-micro .ex-m-snipe,
+.ml-micro .ex-m-open,
+.ml-col-note .ex-m-open {
+  display: none;
+}
+
+#ex-stage.is-snipe .ml-col-public .ex-m-rest {
+  display: none;
+}
+
+#ex-stage.is-snipe .ml-col-public .ex-m-snipe {
+  display: inline;
+  color: var(--red);
+}
+
+#ex-stage.is-open .ml-col-peal .ex-m-rest {
+  display: none;
+}
+
+#ex-stage.is-open .ml-col-peal .ex-m-open {
+  display: inline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ex-searcher,
+  .ex-oord,
+  .ex-sord,
+  .ex-lockbar {
+    transition: none;
+  }
+}
+
+/* The run, shown rather than listed.
+   An agent on the left, the order it is sending on the right, and a seal that
+   drops over that order for exactly as long as it is genuinely unreadable. */
+
+.rn {
+  margin-top: 20px;
+}
+
+.rn-top {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) 30px minmax(0, 1.15fr);
+  align-items: stretch;
+  gap: 0;
+}
+
+.rn-cap {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+  margin-bottom: 9px;
+}
+
+.rn-agent,
+.rn-order {
+  position: relative;
+  min-width: 0;
+  padding: 16px 17px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.rn-addr {
+  display: block;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.rn-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.rn-facts span::before {
+  content: '· ';
+  color: var(--muted-soft);
+}
+
+/* The arrow between them. A plain rule with a head, so the pair reads as one
+   sentence: this agent is sending that order. */
+.rn-arrow {
+  position: relative;
+  align-self: center;
+  height: 1px;
+  background: var(--border);
+}
+
+.rn-arrow::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -3px;
+  border-top: 1px solid var(--muted-soft);
+  border-right: 1px solid var(--muted-soft);
+  transform: rotate(45deg);
+}
+
+.rn-order {
+  background: #fff;
+  overflow: hidden;
+}
+
+.rn-rows {
+  margin: 0;
+}
+
+.rn-rows > div {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 10px;
+  padding: 5px 0;
+  align-items: baseline;
+}
+
+.rn-rows dt {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.rn-rows dd {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.rn-rows dd em {
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+/* The seal. Covers the order for exactly as long as it is unreadable, which is
+   the one thing this whole page is claiming. */
+.rn-seal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  background: #eef1f5;
+  border-radius: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.98);
+  transition: opacity 420ms ease, transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rn-order.is-sealed .rn-seal {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.rn-seal-t {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+
+.rn-seal-ct {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text);
+  word-break: break-all;
+  max-width: 30ch;
+  text-align: center;
+}
+
+.rn-seal-f {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: center;
+  max-width: 32ch;
+}
+
+/* Opened: the order comes back, and says so. */
+.rn-order.is-open {
+  border-color: rgba(22, 163, 74, 0.45);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.08);
+}
+
+.rn-order.is-open::after {
+  content: 'opened by the network';
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: #15803d;
+}
+
+/* ---- the rail ---------------------------------------------------------- */
+
+.rn-rail {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 20px 0 12px;
+}
+
+.rn-dot {
+  flex: 1 1 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 380ms ease;
+}
+
+.rn-dot.rn-done {
+  background: var(--accent);
+}
+
+.rn-dot.rn-doing {
+  background: var(--accent);
+  animation: rn-pulse 1.1s ease-in-out infinite;
+}
+
+.rn-dot.rn-failed {
+  background: var(--red);
+}
+
+@keyframes rn-pulse {
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rn-dot.rn-doing { animation: none; }
+}
+
+.rn-now {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rn-now b {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.rn-now span {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.rn-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 14px 0 0;
+}
+
+.rn-ev {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.rn-ev i {
+  font-style: normal;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+
+.rn-ev:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+@media (max-width: 720px) {
+  .rn-top {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  /* Pointing down rather than across once they stack. */
+  .rn-arrow {
+    width: 1px;
+    height: 18px;
+    justify-self: center;
+    background: var(--border);
+  }
+
+  .rn-arrow::after {
+    right: 50%;
+    top: auto;
+    bottom: 0;
+    margin-right: -3px;
+    transform: rotate(135deg);
+  }
 }
