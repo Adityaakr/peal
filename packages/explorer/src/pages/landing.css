@@ -14,14 +14,22 @@
 @import 'tailwindcss/utilities.css' layer(utilities);
 
 @theme {
-  --font-instrument: 'Instrument Serif', serif;
-  --font-serif: 'Instrument Serif', serif;
-  --font-sans: 'Inter', sans-serif;
+  /* The product's own scheme: Josefin Sans for display, DM Sans for text.
+   *
+   * It is what home.ts sets the hero in (.hero-title / .hero-sub in style.css)
+   * and what every page a visitor reaches from here is set in. This island had
+   * been running on its own pair, so the landing and the app read as two
+   * different products. */
+  --font-display: 'Josefin Sans', system-ui, -apple-system, sans-serif;
+  --font-sans: 'DM Sans', 'Satoshi', system-ui, -apple-system, sans-serif;
   --font-nokia: 'Nokia Cellphone FC Small', monospace;
 }
 
-@utility font-instrument {
-  font-family: 'Instrument Serif', serif;
+/* The product's display face. `.site-title` in style.css sets the wordmark in
+   Josefin Sans 500 and `.hero-title` sets the headline in 400, so the landing
+   uses the same two rather than a serif of its own. */
+@utility font-display {
+  font-family: 'Josefin Sans', system-ui, -apple-system, sans-serif;
 }
 
 /* Scoped defaults — the island owns its box model and body font without
@@ -48,8 +56,10 @@
 
 .product-hunt-badge {
   display: inline-flex;
-  width: 250px;
-  height: 54px;
+  /* 180 by 39 is the 250 by 54 artwork at its exact ratio. The anchor carries
+     the size, so setting width and height on the <img> alone does nothing. */
+  width: 180px;
+  height: 39px;
   max-width: 100%;
   pointer-events: auto;
   transition:
@@ -87,12 +97,173 @@
   }
 }
 
+/* ---------------------------------------------------------------- the hero --
+   A rounded media card rather than a full bleed panel.
+   
+   Inset to the same 24px gutter the sections use, so the fold lines up with
+   everything under it, and shorter than a full viewport because the page now
+   continues below rather than ending at the phone. */
+
+.peal-hero {
+  position: relative;
+  /* Top padding clears the floating navbar, which is positioned over this. */
+  padding: 92px 24px 0;
+  background: #f3f4ed;
+}
+
+.peal-hero-media {
+  position: relative;
+  height: min(74vh, 720px);
+  border-radius: 40px;
+  overflow: hidden;
+  /* A new stacking context, so the zooming video cannot paint over the rounded
+     corners it is supposed to be clipped by. */
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 54px;
+}
+
+.peal-hero-video {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Low, because the phone stands on the sand near the bottom of the frame and
+     a centre origin walks it out of shot as the zoom runs. */
+  transform-origin: 50% 68%;
+  will-change: transform;
+}
+
+.peal-hero-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: rgb(255 255 255 / 5%);
+}
+
+.peal-hero-copy {
+  position: relative;
+  z-index: 2;
+  padding: 0 24px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.peal-hero-title {
+  margin: 0 0 24px;
+  font-family: 'Josefin Sans', system-ui, -apple-system, sans-serif;
+  font-weight: 500;
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1.06;
+  letter-spacing: -0.01em;
+  color: #1a1a1a;
+}
+
+/* The hero call to action, in the place the badge used to hold.
+ *
+ * `.peal-hero-copy` turns pointer events off so the video reads as one surface
+ * behind the type. This is the one thing in there a person is meant to click,
+ * so it turns them back on. */
+
+.peal-hero-cta-row {
+  display: flex;
+  justify-content: center;
+}
+
+.peal-hero-cta {
+  position: relative;
+  overflow: hidden;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 13px 30px;
+  border-radius: 999px;
+  background: #0871e7;
+  outline: 1px solid #0871e7;
+  outline-offset: -1px;
+  box-shadow: inset 0 -4px 4px rgb(255 255 255 / 39%);
+  font-size: 15.5px;
+  font-weight: 500;
+  color: #fff;
+  text-decoration: none;
+  transition:
+    background 180ms ease,
+    transform 180ms ease;
+}
+
+.peal-hero-cta:hover {
+  background: #0a63c8;
+  transform: translateY(-1px);
+}
+
+.peal-hero-cta > span:last-child {
+  position: relative;
+}
+
+/* The same highlight the navigation button carries, so the two read as one
+   control at two sizes rather than as two different buttons. */
+.peal-hero-cta-gloss {
+  position: absolute;
+  left: 10%;
+  top: 1px;
+  width: 80%;
+  height: 16px;
+  border-radius: 12px;
+  background: linear-gradient(to bottom, #def0fc, transparent);
+  transition: transform 300ms ease;
+}
+
+.peal-hero-cta:hover .peal-hero-cta-gloss {
+  transform: scaleX(1.05);
+}
+
+/* The badge, out of the centred stack and into the corner. */
+.peal-hero-badge {
+  position: absolute;
+  right: 22px;
+  bottom: 20px;
+  z-index: 3;
+  line-height: 0;
+}
+
+@media (max-width: 640px) {
+  .peal-hero {
+    padding: 76px 14px 0;
+  }
+
+  .peal-hero-media {
+    height: min(72vh, 560px);
+    border-radius: 28px;
+    padding-top: 40px;
+  }
+
+  .peal-hero-cta {
+    padding: 12px 26px;
+    font-size: 15px;
+  }
+
+  .peal-hero-badge {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  /* 180px of badge in a 362px card crowds the corner it sits in. */
+  .peal-hero-badge .product-hunt-badge {
+    width: 146px;
+    height: 32px;
+  }
+}
+
 /* ---------------------------------------------------------------- sections --
    Everything below the hero.
    
    The palette is the landing's own, not the documentation's: cream, ink, the
-   blue already in the hero, and the olive used as the accent. Instrument Serif
-   for the headings it already uses, Inter for reading.
+   blue already in the hero, and the olive used as the accent. The type is the
+   product's own pair: Josefin Sans for display, DM Sans for reading.
    
    Depth in the scenes comes from translateZ under a perspective and from
    nothing else. Rotating the planes as well looks three dimensional in a
@@ -128,15 +299,24 @@
 
 .peal-h2 {
   margin: 0 0 28px;
-  font-family: 'Instrument Serif', serif;
-  font-size: clamp(30px, 5vw, 46px);
-  line-height: 1.08;
-  letter-spacing: -0.015em;
+  font-family: 'Josefin Sans', system-ui, -apple-system, sans-serif;
+  /* 400 and a hair of negative tracking, which is what .hero-title uses. */
+  font-weight: 400;
+  font-size: clamp(30px, 4.6vw, 44px);
+  line-height: 1.14;
+  letter-spacing: -0.005em;
   color: #1a1a1a;
 }
 
+/* The accent inside a heading.
+ *
+ * It used to be italic, which worked when headings were set in a serif that
+ * ships one. Josefin Sans does not, so italic here would be a browser drawing a
+ * slanted geometric sans and it looks like a mistake. Weight and colour carry
+ * the emphasis instead. */
 .peal-em {
-  font-style: italic;
+  font-style: normal;
+  font-weight: 300;
   color: #0871e7;
 }
 
@@ -292,15 +472,15 @@
   opacity: 0;
 }
 
-.peal-scene-cap {
-  margin: 10px 0 0;
+.peal-prose .peal-scene-cap {
+  margin: 14px 0 0;
   text-align: center;
   font-size: 13px;
   color: #6b7063;
   transition: color 400ms ease;
 }
 
-.peal-scene-sealed.is-open .peal-scene-cap {
+.peal-prose .peal-scene-sealed.is-open .peal-scene-cap {
   color: #0871e7;
 }
 
@@ -325,9 +505,12 @@
 }
 
 .peal-uses h3 {
-  margin: 0 0 7px;
-  font-size: 17px;
-  font-weight: 620;
+  margin: 0 0 8px;
+  font-family: 'Josefin Sans', system-ui, -apple-system, sans-serif;
+  font-size: 21px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  line-height: 1.2;
   color: #1a1a1a;
 }
 
@@ -439,5 +622,1336 @@
   .peal-scene-cap,
   .peal-cta {
     transition: none;
+  }
+}
+
+/* ------------------------------------------------- the committee, in 3D --
+   Five operators and a payload above them. The threshold is the claim people
+   are most right to be sceptical about, so this one is interactive: it is
+   checkable rather than illustrative. */
+
+.peal-committee {
+  margin: 40px 0 30px;
+}
+
+.peal-cmt-stage {
+  position: relative;
+  /* Four bands, in the order the mechanism runs: the payload, the shares
+     arriving at it, the operators they came from, and the count. The meter used
+     to sit between the operators and the payload, which is exactly the corridor
+     the shares travel through, so it was being flown over. */
+  height: 340px;
+  perspective: 1000px;
+  perspective-origin: 50% 44%;
+  transform-style: preserve-3d;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0 0;
+}
+
+/* ---- back plane: the payload ---- */
+
+.peal-cmt-payload {
+  position: relative;
+  width: 218px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: #eceee2;
+  border: 1px solid rgb(42 54 22 / 18%);
+  text-align: center;
+  transform: translateZ(-26px);
+  transition:
+    background 500ms ease,
+    border-color 500ms ease,
+    transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 500ms ease;
+}
+
+.peal-committee.is-open .peal-cmt-payload {
+  background: #fff;
+  border-color: #0871e7;
+  transform: translateZ(74px);
+  box-shadow:
+    0 0 0 4px rgb(8 113 231 / 10%),
+    0 26px 44px -22px rgb(8 113 231 / 50%);
+}
+
+.peal-cmt-lock {
+  position: absolute;
+  top: 13px;
+  right: 14px;
+  width: 11px;
+  height: 12px;
+  border-radius: 2px;
+  background: rgb(42 54 22 / 30%);
+  transition: background 400ms ease, opacity 400ms ease;
+}
+
+.peal-cmt-lock::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border: 1.6px solid rgb(42 54 22 / 30%);
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  transition: border-color 400ms ease, transform 400ms ease;
+}
+
+.peal-committee.is-open .peal-cmt-lock {
+  opacity: 0.55;
+  background: #0871e7;
+}
+
+/* The shackle lifts off the body rather than the lock disappearing, which is
+   the difference between "it opened" and "it was never locked". */
+.peal-committee.is-open .peal-cmt-lock::before {
+  border-color: #0871e7;
+  transform: translateY(-3px);
+}
+
+.peal-cmt-v {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #1a1a1a;
+}
+
+/* Sealed, the payload shows its ciphertext, so it is set in a monospace. Open,
+   it is a number and reads as one. */
+.peal-committee:not(.is-open) .peal-cmt-v {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 17px;
+  font-weight: 500;
+  color: rgb(42 54 22 / 62%);
+}
+
+.peal-cmt-w {
+  display: block;
+  margin-top: 5px;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgb(42 54 22 / 48%);
+  transition: color 400ms ease;
+}
+
+.peal-committee.is-open .peal-cmt-w {
+  color: #0871e7;
+}
+
+/* ---- mid plane: the shares in flight ---- */
+
+.peal-cmt-shares {
+  position: absolute;
+  left: 50%;
+  top: 200px;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.peal-cmt-share {
+  position: absolute;
+  left: var(--x);
+  top: 0;
+  width: 15px;
+  height: 15px;
+  margin: -7px 0 0 -7px;
+  border-radius: 4px;
+  background: #0871e7;
+  opacity: 0;
+  /* Parked on its own operator until that operator is holding a share, then it
+     travels to the payload and forward through the depth between them. */
+  transform: translate3d(0, 0, 0) scale(0.6);
+  transition:
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 420ms ease;
+}
+
+.peal-cmt-share.is-sent {
+  opacity: 1;
+  transform: translate3d(calc(var(--to) - var(--x)), -88px, 44px) scale(1);
+}
+
+/* ---- front plane: how far off the threshold is ---- */
+
+.peal-cmt-meter {
+  position: absolute;
+  top: 292px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgb(42 54 22 / 14%);
+  transform: translateZ(56px);
+  transition: border-color 420ms ease;
+}
+
+.peal-committee.is-open .peal-cmt-meter {
+  border-color: rgb(8 113 231 / 45%);
+}
+
+.peal-cmt-tick {
+  width: 20px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgb(42 54 22 / 16%);
+  transition: background 380ms ease;
+}
+
+.peal-cmt-tick.is-lit {
+  background: #0871e7;
+}
+
+.peal-cmt-meter em {
+  font-style: normal;
+  margin-left: 3px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgb(42 54 22 / 55%);
+  transition: color 380ms ease;
+}
+
+.peal-committee.is-open .peal-cmt-meter em {
+  color: #0871e7;
+}
+
+/* ---- the operators ---- */
+
+.peal-cmt-row {
+  position: absolute;
+  top: 200px;
+  display: flex;
+  gap: 14px;
+  transform-style: preserve-3d;
+}
+
+.peal-cmt-node {
+  position: relative;
+  width: 62px;
+  height: 76px;
+  padding: 0;
+  border: 1px solid rgb(42 54 22 / 16%);
+  border-radius: 13px;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition:
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 260ms ease,
+    box-shadow 260ms ease;
+}
+
+/* An arc that faces the reader: the ends fall away and the middle stands
+   nearest, so five equal tiles read as a committee standing in a curve. */
+.peal-cmt-node[style*='--i:0'],
+.peal-cmt-node[style*='--i: 0'],
+.peal-cmt-node[style*='--i:4'],
+.peal-cmt-node[style*='--i: 4'] {
+  transform: translate3d(0, 10px, -44px);
+}
+
+.peal-cmt-node[style*='--i:1'],
+.peal-cmt-node[style*='--i: 1'],
+.peal-cmt-node[style*='--i:3'],
+.peal-cmt-node[style*='--i: 3'] {
+  transform: translate3d(0, 3px, -14px);
+}
+
+.peal-cmt-node[style*='--i:2'],
+.peal-cmt-node[style*='--i: 2'] {
+  transform: translate3d(0, 0, 4px);
+}
+
+.peal-cmt-node.is-on {
+  border-color: #0871e7;
+  box-shadow:
+    0 0 0 3px rgb(8 113 231 / 10%),
+    0 16px 26px -18px rgb(8 113 231 / 55%);
+}
+
+/* A key rather than a dot. The tile stands for an operator holding one share of
+   a split key, and a dot said nothing about which. */
+.peal-cmt-key {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid rgb(42 54 22 / 28%);
+  transition: border-color 240ms ease;
+}
+
+.peal-cmt-key::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  width: 2px;
+  height: 11px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: rgb(42 54 22 / 28%);
+  box-shadow: 3px 4px 0 -1px rgb(42 54 22 / 28%);
+  transition: background 240ms ease, box-shadow 240ms ease;
+}
+
+.peal-cmt-node.is-on .peal-cmt-key {
+  border-color: #0871e7;
+}
+
+.peal-cmt-node.is-on .peal-cmt-key::after {
+  background: #0871e7;
+  box-shadow: 3px 4px 0 -1px #0871e7;
+}
+
+.peal-cmt-n {
+  font-size: 12px;
+  color: rgb(42 54 22 / 50%);
+  transition: color 240ms ease;
+}
+
+.peal-cmt-node.is-on .peal-cmt-n {
+  color: #0871e7;
+}
+
+.peal-prose .peal-cmt-cap {
+  margin: 30px auto 0;
+  max-width: 520px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgb(42 54 22 / 55%);
+}
+
+.peal-prose .peal-committee.is-open .peal-cmt-cap strong {
+  color: #0871e7;
+}
+
+@media (max-width: 640px) {
+  .peal-cmt-stage {
+    height: 318px;
+  }
+
+  .peal-cmt-row {
+    gap: 7px;
+  }
+
+  .peal-cmt-node {
+    width: 52px;
+    height: 68px;
+  }
+
+  /* The arc flattens on a phone: at this width the depth reads as five tiles of
+     five different sizes rather than as a curve. */
+  .peal-cmt-node[style*='--i:0'],
+  .peal-cmt-node[style*='--i: 0'],
+  .peal-cmt-node[style*='--i:4'],
+  .peal-cmt-node[style*='--i: 4'] {
+    transform: translate3d(0, 5px, -18px);
+  }
+
+  .peal-cmt-node[style*='--i:1'],
+  .peal-cmt-node[style*='--i: 1'],
+  .peal-cmt-node[style*='--i:3'],
+  .peal-cmt-node[style*='--i: 3'] {
+    transform: translate3d(0, 2px, -6px);
+  }
+
+  .peal-cmt-shares {
+    top: 186px;
+  }
+
+  .peal-cmt-share.is-sent {
+    transform: translate3d(calc(var(--to) - var(--x)), -80px, 30px) scale(1);
+  }
+
+  .peal-cmt-row {
+    top: 186px;
+  }
+
+  .peal-cmt-meter {
+    top: 272px;
+  }
+}
+
+/* ------------------------------------------------------------ the deadline --
+   A round crossing its own deadline with nobody present. */
+
+.peal-timeline {
+  margin: 40px 0 30px;
+}
+
+.peal-tl-track {
+  position: relative;
+  /* Tall enough for the line, the two marks and the labels hanging under
+     them, which are absolutely positioned and so contribute no height. */
+  height: 104px;
+  margin: 0 8px;
+}
+
+.peal-tl-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 44px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgb(42 54 22 / 14%);
+}
+
+.peal-tl-mark {
+  position: absolute;
+  top: 30px;
+  width: 2px;
+  height: 30px;
+  background: rgb(42 54 22 / 30%);
+}
+
+.peal-tl-mark em {
+  position: absolute;
+  top: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-style: normal;
+  font-size: 12px;
+  white-space: nowrap;
+  color: #6b7063;
+}
+
+.peal-tl-open {
+  left: 4%;
+}
+
+.peal-tl-close {
+  left: 92%;
+  background: #0871e7;
+}
+
+.peal-tl-close em {
+  color: #0871e7;
+}
+
+/* The travelling round. It reaches the deadline on its own: no hover, no
+   click, nothing pressed, which is the entire point being made. */
+.peal-tl-runner {
+  position: absolute;
+  top: 33px;
+  left: 4%;
+  width: 26px;
+  height: 24px;
+  margin-left: -13px;
+  border-radius: 7px;
+  background: #eceee2;
+  border: 1px solid rgb(42 54 22 / 22%);
+  transition:
+    left 2600ms cubic-bezier(0.5, 0, 0.2, 1),
+    background 400ms ease,
+    border-color 400ms ease;
+}
+
+.peal-timeline.is-fired .peal-tl-runner {
+  left: 92%;
+  background: #fff;
+  border-color: #0871e7;
+  box-shadow: 0 0 0 4px rgb(8 113 231 / 12%);
+}
+
+.peal-prose .peal-tl-cap {
+  margin: 26px 0 0;
+  text-align: center;
+  font-size: 14px;
+  color: #6b7063;
+  transition: color 400ms ease;
+}
+
+.peal-prose .peal-timeline.is-fired .peal-tl-cap {
+  color: #0871e7;
+}
+
+/* --------------------------------------------------------- the boundary --
+   What is public and what is not, as a table you can read in one pass. */
+
+.peal-boundary {
+  list-style: none;
+  margin: 30px 0;
+  padding: 0;
+}
+
+.peal-boundary li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 15px 0;
+  border-bottom: 1px solid rgb(42 54 22 / 10%);
+  font-size: 15.5px;
+}
+
+.peal-boundary li:first-child {
+  border-top: 1px solid rgb(42 54 22 / 10%);
+}
+
+.peal-boundary span {
+  color: #1a1a1a;
+}
+
+.peal-boundary em {
+  flex: none;
+  font-style: normal;
+  font-size: 13px;
+  color: #6b7063;
+}
+
+.peal-boundary .is-sealed em {
+  color: #0871e7;
+  font-weight: 550;
+}
+
+.peal-close-fine {
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+  font-size: 13px;
+  opacity: 0.72;
+}
+
+@media (max-width: 720px) {
+  .peal-cmt-row {
+    gap: 8px;
+  }
+
+  .peal-cmt-node {
+    width: 52px;
+    height: 66px;
+  }
+
+  .peal-boundary li {
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peal-cmt-payload,
+  .peal-cmt-node,
+  .peal-tl-runner {
+    transition: none;
+  }
+}
+
+/* The batch: sixty-four slots opened by one decryption.
+ *
+ * Depth is translateZ under a single perspective on the stage. The grid is not
+ * rotated, on purpose: sixty-four one-pixel borders would foreshorten unevenly
+ * and the field would read as a texture instead of as slots. */
+
+.peal-batch {
+  margin: 40px 0 34px;
+}
+
+.peal-batch-stage {
+  position: relative;
+  perspective: 760px;
+  perspective-origin: 50% 44%;
+  transform-style: preserve-3d;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0 0;
+}
+
+.peal-batch-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 38px);
+  gap: 7px;
+  transform-style: preserve-3d;
+}
+
+.peal-slot {
+  position: relative;
+  height: 30px;
+  border-radius: 6px;
+  background: #eceee2;
+  border: 1px solid rgb(42 54 22 / 16%);
+  transform: translateZ(var(--z));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Every slot moves on the same clock. A stagger would say the network opens
+     them one after another, which is the thing this scene exists to deny. */
+  transition:
+    background 460ms ease,
+    border-color 460ms ease,
+    box-shadow 460ms ease;
+}
+
+/* Sealed, a slot shows one muted dash whether or not it is carrying anything,
+   which is the whole point of the padding. */
+.peal-slot-bar {
+  display: block;
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgb(42 54 22 / 22%);
+  transition:
+    width 460ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 460ms ease;
+}
+
+.peal-batch.is-open .peal-slot.is-filled {
+  background: #fff;
+  border-color: rgb(8 113 231 / 55%);
+  box-shadow: 0 8px 18px -14px rgb(8 113 231 / 70%);
+}
+
+.peal-batch.is-open .peal-slot.is-filled .peal-slot-bar {
+  width: 20px;
+  background: #0871e7;
+}
+
+/* Padding, once it is open, is visibly nothing: the dash goes away rather than
+   turning into a value it never held. */
+.peal-batch.is-open .peal-slot:not(.is-filled) {
+  background: transparent;
+  border-color: rgb(42 54 22 / 12%);
+}
+
+.peal-batch.is-open .peal-slot:not(.is-filled) .peal-slot-bar {
+  width: 0;
+}
+
+.peal-batch-op {
+  margin: 18px 0 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgb(42 54 22 / 16%);
+  background: #fff;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgb(42 54 22 / 62%);
+  transform: translateZ(30px);
+  transition:
+    color 460ms ease,
+    border-color 460ms ease;
+}
+
+.peal-batch.is-open .peal-batch-op {
+  color: #0871e7;
+  border-color: rgb(8 113 231 / 45%);
+}
+
+/* `.peal-prose p` is 0-1-1 and would otherwise eat this margin, which is how
+   three other captions on this page ended up touching the scene above them. */
+.peal-prose .peal-batch-cap {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: rgb(42 54 22 / 55%);
+  transition: color 300ms ease;
+}
+
+.peal-prose .peal-batch.is-open .peal-batch-cap {
+  color: #0871e7;
+}
+
+@media (max-width: 640px) {
+  /* Eight fixed 38px columns do not fit a phone, so the eight columns become
+     fractional and the slots shrink instead of the grid reflowing. */
+  .peal-batch-grid {
+    grid-template-columns: repeat(8, 1fr);
+    gap: 5px;
+    width: 100%;
+  }
+
+  .peal-slot {
+    height: 24px;
+  }
+
+  .peal-slot-bar {
+    width: 9px;
+  }
+
+  .peal-batch.is-open .peal-slot.is-filled .peal-slot-bar {
+    width: 13px;
+  }
+}
+
+/* ---------- the two links under a showcase section ---------- */
+
+.peal-prose .peal-try {
+  margin: 26px 0 30px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+}
+
+.peal-try-go {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: #0871e7;
+  color: #fff;
+  font-size: 14.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background 180ms ease,
+    transform 180ms ease;
+}
+
+.peal-try-go:hover {
+  background: #0a63c8;
+  transform: translateY(-1px);
+}
+
+.peal-try-more {
+  display: inline-block;
+  padding: 6px 0;
+  font-size: 14.5px;
+  color: #0871e7;
+  text-decoration: none;
+  border-bottom: 1px solid rgb(8 113 231 / 30%);
+  transition: border-color 180ms ease;
+}
+
+.peal-try-more:hover {
+  border-bottom-color: #0871e7;
+}
+
+/* The honest note under a demo. Smaller and quieter than the argument, and
+   never hidden behind a disclosure: a reader deciding whether to build on this
+   is entitled to it without clicking. */
+.peal-prose .peal-fine {
+  margin: 0;
+  padding: 14px 0 0;
+  border-top: 1px solid rgb(42 54 22 / 10%);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: rgb(42 54 22 / 52%);
+}
+
+.peal-fine code {
+  font-size: 12.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(42 54 22 / 7%);
+}
+
+/* ---------- the sandwich, in both lanes ---------- */
+
+.peal-mp {
+  margin: 40px 0 34px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 26px;
+  perspective: 900px;
+  perspective-origin: 50% 42%;
+}
+
+.peal-mp-lane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  transform-style: preserve-3d;
+}
+
+.peal-mp-tag {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(42 54 22 / 50%);
+}
+
+.peal-mp-stack {
+  position: relative;
+  width: 100%;
+  /* Tall enough for three cards at their spread positions. The searcher's two
+     orders are placed by transform, which contributes no height, so the stack
+     has to reserve it. */
+  height: 200px;
+  transform-style: preserve-3d;
+}
+
+.peal-mp-card {
+  position: absolute;
+  left: 50%;
+  width: 190px;
+  max-width: 92%;
+  margin-left: -95px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgb(42 54 22 / 16%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition:
+    transform 620ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 520ms ease,
+    border-color 420ms ease;
+}
+
+.peal-mp-card b {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.peal-mp-card i {
+  font-style: normal;
+  font-size: 11.5px;
+  color: rgb(42 54 22 / 52%);
+}
+
+.peal-mp-victim {
+  top: 68px;
+  transform: translateZ(0);
+  z-index: 2;
+}
+
+/* The two searcher orders start stacked on the victim and out of sight, then
+   take their positions in front of and behind it. */
+.peal-mp-atk {
+  opacity: 0;
+  border-color: rgb(210 84 42 / 45%);
+  background: #fff8f5;
+}
+
+.peal-mp-atk b {
+  color: #b8461f;
+}
+
+.peal-mp-front {
+  top: 68px;
+  transform: translateZ(0);
+  z-index: 3;
+}
+
+.peal-mp-back {
+  top: 68px;
+  transform: translateZ(0);
+  z-index: 1;
+}
+
+.peal-mp.is-attacked .peal-mp-open .peal-mp-front {
+  opacity: 1;
+  transform: translate3d(0, -68px, 46px);
+}
+
+.peal-mp.is-attacked .peal-mp-open .peal-mp-back {
+  opacity: 1;
+  transform: translate3d(0, 68px, -34px);
+}
+
+/* In the sealed lane the same two orders arrive and have nowhere to go, so they
+   settle at the edges without ever bracketing anything. */
+.peal-mp.is-attacked .peal-mp-shut .peal-mp-front {
+  opacity: 0.3;
+  transform: translate3d(-34px, -68px, -60px);
+}
+
+.peal-mp.is-attacked .peal-mp-shut .peal-mp-back {
+  opacity: 0.3;
+  transform: translate3d(34px, 68px, -60px);
+}
+
+.peal-mp-ct {
+  background: #eceee2;
+}
+
+.peal-mp-ct b {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.peal-mp.is-attacked .peal-mp-shut .peal-mp-ct {
+  border-color: #0871e7;
+  box-shadow: 0 0 0 4px rgb(8 113 231 / 10%);
+}
+
+.peal-mp-out {
+  font-size: 12.5px;
+  text-align: center;
+  color: rgb(42 54 22 / 52%);
+  transition: color 420ms ease;
+}
+
+.peal-mp.is-attacked .peal-mp-open .peal-mp-out {
+  color: #b8461f;
+}
+
+.peal-mp.is-attacked .peal-mp-shut .peal-mp-out {
+  color: #0871e7;
+}
+
+/* ---------- the sealed book, re-ordering itself ---------- */
+
+.peal-auc {
+  margin: 40px 0 30px;
+}
+
+.peal-auc-stage {
+  position: relative;
+  /* The cards plus the headroom the winner takes when it comes forward. It was
+     taller, and the surplus read as a hole between the book and its caption. */
+  height: 172px;
+  perspective: 1000px;
+  perspective-origin: 50% 44%;
+  transform-style: preserve-3d;
+}
+
+.peal-auc-axis {
+  position: absolute;
+  /* Spans the book, not the column: five 120px slots of 108px cards measure
+     588px, and an axis wider than the thing it labels is not an axis. */
+  left: 50%;
+  top: 2px;
+  /* As wide as the book and never wider than the column: 594px is five slots,
+     and on a phone that is wider than the viewport. */
+  width: min(594px, 100%);
+  transform: translateX(-50%);
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgb(42 54 22 / 38%);
+  transition: color 420ms ease;
+}
+
+.peal-auc-axis em {
+  font-style: normal;
+}
+
+.peal-auc.is-closed .peal-auc-axis {
+  color: rgb(8 113 231 / 62%);
+}
+
+.peal-auc-book {
+  position: absolute;
+  inset: 0;
+  top: 26px;
+  transform-style: preserve-3d;
+}
+
+.peal-auc-bid {
+  position: absolute;
+  left: 50%;
+  top: 26px;
+  width: 108px;
+  margin-left: -54px;
+  padding: 14px 12px;
+  border-radius: 13px;
+  background: #eceee2;
+  border: 1px solid rgb(42 54 22 / 18%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  /* Sealed: arrival order left to right, each later arrival a little nearer,
+     so the row reads as a queue rather than as five tiles. */
+  transform: translate3d(calc((var(--i) - 2) * 120px), 0, calc(-40px + var(--i) * 14px));
+  transition:
+    transform 780ms cubic-bezier(0.32, 1.12, 0.4, 1),
+    background 520ms ease,
+    border-color 520ms ease,
+    box-shadow 520ms ease;
+}
+
+/* Open: every card walks to the slot its value earns, and depth now means rank
+   rather than arrival, so the winner is both leftmost and nearest. */
+.peal-auc.is-closed .peal-auc-bid {
+  background: #fff;
+  transform: translate3d(calc((var(--r) - 2) * 120px), 0, calc(46px - var(--r) * 20px));
+}
+
+.peal-auc-bid b {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+  letter-spacing: 0.02em;
+}
+
+.peal-auc-bid i {
+  font-style: normal;
+  font-size: 11px;
+  color: rgb(42 54 22 / 50%);
+}
+
+/* The rank badge only exists after the close, because before it there is no
+   rank: that is the point being made. */
+.peal-auc-rank {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgb(42 54 22 / 16%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  color: rgb(42 54 22 / 55%);
+  opacity: 0;
+  transform: scale(0.7);
+  transition:
+    opacity 340ms ease 380ms,
+    transform 340ms cubic-bezier(0.22, 1, 0.36, 1) 380ms;
+}
+
+.peal-auc.is-closed .peal-auc-rank {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.peal-auc.is-closed .peal-auc-bid.is-top {
+  border-color: #0871e7;
+  box-shadow:
+    0 0 0 4px rgb(8 113 231 / 10%),
+    0 24px 40px -22px rgb(8 113 231 / 50%);
+}
+
+.peal-auc.is-closed .peal-auc-bid.is-top b {
+  color: #0871e7;
+}
+
+.peal-auc.is-closed .peal-auc-bid.is-top .peal-auc-rank {
+  border-color: #0871e7;
+  color: #0871e7;
+}
+
+.peal-prose .peal-auc-cap {
+  margin: 22px auto 0;
+  max-width: 540px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: rgb(42 54 22 / 55%);
+}
+
+.peal-prose .peal-auc.is-closed .peal-auc-cap {
+  color: #0871e7;
+}
+
+@media (max-width: 720px) {
+  /* Five 120px slots need 600px of room. Below that the book keeps both of its
+     orders but lays them on a 3 over 2 grid, so the re-sort is still visible as
+     movement rather than being squeezed into an unreadable row.
+
+     CSS has no conditional inside calc(), so each slot is written out and
+     matched on the inline custom property, the same way the committee arc is. */
+  .peal-auc-stage {
+    height: 330px;
+  }
+
+  .peal-auc-bid {
+    width: 96px;
+    margin-left: -48px;
+  }
+
+  /* arrival slot 0 */
+  .peal-auc-bid[style*='--i:0'],
+  .peal-auc-bid[style*='--i: 0'] {
+    transform: translate3d(-104px, 0px, 0);
+  }
+
+  /* ranked slot 0 */
+  .peal-auc.is-closed .peal-auc-bid[style*='--r:0'],
+  .peal-auc.is-closed .peal-auc-bid[style*='--r: 0'] {
+    transform: translate3d(-104px, 0px, 0);
+  }
+
+  /* arrival slot 1 */
+  .peal-auc-bid[style*='--i:1'],
+  .peal-auc-bid[style*='--i: 1'] {
+    transform: translate3d(0px, 0px, 0);
+  }
+
+  /* ranked slot 1 */
+  .peal-auc.is-closed .peal-auc-bid[style*='--r:1'],
+  .peal-auc.is-closed .peal-auc-bid[style*='--r: 1'] {
+    transform: translate3d(0px, 0px, 0);
+  }
+
+  /* arrival slot 2 */
+  .peal-auc-bid[style*='--i:2'],
+  .peal-auc-bid[style*='--i: 2'] {
+    transform: translate3d(104px, 0px, 0);
+  }
+
+  /* ranked slot 2 */
+  .peal-auc.is-closed .peal-auc-bid[style*='--r:2'],
+  .peal-auc.is-closed .peal-auc-bid[style*='--r: 2'] {
+    transform: translate3d(104px, 0px, 0);
+  }
+
+  /* arrival slot 3 */
+  .peal-auc-bid[style*='--i:3'],
+  .peal-auc-bid[style*='--i: 3'] {
+    transform: translate3d(-52px, 108px, 0);
+  }
+
+  /* ranked slot 3 */
+  .peal-auc.is-closed .peal-auc-bid[style*='--r:3'],
+  .peal-auc.is-closed .peal-auc-bid[style*='--r: 3'] {
+    transform: translate3d(-52px, 108px, 0);
+  }
+
+  /* arrival slot 4 */
+  .peal-auc-bid[style*='--i:4'],
+  .peal-auc-bid[style*='--i: 4'] {
+    transform: translate3d(52px, 108px, 0);
+  }
+
+  /* ranked slot 4 */
+  .peal-auc.is-closed .peal-auc-bid[style*='--r:4'],
+  .peal-auc.is-closed .peal-auc-bid[style*='--r: 4'] {
+    transform: translate3d(52px, 108px, 0);
+  }
+}
+
+/* ---------- the 402 handshake ---------- */
+
+.peal-x4 {
+  margin: 40px 0 32px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  perspective: 1000px;
+  perspective-origin: 50% 40%;
+}
+
+.peal-x4-step {
+  padding: 16px 16px 15px;
+  border-radius: 14px;
+  background: #eceee2;
+  border: 1px solid rgb(42 54 22 / 16%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transform: translateZ(-24px);
+  opacity: 0.5;
+  transition:
+    transform 560ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 460ms ease,
+    background 460ms ease,
+    border-color 460ms ease,
+    box-shadow 460ms ease;
+}
+
+.peal-x4-step.is-on {
+  opacity: 1;
+  background: #fff;
+  border-color: rgb(8 113 231 / 45%);
+  /* Each step settles nearer than the one before it, so the handshake reads as
+     three moves forward rather than three panels lighting up in place. */
+  transform: translateZ(calc(8px + var(--i) * 15px));
+  box-shadow: 0 18px 34px -24px rgb(8 113 231 / 55%);
+}
+
+.peal-x4-step code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: rgb(42 54 22 / 62%);
+  word-break: break-word;
+}
+
+.peal-x4-step b {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.peal-x4-step.is-on b {
+  color: #0871e7;
+}
+
+.peal-x4-step i {
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgb(42 54 22 / 55%);
+}
+
+/* ---------- the wider use case list ---------- */
+
+.peal-uses-how {
+  margin: 10px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: rgb(42 54 22 / 45%);
+}
+
+.peal-prose .peal-uses-tail {
+  margin: 26px 0 0;
+  font-size: 15.5px;
+  color: #5c6154;
+}
+
+.peal-uses-tail a {
+  color: #0871e7;
+  text-decoration: none;
+  border-bottom: 1px solid rgb(8 113 231 / 30%);
+}
+
+.peal-uses-tail a:hover {
+  border-bottom-color: #0871e7;
+}
+
+@media (max-width: 720px) {
+  /* Two lanes side by side stop being a comparison at phone width and start
+     being two unreadable columns, so they stack. */
+  .peal-mp {
+    grid-template-columns: 1fr;
+    gap: 34px;
+  }
+
+  .peal-x4 {
+    grid-template-columns: 1fr;
+  }
+
+  .peal-x4-step {
+    transform: translateZ(0);
+  }
+}
+
+/* ---------- the questions ---------- */
+
+.peal-faq {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid rgb(42 54 22 / 10%);
+}
+
+.peal-faq li {
+  border-bottom: 1px solid rgb(42 54 22 / 10%);
+}
+
+.peal-faq button {
+  width: 100%;
+  padding: 19px 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  text-align: left;
+  font-family: 'Josefin Sans', system-ui, -apple-system, sans-serif;
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  line-height: 1.3;
+  color: #1a1a1a;
+  transition: color 180ms ease;
+}
+
+.peal-faq button:hover,
+.peal-faq li.is-open button {
+  color: #0871e7;
+}
+
+/* A plus that becomes a minus. Two bars rather than a glyph, so it is the same
+   weight at every size and does not depend on a font shipping the character. */
+.peal-faq-mark {
+  position: relative;
+  flex: none;
+  width: 13px;
+  height: 13px;
+}
+
+.peal-faq-mark::before,
+.peal-faq-mark::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 1.5px;
+  border-radius: 1px;
+  background: currentcolor;
+  transform: translateY(-50%);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.peal-faq-mark::after {
+  transform: translateY(-50%) rotate(90deg);
+}
+
+.peal-faq li.is-open .peal-faq-mark::after {
+  transform: translateY(-50%) rotate(0deg);
+}
+
+/* Collapsed with a grid row rather than max-height, so the open height is the
+   answer's real height and a long answer is never clipped at an arbitrary
+   number. The row is the only child here, which is what makes 0fr safe. */
+.peal-faq-a {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.peal-faq li.is-open .peal-faq-a {
+  grid-template-rows: 1fr;
+}
+
+.peal-faq-a > p {
+  overflow: hidden;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.68;
+  color: #5c6154;
+  /* The padding lives on the inner element: padding on the collapsing grid row
+     would keep the closed state a few pixels tall. */
+  padding: 0 0 0;
+  transition: padding 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.peal-faq li.is-open .peal-faq-a > p {
+  padding: 0 0 22px;
+}
+
+.peal-faq-a code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(42 54 22 / 7%);
+  /* One of these is a whole install command, which is longer than a phone is
+     wide. Breaking it is better than a column that scrolls sideways. */
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .peal-faq button {
+    font-size: 17px;
+    padding: 17px 0;
+  }
+
+  .peal-faq-a > p {
+    font-size: 15.5px;
   }
 }

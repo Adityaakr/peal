@@ -6,9 +6,9 @@
 // pitch. Nokia-font messages type themselves onto the phone in the video.
 //
 // Content is Peal's own — only the structure/motion follow the supplied spec.
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { motion } from 'motion/react';
+import { motion, useScroll, useTransform } from 'motion/react';
 import './landing.css';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -77,7 +77,7 @@ function Navbar() {
       <nav className="pointer-events-auto flex items-center justify-between rounded-full border border-black/10 bg-transparent backdrop-blur-md pl-6 pr-2 py-2">
         <a href="#/" className="flex items-center gap-2">
           <img className="landing-nav-logo" src="/peal-logo.png" alt="" width={36} height={36} />
-          <span className="font-instrument text-[28px] tracking-tight text-[#1a1a1a] leading-none">
+          <span className="font-display font-medium text-[26px] tracking-tight text-[#1a1a1a] leading-none">
             Peal
           </span>
         </a>
@@ -109,6 +109,7 @@ function Navbar() {
   );
 }
 
+/** The badge, at 180 wide. Same 250 by 54 artwork, exact ratio kept. */
 function ProductHuntBadge() {
   return (
     <a
@@ -120,52 +121,79 @@ function ProductHuntBadge() {
       <img
         src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1212832&theme=light&t=1785731867952"
         alt="Peal Network - secrets that open themselves | Product Hunt"
-        width={250}
-        height={54}
+        width={180}
+        height={39}
       />
     </a>
   );
 }
 
 function Hero() {
+  const ref = useRef<HTMLElement>(null);
+  /* The scrub runs from the hero sitting at the top of the viewport to the hero
+     having left it, so the zoom is tied to the scroll rather than to a timer and
+     it holds still when the reader does. */
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] });
+  const zoom = useTransform(scrollYProgress, [0, 1], [1, 1.16]);
+
   return (
-    <section className="relative min-h-screen bg-[#F3F4ED] pt-24 md:pt-32 flex flex-col items-center overflow-hidden">
-      <video
-        className="absolute inset-0 z-0 h-full w-full object-cover"
-        autoPlay
-        loop
-        muted
-        playsInline
-        src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260427_054418_a6d194f0-ac86-4df9-abe5-ded73e596d7c.mp4"
-      />
-      <div className="absolute inset-0 z-10 bg-white/5" />
+    <section ref={ref} className="peal-hero">
+      {/* The media is a rounded card inset to the same gutter the sections use,
+          rather than a full bleed panel, so the fold lines up with everything
+          under it instead of running past it on both sides. */}
+      <div className="peal-hero-media">
+        <motion.video
+          className="peal-hero-video"
+          style={{ scale: zoom }}
+          autoPlay
+          loop
+          muted
+          playsInline
+          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260427_054418_a6d194f0-ac86-4df9-abe5-ded73e596d7c.mp4"
+        />
+        <div className="peal-hero-veil" />
 
-      <TypingMessages />
+        <TypingMessages />
 
-      <div className="relative z-20 pointer-events-none px-6 text-center">
-        {/* The h1, not a div. This page had no heading of any level, which on the
-            one URL every inbound link points at is the cheapest thing to get
-            wrong and the cheapest to fix. */}
-        <motion.h1
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1.5, ease: EASE }}
-          className="font-instrument text-[38px] md:text-[56px] lg:text-[72px] leading-[0.85] tracking-tight text-[#1a1a1a] mb-6"
-        >
-          Secrets that
-          <br />
-          Open Themselves
-        </motion.h1>
+        <div className="peal-hero-copy">
+          {/* The h1, not a div. This page had no heading of any level, which on the
+              one URL every inbound link points at is the cheapest thing to get
+              wrong and the cheapest to fix. */}
+          <motion.h1
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 1.5, ease: EASE }}
+            className="peal-hero-title"
+          >
+            Secrets that
+            <br />
+            Open Themselves
+          </motion.h1>
 
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1.2, delay: 0.2, ease: EASE }}
+            className="peal-hero-cta-row"
+          >
+            <a className="peal-hero-cta" href="#/app">
+              <span aria-hidden className="peal-hero-cta-gloss" />
+              <span>Launch App</span>
+            </a>
+          </motion.div>
+        </div>
+
+        {/* The badge sits in the corner rather than in the stack under the
+            headline. Bottom right, not top right: the copy is centred and on a
+            phone a top corner badge lands on the second line of the title. */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.2, delay: 0.2, ease: EASE }}
-          className="product-hunt-badge-row flex justify-center"
+          transition={{ duration: 1, delay: 0.5, ease: EASE }}
+          className="peal-hero-badge"
         >
           <ProductHuntBadge />
         </motion.div>
-
       </div>
     </section>
   );
@@ -314,6 +342,377 @@ function SealedScene() {
   );
 }
 
+
+/**
+ * Three of five, and you can try it.
+ *
+ * The threshold is the whole trust model and it is the one claim people are
+ * right to be sceptical about, so this lets them check it rather than read it:
+ * toggle operators and watch whether the payload opens. Two never opens it. Any
+ * three do, and it does not matter which three.
+ */
+function CommitteeScene() {
+  const [on, setOn] = useState<number[]>([0, 1]);
+  const opens = on.length >= 3;
+  const toggle = (i: number) =>
+    setOn((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
+
+  return (
+    <div className={`peal-committee${opens ? ' is-open' : ''}`}>
+      <div className="peal-cmt-stage">
+        {/* Back plane: the payload. Sealed it is the ciphertext, because that is
+            genuinely all there is to see, and it comes forward as it opens. */}
+        <div className="peal-cmt-payload">
+          <span className="peal-cmt-lock" />
+          <span className="peal-cmt-v">{opens ? '$4,505' : '8f2c…a91d'}</span>
+          <span className="peal-cmt-w">{opens ? 'open' : 'sealed'}</span>
+        </div>
+
+        {/* Mid plane: one share per operator that is holding one, travelling up
+            to the payload. Three arriving is the entire mechanism, so it is the
+            thing that moves rather than a state the caption asserts. */}
+        <div className="peal-cmt-shares">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <span
+              key={i}
+              className={`peal-cmt-share${on.includes(i) ? ' is-sent' : ''}`}
+              /* Where it starts, on its own operator, and where it lands. The
+                 landing spots are spread rather than shared: five shares
+                 converging on one pixel render as one share. */
+              style={{
+                ['--x' as string]: `${(i - 2) * 76}px`,
+                ['--to' as string]: `${(i - 2) * 21}px`,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Front plane: how far off the threshold is, counted rather than said.
+            It fills to three and stops, because a fourth share adds nothing. */}
+        <div className="peal-cmt-meter" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <span key={i} className={`peal-cmt-tick${on.length > i ? ' is-lit' : ''}`} />
+          ))}
+          <em>{Math.min(on.length, 3)} of 3 shares</em>
+        </div>
+
+        <div className="peal-cmt-row">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <button
+              key={i}
+              type="button"
+              className={`peal-cmt-node${on.includes(i) ? ' is-on' : ''}`}
+              style={{ ['--i' as string]: i }}
+              onClick={() => toggle(i)}
+              aria-pressed={on.includes(i)}
+              aria-label={`operator ${i + 1}, ${on.includes(i) ? 'holding a share' : 'not participating'}`}
+            >
+              <span className="peal-cmt-key" />
+              <span className="peal-cmt-n">{i + 1}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="peal-cmt-cap">
+        <strong>{on.length} of 5</strong>{' '}
+        {opens
+          ? 'operators combined their shares, so it opened. Any three will do.'
+          : 'is not enough. Turn on one more and it opens; it does not matter which.'}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The deadline arriving with nobody present.
+ *
+ * The point being made is negative, which is hard to draw: what matters is that
+ * no participant does anything. So the marker crosses the line on its own and
+ * the caption says who acted, which is nobody.
+ */
+function DeadlineScene() {
+  const [fired, setFired] = useState(false);
+  return (
+    <div
+      className={`peal-timeline${fired ? ' is-fired' : ''}`}
+      onMouseEnter={() => setFired(true)}
+    >
+      <motion.div
+        className="peal-tl-track"
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true, margin: '-60px' }}
+        transition={{ duration: 0.6, ease: EASE }}
+        onViewportEnter={() => {
+          window.setTimeout(() => setFired(true), 1800);
+        }}
+      >
+        <span className="peal-tl-line" />
+        <span className="peal-tl-mark peal-tl-open">
+          <em>round opens</em>
+        </span>
+        <span className="peal-tl-mark peal-tl-close">
+          <em>deadline</em>
+        </span>
+        <span className="peal-tl-runner" />
+      </motion.div>
+      <p className="peal-tl-cap">
+        {fired
+          ? 'the network opened it. no participant was asked, and none could refuse.'
+          : 'sealed, and counting down'}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The batch, drawn.
+ *
+ * This is the claim the rest of the page leans on without ever showing it: a
+ * round is not opened one submission at a time. Sixty-four slots share a single
+ * threshold decryption, and the slots that carried nothing are padding that
+ * looks exactly like the slots that did. So the grid opens in one movement
+ * rather than in a stagger, because a stagger would draw the wrong thing.
+ *
+ * Depth is translateZ under a perspective and nothing else. No rotation: a
+ * rotated grid foreshortens its own hairlines unevenly and sixty-four of them
+ * would show it.
+ */
+const BATCH_SLOTS = 64;
+
+/* Which slots carried a submission. Fixed rather than random so the number in
+   the caption and the number of filled squares can never disagree. */
+const FILLED = new Set([
+  1, 3, 4, 9, 12, 13, 17, 20, 22, 26, 27, 31, 33, 35, 38, 40,
+  41, 45, 47, 50, 52, 55, 58, 61,
+]);
+
+function BatchScene() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className={`peal-batch${open ? ' is-open' : ''}`}
+      onMouseEnter={() => setOpen(true)}
+    >
+      <motion.div
+        className="peal-batch-stage"
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true, margin: '-60px' }}
+        transition={{ duration: 0.8, ease: EASE }}
+        onViewportEnter={() => {
+          window.setTimeout(() => setOpen(true), 2000);
+        }}
+        aria-hidden="true"
+      >
+        <div className="peal-batch-grid">
+          {Array.from({ length: BATCH_SLOTS }, (_, i) => {
+            const col = i % 8;
+            const row = Math.floor(i / 8);
+            /* A shallow dome: the middle of the field sits nearest the reader
+               and the corners fall away, so sixty-four flat squares still read
+               as one object with depth. */
+            const z = 30 - (Math.abs(col - 3.5) + Math.abs(row - 3.5)) * 7;
+            return (
+              <span
+                key={i}
+                className={`peal-slot${FILLED.has(i) ? ' is-filled' : ''}`}
+                style={{ ['--z' as string]: `${z}px` }}
+              >
+                <span className="peal-slot-bar" />
+              </span>
+            );
+          })}
+        </div>
+        <span className="peal-batch-op">
+          {open ? '1 threshold decryption' : '64 slots, sealed'}
+        </span>
+      </motion.div>
+      <p className="peal-batch-cap">
+        {open
+          ? `all ${BATCH_SLOTS} opened from it. ${FILLED.size} carried a submission, ${BATCH_SLOTS - FILLED.size} were padding.`
+          : 'every slot the same from outside, whether or not anything is in it'}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The sandwich, drawn, in both lanes at once.
+ *
+ * The public lane is the whole attack in three cards: a searcher reads the
+ * pending swap, buys in front of it and sells behind it, and the swap fills at
+ * a price the searcher moved. The sealed lane runs the same three actors and
+ * the attack has nowhere to attach, because the order is a ciphertext until the
+ * batch opens.
+ *
+ * Depth is translateZ under a perspective and nothing else, so the two lanes
+ * can be compared without either being foreshortened more than the other.
+ */
+function MempoolScene() {
+  const [attacked, setAttacked] = useState(false);
+  return (
+    <motion.div
+      className={`peal-mp${attacked ? ' is-attacked' : ''}`}
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      viewport={{ once: true, margin: '-60px' }}
+      transition={{ duration: 0.7, ease: EASE }}
+      onViewportEnter={() => {
+        window.setTimeout(() => setAttacked(true), 1400);
+      }}
+      onMouseEnter={() => setAttacked(true)}
+      aria-hidden="true"
+    >
+      <div className="peal-mp-lane peal-mp-open">
+        <span className="peal-mp-tag">a public mempool</span>
+        <div className="peal-mp-stack">
+          <span className="peal-mp-card peal-mp-atk peal-mp-front">
+            <b>buy</b>
+            <i>in front of it</i>
+          </span>
+          <span className="peal-mp-card peal-mp-victim">
+            <b>swap 10 ETH</b>
+            <i>readable while pending</i>
+          </span>
+          <span className="peal-mp-card peal-mp-atk peal-mp-back">
+            <b>sell</b>
+            <i>behind it</i>
+          </span>
+        </div>
+        <span className="peal-mp-out">filled at a price the searcher moved</span>
+      </div>
+
+      <div className="peal-mp-lane peal-mp-shut">
+        <span className="peal-mp-tag">the same block, sealed</span>
+        <div className="peal-mp-stack">
+          <span className="peal-mp-card peal-mp-atk peal-mp-front">
+            <b>buy</b>
+            <i>in front of what?</i>
+          </span>
+          <span className="peal-mp-card peal-mp-victim peal-mp-ct">
+            <b>0x7f3a…c210</b>
+            <i>ciphertext until the block</i>
+          </span>
+          <span className="peal-mp-card peal-mp-atk peal-mp-back">
+            <b>sell</b>
+            <i>behind what?</i>
+          </span>
+        </div>
+        <span className="peal-mp-out">filled at the quote</span>
+      </div>
+    </motion.div>
+  );
+}
+
+/**
+ * A sealed book that ranks itself.
+ *
+ * Five bids arrive at different times and the last one arrives knowing nothing,
+ * which is the property the whole mechanism exists to buy. On the close they
+ * all resolve together and the winner comes forward. No card is flipped by a
+ * rotation: a rotated card slants its own type on the way round, and the
+ * resting state is what has to be legible.
+ */
+/* Arrival order, with where each one lands once they are ranked. The ranks are
+   written down rather than sorted at runtime so the caption's claim about the
+   last bid can never disagree with the card that moves. */
+const BIDS = [
+  { at: 'day 1', v: '$4,200', rank: 3 },
+  { at: 'day 3', v: '$4,650', rank: 0 },
+  { at: 'day 6', v: '$4,400', rank: 2 },
+  { at: 'last minute', v: '$4,505', rank: 1, late: true },
+  { at: 'day 8', v: '$4,180', rank: 4 },
+];
+
+function AuctionScene() {
+  const [closed, setClosed] = useState(false);
+  return (
+    <motion.div
+      className={`peal-auc${closed ? ' is-closed' : ''}`}
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      viewport={{ once: true, margin: '-60px' }}
+      transition={{ duration: 0.7, ease: EASE }}
+      onViewportEnter={() => {
+        window.setTimeout(() => setClosed(true), 1800);
+      }}
+      onMouseEnter={() => setClosed(true)}
+      aria-hidden="true"
+    >
+      <div className="peal-auc-stage">
+        <span className="peal-auc-axis">
+          <em className="peal-auc-axis-l">{closed ? 'highest' : 'first in'}</em>
+          <em className="peal-auc-axis-r">{closed ? 'lowest' : 'last in'}</em>
+        </span>
+
+        <div className="peal-auc-book">
+          {BIDS.map((b, i) => (
+            <span
+              key={b.at}
+              className={`peal-auc-bid${b.rank === 0 ? ' is-top' : ''}${b.late ? ' is-late' : ''}`}
+              /* Two positions per card: where it arrived, and where it belongs
+                 once every bid is readable. The close moves it between them,
+                 which is the whole of what a sealed book buys you. */
+              style={{ ['--i' as string]: i, ['--r' as string]: b.rank }}
+            >
+              <b>{closed ? b.v : '••••••'}</b>
+              <i>{b.at}</i>
+              <u className="peal-auc-rank">{b.rank + 1}</u>
+            </span>
+          ))}
+        </div>
+      </div>
+      <p className="peal-auc-cap">
+        {closed
+          ? 'the close re-ordered the book by value. the bid that arrived last came second, and waiting until the end bought nothing.'
+          : 'five bids in arrival order, and not one of them readable, including by whoever is running the auction'}
+      </p>
+    </motion.div>
+  );
+}
+
+/**
+ * The 402 handshake, with the numbers the live gateway actually returns.
+ *
+ * Three panels at three depths, advancing on their own, because the thing worth
+ * showing is that there is no fourth step: no account, no key, no invoice.
+ */
+const X402_STEPS = [
+  { n: 'POST /v1/x402/rounds', r: '402 Payment Required', d: 'the server says what the call costs' },
+  { n: 'transfer 0.001 USD', r: 'paid on chain', d: 'the agent pays, from its own wallet' },
+  { n: 'retry with X-PAYMENT', r: '201 Created', d: 'the round is open. no account was made' },
+];
+
+function X402Scene() {
+  const [step, setStep] = useState(-1);
+  return (
+    <motion.div
+      className="peal-x4"
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      viewport={{ once: true, margin: '-60px' }}
+      transition={{ duration: 0.7, ease: EASE }}
+      onViewportEnter={() => {
+        [0, 1, 2].forEach((i) => window.setTimeout(() => setStep(i), 900 + i * 900));
+      }}
+      aria-hidden="true"
+    >
+      {X402_STEPS.map((s, i) => (
+        <span
+          key={s.n}
+          className={`peal-x4-step${step >= i ? ' is-on' : ''}`}
+          style={{ ['--i' as string]: i }}
+        >
+          <code>{s.n}</code>
+          <b>{s.r}</b>
+          <i>{s.d}</i>
+        </span>
+      ))}
+    </motion.div>
+  );
+}
+
 function Problem() {
   return (
     <Section
@@ -371,27 +770,282 @@ function Solution() {
   );
 }
 
+function Committee() {
+  return (
+    <Section
+      id="who-can-open-it"
+      eyebrow="The trust model"
+      title={
+        <>
+          It takes three of five. <span className="peal-em">Try it.</span>
+        </>
+      }
+    >
+      <p>
+        No single party holds a key that opens anything, and that includes us. The decryption key
+        is split across five independent operators, and a payload opens only when three of them
+        combine their shares after the deadline has fired. Two can be offline, or compromised, or
+        simply refuse, and the round still opens on time.
+      </p>
+      <CommitteeScene />
+      <p>
+        This is the claim you should be most sceptical of, so the thing above is not a diagram.
+        Turn operators on and off and watch what happens: two never opens it, and any three do,
+        whichever three you pick.
+      </p>
+    </Section>
+  );
+}
+
+function Deadline() {
+  return (
+    <Section
+      id="nobody-has-to-come-back"
+      eyebrow="Why this is not commit and reveal"
+      title={
+        <>
+          Nobody has to <span className="peal-em">come back</span>.
+        </>
+      }
+    >
+      <p>
+        Every commit and reveal scheme has the same hole in it. Revealing is a move, so it can be
+        declined, and the person most likely to decline is the one who has just worked out they
+        lost. You find out your protocol had a hole at the exact moment it mattered.
+      </p>
+      <DeadlineScene />
+      <p>
+        A Peal round opens because the deadline arrived, not because anyone chose to open it.
+        There is no reveal step to skip, no bond to slash for skipping it, and no timeout branch to
+        write. That is one fewer failure mode in your application, and it is the reason the
+        guarantee holds when somebody has an incentive to break it.
+      </p>
+    </Section>
+  );
+}
+
+function Batch() {
+  return (
+    <Section
+      id="how-it-scales"
+      eyebrow="Why the cost does not grow"
+      title={
+        <>
+          One decryption opens <em className="peal-em">the whole batch</em>.
+        </>
+      }
+    >
+      <p>
+        A round is not opened one submission at a time. Every round is a batch of sixty-four slots,
+        and the committee performs a single threshold decryption for the batch. Each slot opens out
+        of that one operation, so opening a round holding sixty submissions costs what opening a
+        round holding one costs.
+      </p>
+      <BatchScene />
+      <p>
+        The slots that carried nothing are padding, and while the round is open they are
+        indistinguishable from the slots that did. That is the reason a round will not tell you how
+        many submissions it is holding: from outside, a full slot and an empty one are the same
+        ciphertext.
+      </p>
+    </Section>
+  );
+}
+
+/** The two links under a showcase section: the thing itself, then the reading. */
+function TryRow({ href, label, more, moreLabel }: { href: string; label: string; more: string; moreLabel: string }) {
+  return (
+    <motion.p
+      className="peal-try"
+      initial={{ opacity: 0, y: 10 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-60px' }}
+      transition={{ duration: 0.5, ease: EASE }}
+    >
+      <a className="peal-try-go" href={href}>
+        {label}
+      </a>
+      <a className="peal-try-more" href={more}>
+        {moreLabel}
+      </a>
+    </motion.p>
+  );
+}
+
+function Mempool() {
+  return (
+    <Section
+      id="encrypted-mempool"
+      eyebrow="Encrypted mempools"
+      title={
+        <>
+          A sandwich needs something to read. <em className="peal-em">Take it away</em>.
+        </>
+      }
+    >
+      <p>
+        A searcher earns in a public mempool by reading a pending swap and placing one order in
+        front of it and one behind it. The swap buys higher and sells lower, and the difference is
+        the searcher&rsquo;s. Nothing about it is exotic. It is the ordinary cost of a queue that is
+        legible before it settles.
+      </p>
+      <MempoolScene />
+      <p>
+        Peal seals the order to the block it belongs in. While it is pending it is a ciphertext, so
+        there is no number to trade in front of, and the block&rsquo;s worth of orders opens
+        together when the block is due. The searcher is not blocked from acting. There is simply
+        nothing there to act on.
+      </p>
+      <TryRow
+        href="#/encrypted-mempool"
+        label="Get sandwiched, then don't"
+        more="#/mempool"
+        moreLabel="How the sealed lane works"
+      />
+      <p className="peal-fine">
+        The demo is not a drawing. Both pools are real contracts on a public testnet, the searcher
+        is a real bot, and the sealed order settles through <code>PealMempool.executeBatch</code>.
+        The committee&rsquo;s keys still come from a trusted dealer rather than a distributed key
+        generation, so the honest statement is that a dishonest operator could read early today.
+        The cryptography and the settlement are real. That part of the trust model is not finished.
+      </p>
+    </Section>
+  );
+}
+
+function Auction() {
+  return (
+    <Section
+      id="sealed-bid-auctions"
+      eyebrow="Sealed bid auctions"
+      title={
+        <>
+          The last bid in <em className="peal-em">learns nothing</em>.
+        </>
+      }
+    >
+      <p>
+        An open book turns an auction into a waiting game. The bid that wins is often not the one
+        that valued the thing most, it is the one that arrived last with everybody else&rsquo;s
+        number in front of it. Anti-sniping extensions, hidden reserves and proxy bidding are all
+        attempts to buy back a property that a sealed book has for nothing.
+      </p>
+      <AuctionScene />
+      <p>
+        A Peal auction has a close rather than a race. Bids go in sealed, the round opens on the
+        deadline, and the ranking is computed from bids that nobody could read while bidding was
+        open, the seller included. Bidders do not have to come back to reveal, so a losing bidder
+        cannot cost everyone the result by walking away.
+      </p>
+      <TryRow
+        href="#/create"
+        label="Run a sealed auction"
+        more="#/auction"
+        moreLabel="How sealed bidding works"
+      />
+      <p className="peal-fine">
+        The live auction seals bids with salted commitments today. Peal&rsquo;s threshold encryption
+        is not wired into it yet, which is why the auction pages mark that as build rather than
+        live, and why a bidder who loses their salt is refunded instead of allocated.
+      </p>
+    </Section>
+  );
+}
+
+function Agents() {
+  return (
+    <Section
+      id="agents-and-x402"
+      eyebrow="Machine customers"
+      title={
+        <>
+          An agent cannot sign up. It can <em className="peal-em">pay for one call</em>.
+        </>
+      }
+    >
+      <p>
+        An autonomous agent is a poor fit for every part of how an API is normally sold. It cannot
+        accept terms, cannot hold a key it did not earn, and cannot wait for somebody to approve an
+        invoice. It can do exactly one commercial thing well, which is pay for a single request.
+      </p>
+      <p>
+        x402 is HTTP 402 used as it was specified: the server refuses and states the price, the
+        caller pays on chain, and the caller asks again carrying the proof. Every Peal route is
+        mounted twice, free at <code>/v1</code> and metered at <code>/v1/x402</code>, and the
+        metered twin is opt in.
+      </p>
+      <X402Scene />
+      <p>
+        That is the entire handshake. No account was created, no key was issued and no invoice
+        exists, which is what makes it usable by software that did not exist when the signup form
+        was written. The agent that needs this most is the one submitting into a queue other agents
+        can read, which is the same problem the rest of this page is about.
+      </p>
+      <TryRow
+        href="/developers/x402"
+        label="Wire up a paid call"
+        more="/developers/agents"
+        moreLabel="The agent skill"
+      />
+    </Section>
+  );
+}
+
 function Uses() {
+  /* Each of these is a market that already exists and already pays somebody to
+     police the ordering problem by hand. The `how` line is the actual shape the
+     API takes, so a reader can tell whether their case fits without opening the
+     documentation first. */
   const items = [
     {
+      k: 'Procurement and tenders',
+      v: 'Suppliers price the work instead of pricing each other. No bidder sees another number before the deadline and neither does the buyer running the round, which removes the one thing that makes a losing supplier suspect the process rather than the price.',
+      how: "tag: 'rfq:<tender>' · one condition per tender",
+    },
+    {
       k: 'Sealed bid auctions',
-      v: 'Every bid stays unreadable until the close, then they all open and rank at once. Nobody can watch the leader and beat it by a pound in the last second.',
+      v: 'Spectrum, carbon allowances, freight capacity, secondary equity, domain names, liquidations. Every bid opens at the close and ranks at once, so arriving last buys no information and an anti-sniping extension stops being necessary.',
+      how: "tag: 'auction:<id>' · one seal per bid",
     },
     {
-      k: 'Encrypted mempools',
-      v: 'Transactions are ordered before they are readable, so there is nothing to read in front of. The order is fixed first and revealed second.',
+      k: 'Encrypted order flow',
+      v: 'Orders seal to the block they belong in, so the queue is fixed before it is readable. A searcher cannot trade in front of a number nobody can see, and the venue does not have to promise it is not reading the book itself.',
+      how: "kind: 'at_block' · one condition per block height",
     },
     {
-      k: 'Private voting',
-      v: 'Ballots are sealed until the poll closes, so nobody votes with the running tally in front of them and nobody can be shown to have voted a particular way early.',
+      k: 'Agent commitments, paid per call',
+      v: 'Two autonomous parties commit to a price or an action, sealed until a stated moment, with neither able to read the other first and neither holding an account with the other. x402 settles the call, so the agent needs no key and no signup.',
+      how: 'POST /v1/x402/rounds · 0.001 USD per call',
     },
     {
-      k: 'Quotes and procurement',
-      v: 'Suppliers price the work rather than each other. No supplier can see another number before the deadline, including the buyer running the round.',
+      k: 'Compensation and offers',
+      v: 'Offers, counter-offers and salary bands open together on a stated date. Nobody negotiates against a number they were shown early, and an employer cannot quietly reprice a role after seeing what a candidate would accept.',
+      how: "tag: 'offer:<req>' · one condition per requisition",
     },
     {
-      k: 'Agent commitments',
-      v: 'Two autonomous parties commit to a price or an action, sealed until a stated moment, with neither able to read the other first and neither holding an account with the other.',
+      k: 'Governance and voting',
+      v: 'Ballots stay sealed until the poll closes, so no running tally can start a bandwagon and no voter can be shown to have voted a particular way while voting is still open. The count is computable by anyone afterwards.',
+      how: "tag: 'vote:<proposal>' · one condition per poll",
+    },
+    {
+      k: 'Forecasts and research calls',
+      v: 'Analysts, desks and prediction tournaments submit into a sealed window. Nobody copies a better forecaster, nobody edits after the outcome, and the scoreboard is reproducible from the reveal rather than from an administrator saying so.',
+      how: "tag: 'round:<n>' · one condition per window",
+    },
+    {
+      k: 'Grants, bounties and admissions',
+      v: 'Applications and reviewer scores open together. Reviewers do not anchor on each other, applicants cannot be ranked by who submitted first, and the panel can prove afterwards that nothing was read early.',
+      how: "tag: 'panel:<cycle>' · scores as payloads",
+    },
+    {
+      k: 'Embargoed disclosure',
+      v: 'Earnings, a security advisory, an index rebalance, a press release. The embargo holds itself instead of depending on every recipient honouring it, and it lifts for everybody at the same instant rather than for whoever refreshed first.',
+      how: "kind: 'at_time' · one condition per embargo",
+    },
+    {
+      k: 'Token launches and allocations',
+      v: 'Allocation requests are sealed until the window shuts, so the size of the book cannot be traded on while it is filling and a late request carries no advantage over an early one.',
+      how: "tag: 'sale:<round>' · slots padded to the batch",
     },
   ];
   return (
@@ -407,13 +1061,19 @@ function Uses() {
             initial={{ opacity: 0, y: 14 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-60px' }}
-            transition={{ duration: 0.55, delay: 0.06 * i, ease: EASE }}
+            transition={{ duration: 0.55, delay: 0.04 * (i % 5), ease: EASE }}
           >
             <h3>{it.k}</h3>
             <p>{it.v}</p>
+            <p className="peal-uses-how">{it.how}</p>
           </motion.li>
         ))}
       </ul>
+      <p className="peal-uses-tail">
+        The shape is the same every time: people commit to something they cannot take back, and
+        nobody sees anybody else&rsquo;s until they all open together.{' '}
+        <a href="/developers/usecases">Twelve of these are worked through in the documentation</a>.
+      </p>
     </Section>
   );
 }
@@ -448,28 +1108,199 @@ function Cost() {
   );
 }
 
-function Limits() {
+/**
+ * What is public and what is not.
+ *
+ * This replaced a section headed "What Peal does not do", which read as an
+ * apology for the product. Every fact in it was worth keeping and one of them
+ * was the strongest thing on the page, so the facts stayed and the framing
+ * went: a developer deciding whether to build on this needs the privacy
+ * boundary stated exactly, and stating it exactly is not a concession.
+ */
+function Boundary() {
+  const rows = [
+    { k: 'That a round exists', v: 'public', pub: true },
+    { k: 'Who created it and when it opens', v: 'public', pub: true },
+    { k: 'What is sealed inside it', v: 'nobody, until the deadline', pub: false },
+    { k: 'How many submissions it holds', v: 'nobody, until the deadline', pub: false },
+    { k: 'Everything, after the deadline', v: 'public', pub: true },
+  ];
   return (
     <Section
-      id="what-it-does-not-do"
-      eyebrow="Being straight with you"
-      title="What Peal does not do"
+      id="what-is-public"
+      eyebrow="The boundary, exactly"
+      title={
+        <>
+          Sealed until the deadline. <span className="peal-em">Public after it.</span>
+        </>
+      }
     >
       <p>
-        It does not keep anything secret for ever. A round is unreadable until its deadline and
-        public afterwards, and that is the product rather than a limitation of it. If you need data
-        that is never disclosed, this is the wrong tool.
+        Peal is not a way to keep something secret for ever, and that is the product rather than a
+        gap in it. A round is unreadable until the moment it names and public from then on, which
+        is what makes the reveal something you can prove happened rather than something you have
+        to be told.
       </p>
+      <ul className="peal-boundary">
+        {rows.map((r, i) => (
+          <motion.li
+            key={r.k}
+            className={r.pub ? 'is-public' : 'is-sealed'}
+            initial={{ opacity: 0, y: 10 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={{ duration: 0.5, delay: 0.05 * i, ease: EASE }}
+          >
+            <span>{r.k}</span>
+            <em>{r.v}</em>
+          </motion.li>
+        ))}
+      </ul>
       <p>
-        It does not hide that a round exists, who created it, or when it will open. Those are
-        public from the moment it is made. What is hidden is the contents, and until the deadline,
-        how many there are.
+        If you need data that is never disclosed to anyone, this is the wrong tool and you should
+        not use it. If you need data that nobody can act on early and everybody can verify
+        afterwards, this is the whole of it.
       </p>
-      <p>
-        And it is a devnet. The parameters, the addresses and the endpoints are stable and
-        documented, the committee composition is published, and none of it is carrying real money
-        yet.
-      </p>
+    </Section>
+  );
+}
+
+/**
+ * The questions people actually ask.
+ *
+ * The wording here is duplicated, deliberately, in `faqs_for("")` in
+ * crates/bte-coordinator/src/pages.rs, which emits the FAQPage structured data
+ * for this URL. Structured data is only allowed to describe content that is
+ * actually on the page, so if one of these is edited the other has to move with
+ * it or the markup becomes a claim about a page that does not exist.
+ */
+const FAQS: Array<[string, React.ReactNode]> = [
+  [
+    'What is Peal, in one sentence?',
+    <>
+      The programmable confidentiality layer for digital markets. You collect encrypted bids,
+      offers, votes, commitments and agent intents, and they open only when a condition you set is
+      met.
+    </>,
+  ],
+  [
+    'Do the people submitting need a wallet or any crypto?',
+    <>
+      No. Sealing happens in their browser or in your own code and goes over ordinary HTTPS. No
+      wallet, no account, no gas, and they never touch a chain. That is usually the difference
+      between a mechanism you can ship to your users and one you can only ship to crypto users.
+    </>,
+  ],
+  [
+    'Who can read a submission before the deadline?',
+    <>
+      Nobody. Not the other participants, not you as the application owner, and not the operators
+      running the network. The decryption key is split across five independent operators and no
+      three of them combine their shares until the condition fires.
+    </>,
+  ],
+  [
+    'What stops somebody refusing to reveal when they see they have lost?',
+    <>
+      There is nothing for them to refuse. Opening a round is not a participant&rsquo;s move, so a
+      losing bidder walking away costs everyone else nothing. That single difference is what
+      separates this from every commit and reveal scheme, all of which break in exactly that spot.
+    </>,
+  ],
+  [
+    'What if an operator goes offline?',
+    <>
+      Three of the five are enough, so two can be down, unreachable or actively refusing and the
+      round still opens on time. You can check that claim on this page rather than take it on
+      trust: the committee above is interactive.
+    </>,
+  ],
+  [
+    'How can someone start building using Peal?',
+    <>
+      Fastest is the quickstart, which runs the three calls against the live network from the page
+      itself, so you can watch a round open before you have written anything. If you build with an
+      agent or a coding assistant, <code>curl -fsSL https://peal.network/skill/install.sh | sh</code>{' '}
+      installs a skill carrying a reference for the API, the errors, timing, payments, verification
+      and building the interface, and the assistant then knows the endpoints without you pasting
+      documentation at it. There is an <code>llms.txt</code> at the root for any model that reads
+      one, and <code>peal.js</code> if you would rather seal in the visitor&rsquo;s own browser with
+      no build step. If none of that appeals, it is three HTTP calls with no key and no account, so
+      curl is a perfectly good client.
+    </>,
+  ],
+  [
+    'What does it cost?',
+    <>
+      Nothing. No key, no account, no signup and no card. Every route is also mounted at{' '}
+      <code>/v1/x402</code> for callers who want to pay per request, currently 0.001 USD, and
+      that twin is opt in. The free API is not degraded to make the paid one look better.
+    </>,
+  ],
+  [
+    'Is this actually running, or is it a paper?',
+    <>
+      Running. The quickstart executes against the live network from the documentation page itself,
+      the encrypted mempool demo settles real transactions against real contracts on a public
+      testnet, and the committee, parameters and endpoints are published. It is a devnet, so none
+      of it is carrying real money yet.
+    </>,
+  ],
+  [
+    'How is this different from encrypting something and handing over the key later?',
+    <>
+      Somebody has to be holding that key, and holding it is the same thing as being able to use it
+      early, lose it, or be compelled to produce it. Here no single party ever holds the key, and
+      the release is triggered by the condition rather than by a person deciding the moment has
+      come.
+    </>,
+  ],
+  [
+    'How much can one round hold?',
+    <>
+      Sixty-four slots, opened by a single threshold decryption, so a round holding sixty
+      submissions costs what a round holding one costs. Slots that carried nothing are padding and
+      are indistinguishable from the ones that did, which is why an open round will not tell you
+      how many submissions it is holding.
+    </>,
+  ],
+];
+
+function Faq() {
+  const [open, setOpen] = useState<number | null>(0);
+  return (
+    <Section
+      id="questions"
+      eyebrow="Questions"
+      title={
+        <>
+          The things people <em className="peal-em">ask first</em>
+        </>
+      }
+    >
+      <ul className="peal-faq">
+        {FAQS.map(([q, a], i) => (
+          <motion.li
+            key={q}
+            className={open === i ? 'is-open' : ''}
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={{ duration: 0.5, delay: 0.03 * (i % 5), ease: EASE }}
+          >
+            <button type="button" onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i}>
+              <span>{q}</span>
+              <span className="peal-faq-mark" aria-hidden="true" />
+            </button>
+            {/* Rendered whether or not it is open, and hidden with CSS.
+                An answer that is not in the DOM is not on the page, and the
+                structured data for this URL says these answers are on it. */}
+            <div className="peal-faq-a">
+              <p>{a}</p>
+            </div>
+          </motion.li>
+        ))}
+      </ul>
     </Section>
   );
 }
@@ -505,6 +1336,14 @@ function Close() {
           The quickstart runs against the live network from the page itself. Nothing to install and
           nothing to sign up for.
         </p>
+        {/* Dropped from the section above when it was reframed, and it should
+            not be dropped from the page: somebody deciding whether to build on
+            this is entitled to know. */}
+        <p className="peal-close-note peal-close-fine">
+          Peal is a devnet. The parameters, the addresses and the endpoints are stable and
+          documented, and the committee composition is published. None of it is carrying real
+          money yet.
+        </p>
       </div>
     </section>
   );
@@ -518,9 +1357,16 @@ function App() {
       <main>
         <Problem />
         <Solution />
+        <Deadline />
+        <Committee />
+        <Batch />
+        <Mempool />
+        <Auction />
+        <Agents />
         <Uses />
         <Cost />
-        <Limits />
+        <Boundary />
+        <Faq />
         <Close />
       </main>
     </div>
