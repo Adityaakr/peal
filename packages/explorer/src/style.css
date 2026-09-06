@@ -3827,7 +3827,7 @@ body.landing-page main {
 
 /* ---- the split stage ---- */
 .ml-stage { display: flex; gap: 22px; flex-wrap: wrap; text-align: left; perspective: 1800px; }
-.ml-col { flex: 1; min-width: 300px; border: 1px solid var(--border); border-radius: 16px; background: rgb(255 255 255 / 0.65); padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 24px 48px -24px rgb(15 35 70 / 0.28), 0 1px 2px rgb(0 0 0 / 0.05); }
+.ml-col { flex: 1; min-width: min(300px, 100%); border: 1px solid var(--border); border-radius: 16px; background: rgb(255 255 255 / 0.65); padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 24px 48px -24px rgb(15 35 70 / 0.28), 0 1px 2px rgb(0 0 0 / 0.05); }
 .ml-col-peal { border-color: var(--accent-border); }
 .ml-col-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 2px; }
 .ml-col-title { font-family: var(--body); font-size: 13px; font-weight: 500; }
@@ -3923,7 +3923,7 @@ body.landing-page main {
 .ml-td-key { font-family: var(--mono); font-size: 12.5px; color: var(--accent); white-space: nowrap; }
 
 .ml-why-bottom { display: flex; gap: 32px; align-items: center; flex-wrap: wrap; margin-top: 28px; }
-.ml-quote { flex: 1; min-width: 280px; margin: 0; border-left: 1px solid var(--border); padding-left: 18px; }
+.ml-quote { flex: 1; min-width: min(280px, 100%); margin: 0; border-left: 1px solid var(--border); padding-left: 18px; }
 .ml-quote p { font-family: var(--body); font-size: 17px; line-height: 1.6; color: var(--text-soft, #1f2937); margin: 0 0 6px; }
 .ml-quote cite { font-family: var(--body); font-style: normal; font-size: 13px; color: var(--muted); }
 
@@ -4040,6 +4040,21 @@ body.landing-page main {
 @media (max-width: 640px) {
   .ml-scard-body { grid-template-columns: 1fr; gap: 16px 0; }
   .ml-scard-visual { min-height: 0; justify-self: start; }
+}
+
+@media (max-width: 380px) {
+  .ml-scard {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .ml-scard-num {
+    margin-top: 0;
+  }
+
+  .ml-scard-body {
+    padding: 18px 16px;
+  }
 }
 
 /* -- sealed files: attach control + revealed file card --------------------- */
@@ -4246,9 +4261,9 @@ body.landing-page main {
 
 .run-step {
   display: grid;
-  grid-template-columns: 1.25rem minmax(0, 14rem) 1fr;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
+  grid-template-columns: 1.25rem minmax(0, 26rem) 1fr;
+  gap: 0.5rem 0.75rem;
+  padding: 0.7rem 0;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
   font-size: 0.87rem;
   align-items: baseline;
@@ -6843,6 +6858,7 @@ textarea.live-input {
   background: #fbf8f3;
   font-family: var(--mono);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .doc-code {
@@ -7169,6 +7185,7 @@ body.docs-page main {
   background: #fbf8f3;
   font-family: var(--mono);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .doc-code {
@@ -8839,6 +8856,32 @@ body.docs-page main {
   }
 }
 
+/* The three layers are a fixed 300px wide and offset sideways as well, so on a
+   very narrow phone the leftmost one hung past the edge and took the page with
+   it. Narrow the card and pull the offsets in rather than letting it scroll. */
+@media (max-width: 380px) {
+  .x3-layer {
+    width: 240px;
+    margin-left: -120px;
+  }
+
+  .x3-you {
+    transform: translate3d(-18px, -122px, 60px);
+  }
+
+  .x3-packet[data-at='you'] {
+    transform: translate3d(52px, -134px, 60px);
+  }
+
+  .x3-packet[data-at='api'] {
+    transform: translate3d(74px, -12px, 0);
+  }
+
+  .x3-packet[data-at='chain'] {
+    transform: translate3d(96px, 110px, -60px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .x3-packet,
   .x3-layer,
@@ -8959,6 +9002,13 @@ body.docs-page main {
   font-family: var(--mono);
   font-size: 12px;
   white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .act-empty code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 
 /* The running total above a windowed chart. The number people came for is the
