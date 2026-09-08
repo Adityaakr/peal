@@ -148,7 +148,9 @@ export function mountAuth(): void {
           // against: the user already consented by signing in.
           showWalletUIs: false,
         },
-        loginMethods: ['email', 'google', 'wallet'],
+        // Email only. Google and "continue with a wallet" were removed from the
+        // dialog: the app provisions the wallet, so a person brings nothing.
+        loginMethods: ['email'],
         // Without this an embedded wallet lands on Ethereum mainnet and every
         // transaction is refused for targeting the wrong chain.
         //
