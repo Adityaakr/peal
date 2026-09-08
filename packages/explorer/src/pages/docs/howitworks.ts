@@ -143,7 +143,7 @@ export const howItWorks: DocsPage = {
 
 <h2>Why Peal, not drand tlock</h2>
         <p>If you know timelock encryption you know <a href="https://docs.drand.love/docs/timelock-encryption/" target="_blank" rel="noopener">drand tlock</a>,
-        and you should ask this before reading further. tlock is free, it has run since 2020, and
+        and you should ask this before reading further. tlock is free, the drand beacon it rides on has run since 2020, and
         its own docs list the same applications this site does: sealed-bid auctions, MEV
         prevention, voting, responsible vulnerability disclosure. It is also the same primitive
         family as Peal, threshold BLS over BLS12-381, run by the League of Entropy: Cloudflare,
