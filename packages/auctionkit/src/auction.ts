@@ -149,12 +149,16 @@ export class BidValidationError extends Error {}
 /**
  * Build everything a bid needs, locally.
  *
- * ## Keep the salt
+ * ## The salt travels inside the ciphertext
  *
- * Losing it means the bid can never be revealed: the commitment cannot be
- * reproduced, so the reveal is voided and the escrow is refunded with no
- * allocation. The salt is the only piece of a bid that exists nowhere but the
- * bidder's machine until the auction closes.
+ * The salt is what makes the commitment unsearchable, and it is part of the
+ * payload the bidder seals to the committee with batched threshold encryption
+ * (`encodeBidPayload`, then `BteClient.seal`). So the bidder
+ * does not have to keep it: the committee opens it at the close and the settler
+ * submits it with the reveal. A local copy is still useful, because it is the
+ * preimage a bidder needs to dispute a wrongful void, but losing it costs no
+ * allocation. Compare the earlier commit-only scheme (decisions/0005), where the
+ * salt existed only on the bidder's machine and losing it voided the bid.
  *
  * ## What the escrow leaks
  *

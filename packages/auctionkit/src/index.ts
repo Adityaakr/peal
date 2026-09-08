@@ -6,3 +6,7 @@ export * from './auction.js';
 export * from './factory.js';
 export * from './permit.js';
 export * from './faucets.js';
+export * from './condition.js';
+export * from './payload.js';
+export * from './merkle.js';
+export * from './settle.js';

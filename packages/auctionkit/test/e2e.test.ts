@@ -18,11 +18,11 @@ import {
   createPublicClient,
   createTestClient,
   createWalletClient,
-  encodeAbiParameters,
   http,
   keccak256,
   parseEventLogs,
   publicActions,
+  sha256,
   walletActions,
   type Address,
   type Hex,
@@ -30,9 +30,10 @@ import {
 import { mnemonicToAccount, type HDAccount } from 'viem/accounts';
 import { foundry } from 'viem/chains';
 import { SealedBidAuctionAbi, CommitteeRegistryAbi, DemoTokenAbi } from '../src/abi.js';
-import { prepareBid, readAuction, submitBid, AuctionState } from '../src/auction.js';
-import { revealLeaf } from '../src/commitment.js';
+import { prepareBid, readAuction, readBids, submitBid, AuctionState } from '../src/auction.js';
 import { allocationFor, findClearingTick } from '../src/clearing.js';
+import { encodeBidPayload } from '../src/payload.js';
+import { planReveal, type OpenedSlot } from '../src/settle.js';
 import { bytecodeOf, minimalProxy } from './artifacts.js';
 
 const RPC = 'http://localhost:8545';
@@ -222,7 +223,12 @@ describe.skipIf(!up)('AuctionKit end to end on anvil', () => {
       { who: carol, quantity: 1000n * ONE, tick: 0 },
     ];
 
+    // What the browser does: build the payload the committee will open, seal
+    // it, and register the ciphertext hash with the commitment. There is no
+    // coordinator here, so the "ciphertext" is the payload itself and its hash
+    // stands in for sha256(sealed blob); the settler only ever compares the two.
     const placed: { bidId: number; quantity: bigint; tick: number; salt: Hex }[] = [];
+    const opened: OpenedSlot[] = [];
     for (const s of specs) {
       const bid = prepareBid({
         cfg: snap.config,
@@ -232,6 +238,11 @@ describe.skipIf(!up)('AuctionKit end to end on anvil', () => {
         quantity: s.quantity,
         maxPriceTick: s.tick,
       });
+      const payload = encodeBidPayload({
+        chainId: foundry.id, auction, bidder: s.who.address,
+        quantity: bid.quantity, maxPriceTick: bid.maxPriceTick, salt: bid.salt, bidVersion: bid.bidVersion,
+      });
+      const ctHash = sha256(payload);
       const wallet = createWalletClient({ account: s.who, chain: foundry, transport });
       const res = await submitBid({
         publicClient: pub,
@@ -240,9 +251,10 @@ describe.skipIf(!up)('AuctionKit end to end on anvil', () => {
         auction,
         quoteToken: quote,
         bid,
-        ciphertextHash: keccak256(encodeAbiParameters([{ type: 'string' }], [s.who.address])),
+        ciphertextHash: ctHash,
       });
       placed.push({ bidId: res.bidId, quantity: bid.quantity, tick: bid.maxPriceTick, salt: bid.salt });
+      opened.push({ ctHash: ctHash.slice(2), payload });
     }
 
     expect(placed.map((p) => p.bidId)).toEqual([0, 1, 2]);
@@ -258,22 +270,13 @@ describe.skipIf(!up)('AuctionKit end to end on anvil', () => {
     });
 
     // --- the committee's job -------------------------------------------
-    // Leaves in bidId order, then an OZ-style sorted-pair merkle tree.
-    const leaves = placed.map((p) => revealLeaf(p.bidId, p.quantity, p.tick, p.salt));
-    const hashPair = (x: Hex, y: Hex) =>
-      keccak256(
-        encodeAbiParameters(
-          [{ type: 'bytes32' }, { type: 'bytes32' }],
-          x.toLowerCase() < y.toLowerCase() ? [x, y] : [y, x],
-        ),
-      );
-    const layer1 = [hashPair(leaves[0]!, leaves[1]!), leaves[2]!];
-    const root = hashPair(layer1[0]!, layer1[1]!);
-    const proofs: Hex[][] = [
-      [leaves[1]!, layer1[1]!],
-      [leaves[0]!, layer1[1]!],
-      [layer1[0]!],
-    ];
+    // What the settler does: join the opened slots to the committed bids by
+    // ciphertext hash, and build the tree the contract will verify against.
+    const committed = await readBids(pub, auction);
+    const plan = planReveal({ chainId: foundry.id, auction, bids: committed, slots: opened });
+    expect(plan.matched).toEqual([0, 1, 2]);
+    expect(plan.unmatched).toEqual([]);
+    const root = plan.root;
 
     const digest = (await pub.readContract({
       address: auction, abi: SealedBidAuctionAbi,
@@ -296,16 +299,7 @@ describe.skipIf(!up)('AuctionKit end to end on anvil', () => {
       hash: await test.writeContract({
         chain: foundry, account: deployer, address: auction, abi: SealedBidAuctionAbi,
         functionName: 'processReveals',
-        args: [
-          placed.map((p, i) => ({
-            bidId: p.bidId,
-            quantity: p.quantity,
-            tick: p.tick,
-            salt: p.salt,
-            bidVersion: 1,
-            proof: proofs[i]!,
-          })),
-        ],
+        args: [plan.entries],
       }),
     });
 
