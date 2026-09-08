@@ -62,7 +62,8 @@ for the vintage camera listing, closing Monday at 6pm, reserve $50</code></pre>
       contact detail the scheme exists to protect.</li>
       <li>Treating a slot count as a participant count, when batches are padded with decoys
       precisely so they are not the same number.</li>
-      <li>Handling a 404 before the deadline as an error, when it is the guarantee working.</li>
+      <li>Handling the null that every v1 read returns before the deadline as an error, or as an
+      empty result, when it is the guarantee working.</li>
     </ul>
     <p>The skill leads with those, because an agent that gets them right the first time is the
     whole point of installing it.</p>

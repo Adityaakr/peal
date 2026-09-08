@@ -185,8 +185,12 @@ the integration end to end against the live network.
    length, the payload, then zeros. `peal.js` unwraps it; over plain HTTP you
    must. See `reference/api.md`.
 
-9. **404 before the deadline is correct.** For an auction, `bids` is `null`
-   rather than an empty list, so "not open yet" cannot be read as "nobody bid".
+9. **200 with `null` before the deadline is correct.** Every `/v1` read answers
+   200 at every stage. Before a round opens, `seals`, `data` and `payload_b64`
+   are `null`; for an auction, `bids` is `null` rather than an empty list, so
+   "not open yet" cannot be read as "nobody bid". Do not treat the null as an
+   error and do not treat it as empty. Only the legacy `GET /v0/reveals/{id}`
+   returns 404 before a reveal exists; new code should not call it.
 
 ---
 
