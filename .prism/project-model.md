@@ -1117,3 +1117,73 @@ this to true or false".
 **Testing note for next time.** Browser tests against a 120s auction race the
 close when more than one bidder seals. Use a longer window or poll the condition
 status page-side; several apparent product failures were the harness.
+
+## Site honesty pass (2026-09-08, prism single-pass; branch `site-honesty`)
+
+Three reviewer findings, fixed together. Read before touching trust copy or the
+developer docs.
+
+**Independence.** The site said "five independent operators" in body copy and
+FAQ while the fine print said the committee is a prop. Both true statements,
+contradictory together. Rule now (user, 2026-09-08): KEEP the phrase
+"independent operators", it is the design and the point is that none of them is
+trusted; pair it every time with the devnet caveat, stated separately from the
+mainnet commitment. Devnet: five operators we run, one deployment, dealer-generated keys, the
+auction committee's signing keys derivable from a published string. Mainnet:
+five named, separately operated members under DKG, listed by name before value.
+The committee widget (`landing.tsx` CommitteeScene) proves the threshold rule,
+not who runs the five; its caption says so. The FAQ answer is mirrored into
+`crates/bte-coordinator/src/pages.rs` FAQPage structured data and must move
+together. `mempool.ts:844` uses "independent" correctly (per-open work is
+independent of batch size); do not sed the word globally.
+
+**Prerendered developer docs.** `/developers*` was the shell plus a script tag
+for any reader without JavaScript, which is most agent fetchers. Now
+`packages/explorer/scripts/prerender-docs.mjs` runs after `vite build`, loads
+`src/prerender.ts` through Vite's SSR loader (import.meta.env resolves; tsx
+alone cannot), renders each page with `docsShellHtml` (the same pure function
+`renderDocs` uses) and writes `dist/<path>/index.html`. Static sidebar links are
+clean paths, which the router also accepts. Production serves those paths from
+the coordinator (`names.rs` named_shell/nested_page via Caddy), so
+`read_prerendered` prefers the prerendered file and falls back to the shell;
+`page_html` still injects title/meta/canonical over it. Test:
+`names::tests::prerendered_pages_sit_beside_the_shell_and_never_above_it`.
+INVARIANT: keep `PAGES` in `src/prerender.ts`, the router in `main.ts`, and
+`pages.rs` in step.
+
+**tlock positioning.** `protocol.ts` compare table gained a drand tlock row (the
+old "timelock / VDF" row described a VDF, not tlock) and a "Why not drand tlock"
+subsection; `docs/howitworks.ts` gained a comparison table with sources. The
+argument is: the condition is yours (deadline or block height, not a beacon
+round), the unit is a padded round of 64 (count hiding, one 48-byte share per
+operator), HTTP with no chain; and tlock's League of Entropy is the more
+independent committee today, said plainly. Grounded facts (research lens,
+2026-09-08): tlock = IBE to a drand round, anyone decrypts once the round
+signature is public; cadence 3 s quicknet / 30 s default; triggers are round or
+duration only, no block height; drand's own applications list matches ours;
+not post-quantum by drand's own statement; League of Entropy ~two dozen named
+orgs. Paper: "A Simple Batched Threshold Encryption Scheme", Guru-Vamsi
+Policharla (Commonware), ePrint 2026/760, sole author; it does NOT position
+against drand, and it says decryption still costs a few pairings per ciphertext
+in every scheme, so batching is a bandwidth/coordination win, never a compute
+win. The pull quote on `mempool-landing.ts` ("addresses the drawbacks of both
+per-epoch and per-transaction schemes") was a misquote: it is Shutter's, hedged
+("anticipates ... a potential way"), from blog.shutter.network Oct 2025; now
+quoted verbatim and attributed. Do not claim Commonware runs a live threshold
+mempool (unverified); Shutter does, per-epoch, on Gnosis (footnote 3).
+
+**Brand rule (user, 2026-09-08):** name "batched threshold encryption (BTE)"
+explicitly on every outward surface; the product is the primitive.
+
+## Telemetry (site honesty pass)
+- divergence: 0.80 (evidence 1.00: the two lenses cited disjoint sources, repo
+  file:line vs web URLs; conclusion 0.50) | threshold 0.30 UNCALIBRATED
+- grounding: n/a (no eval fixtures)
+- models: draft=fable · lenses=2x-opus (audience, research); no skeptic panel
+  (two-way door)
+- claims: independence-contradiction grounded (landing.tsx:760,780,1171) ·
+  no-js-shell grounded (names.rs read_shell + Caddyfile @named) ·
+  tlock-mechanics supported (drand docs, quoted) · paper-title supported
+  (eprint 2026/760) · shutter-misquote supported (blog.shutter.network) ·
+  commonware-live-mempool contradicted (struck from copy)
+- fleet: 2 lenses + orchestrator implementation

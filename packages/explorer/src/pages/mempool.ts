@@ -83,7 +83,7 @@ const num = (s: string | number, dp = 4) =>
 const FLOW_COPY = [
   `Your order is encrypted on your own device before it reaches the network. The amount, the direction, and the token stay sealed inside a ciphertext addressed to the committee's key. No relayer, no node, and no operator ever sees it in the clear.`,
   `The ciphertext drops into a fixed batch of 64 slots. The other slots are indistinguishable decoys, so no observer can tell how many real orders are inside, or which slot is yours. Your size, your timing, and your intent disappear into the crowd.`,
-  `The power to open your batch is split across a committee of independent operators. Any 3 of the 5 can open it together, and only once the cue fires. No single operator, and no group smaller than the quorum, can read your order early.`,
+  `The power to open your batch is split across a committee of independent operators, none of them trusted. Any 3 of the 5 can open it together, and only once the cue fires. No single operator, and no group smaller than the quorum, can read your order early. On this devnet all five are run by us, so treat the threshold as demonstrated and the independence as the mainnet commitment.`,
   `At the cue, a quorum of operators each return one 48-byte share. Together they open the whole batch at once, after the ordering is already fixed, so there is nothing left to front-run. Every share is checked with a public pairing equation, and the settlement contract re-derives the batch's merkle root and rejects any mismatch.`,
 ];
 
