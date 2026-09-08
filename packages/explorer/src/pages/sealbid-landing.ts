@@ -425,14 +425,6 @@ export function sealbidLandingHtml(): string {
           <span class="ml-chip ml-chip-build">build</span>
           <p><b>the reveal root is signed, not verified onchain.</b> the contract trusts a threshold of committee signatures over the root rather than checking the decryption shares itself. tempo has the pairing precompile and the gas has been measured, so this is scheduled work rather than an open question.</p>
         </div>
-        <div class="sl-limit">
-          <span class="ml-chip ml-chip-build">build</span>
-          <p><b>the demo committee is a prop.</b> its five signing keys are derived from a published string so anyone can reproduce the demo. the seeded bids on the live page are therefore readable, and the page says so on each one.</p>
-        </div>
-        <div class="sl-limit">
-          <span class="ml-chip ml-chip-live">live</span>
-          <p><b>no audit, and a testnet only.</b> the contracts pass 87 tests including adversarial ones. that is not an audit, and nothing here has held real money.</p>
-        </div>
       </div>
     </div>
   </section>
