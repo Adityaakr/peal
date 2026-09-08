@@ -176,21 +176,46 @@ export function renderMarkdown(md: string): string {
   return out.join('\n');
 }
 
-/** Render a documentation page and wire its navigation. Returns a cleanup. */
-export function renderDocs(root: HTMLElement, page: DocsPage, activeHref: string): () => void {
-  const previousTitle = document.title;
-  document.title = `${page.title} · Peal for developers`;
-  // Unclamps <main>, which the rest of the site holds at 960px. Without this
-  // the sidebar, the content and the contents rail share about 350px each.
-  document.body.classList.add('docs-page');
-  const body = page.html ?? renderMarkdown(page.markdown ?? '');
+/** Give every heading an id, so the contents rail and deep links have
+ * something to point at whether the page came from markdown (which already
+ * sets them) or from hand-written markup (which usually does not). Pure, so the
+ * prerender step can do the same thing to the same string. */
+export function withHeadingIds(body: string): string {
+  return body.replace(/<(h2|h3)>([^<]*)<\/\1>/g, (_m, tag: string, text: string) => {
+    return `<${tag} id="${slug(text.replace(/&[a-z]+;|&#\d+;/g, ' '))}">${text}</${tag}>`;
+  });
+}
+
+/** The contents rail entries for a body, read from its headings. Buttons rather
+ * than links, because a `#id` href would be read by the hash router as a route. */
+export function tocLinksHtml(body: string): string {
+  const out: string[] = [];
+  const re = /<(h2|h3) id="([^"]+)">([\s\S]*?)<\/\1>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body))) {
+    const text = m[3]!.replace(/<[^>]+>/g, '');
+    out.push(`<button type="button" data-goto="${m[2]}" class="doc-toc-${m[1]}">${text}</button>`);
+  }
+  return out.join('');
+}
+
+/** The documentation shell as a string: sidebar, article, pager, rail.
+ *
+ * Pure, and exported on purpose. `renderDocs` puts this in the document and
+ * wires it; `scripts/prerender-docs.mjs` writes the same string into a static
+ * HTML file for each page, so a reader that runs no JavaScript, which is most
+ * agents and every crawler, gets the same article the browser renders. One
+ * function, two callers, so the two can never disagree about what is on the
+ * page. */
+export function docsShellHtml(page: DocsPage, activeHref: string, tocLinks = ''): string {
+  const body = withHeadingIds(page.html ?? renderMarkdown(page.markdown ?? ''));
 
   const flat = flatNav();
   const here = flat.findIndex((l) => l.href === activeHref);
   const prev = here > 0 ? flat[here - 1] : null;
   const next = here >= 0 && here < flat.length - 1 ? flat[here + 1] : null;
 
-  root.innerHTML = `
+  return `
     <div class="doc-shell${page.wide ? ' is-wide' : ''}">
       <aside class="doc-side" aria-label="documentation">
         <button class="doc-side-toggle" type="button" id="doc-side-toggle"
@@ -234,9 +259,20 @@ export function renderDocs(root: HTMLElement, page: DocsPage, activeHref: string
       ${page.wide ? '' : `
       <nav class="doc-toc" aria-label="on this page">
         <p class="doc-toc-head">On this page</p>
-        <div id="doc-toc-links"></div>
+        <div id="doc-toc-links">${tocLinks}</div>
       </nav>`}
     </div>`;
+}
+
+/** Render a documentation page and wire its navigation. Returns a cleanup. */
+export function renderDocs(root: HTMLElement, page: DocsPage, activeHref: string): () => void {
+  const previousTitle = document.title;
+  document.title = `${page.title} · Peal for developers`;
+  // Unclamps <main>, which the rest of the site holds at 960px. Without this
+  // the sidebar, the content and the contents rail share about 350px each.
+  document.body.classList.add('docs-page');
+
+  root.innerHTML = docsShellHtml(page, activeHref);
 
   const cleanups: (() => void)[] = [];
 

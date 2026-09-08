@@ -104,6 +104,7 @@ pub async fn named_shell(
     // A page path wins over a name lookup. See pages.rs for why that precedence
     // is the right one and what it costs.
     if let Some(page) = crate::pages::find(&name) {
+        let shell = read_prerendered(page.path).unwrap_or(shell);
         return page_response(&shell, page, canonical.as_deref());
     }
 
@@ -142,6 +143,7 @@ pub async fn nested_page(Path(path): Path<String>, headers: axum::http::HeaderMa
         return plain_shell();
     };
     let canonical = canonical_url(&headers, &path);
+    let shell = read_prerendered(page.path).unwrap_or(shell);
     page_response(&shell, page, canonical.as_deref())
 }
 
@@ -350,9 +352,40 @@ pub(crate) fn canonical_url(headers: &axum::http::HeaderMap, name: &str) -> Opti
     Some(format!("{scheme}://{host}/{name}"))
 }
 
+/// Where the explorer's index.html lives; the prerendered pages sit beside it.
+fn shell_path() -> String {
+    std::env::var("BTE_EXPLORER_INDEX").unwrap_or_else(|_| "/srv/explorer/index.html".to_string())
+}
+
+/// The file the explorer build wrote for a page, if the build wrote one.
+///
+/// `packages/explorer/scripts/prerender-docs.mjs` renders every developer page
+/// into `<dist>/<path>/index.html`: the shell with the article already inside
+/// `<main>`, so a reader that runs no JavaScript, which is most agents and
+/// every crawler, gets the words rather than a header and a script tag. When
+/// that file exists it is the shell to write this page's meta into; when it
+/// does not, the plain shell is what the app has always booted from.
+fn prerendered_path(index: &str, page_path: &str) -> Option<std::path::PathBuf> {
+    // Page paths come from the static table in pages.rs, never from a request,
+    // so this is belt and braces rather than a defence. Still: a path with a
+    // parent segment or an absolute root would leave the explorer directory.
+    if page_path.is_empty()
+        || page_path.starts_with('/')
+        || page_path.split('/').any(|seg| seg.is_empty() || seg == "." || seg == "..")
+    {
+        return None;
+    }
+    let dir = std::path::Path::new(index).parent()?;
+    Some(dir.join(page_path).join("index.html"))
+}
+
+fn read_prerendered(page_path: &str) -> Option<String> {
+    let path = prerendered_path(&shell_path(), page_path)?;
+    std::fs::read_to_string(path).ok()
+}
+
 fn read_shell() -> Option<String> {
-    let path = std::env::var("BTE_EXPLORER_INDEX")
-        .unwrap_or_else(|_| "/srv/explorer/index.html".to_string());
+    let path = shell_path();
     match std::fs::read_to_string(&path) {
         Ok(s) => Some(s),
         Err(e) => {
@@ -614,6 +647,24 @@ fn esc(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prerendered_pages_sit_beside_the_shell_and_never_above_it() {
+        let at = |p: &str| prerendered_path("/srv/explorer/index.html", p);
+        assert_eq!(
+            at("developers/quickstart"),
+            Some(std::path::PathBuf::from("/srv/explorer/developers/quickstart/index.html"))
+        );
+        assert_eq!(
+            at("developers"),
+            Some(std::path::PathBuf::from("/srv/explorer/developers/index.html"))
+        );
+        // The home page has no directory of its own; it is the shell.
+        assert_eq!(at(""), None);
+        assert_eq!(at("../etc"), None);
+        assert_eq!(at("/etc"), None);
+        assert_eq!(at("developers//api"), None);
+    }
 
     fn inject_for_test(shell: &str, p: &Preview) -> String {
         inject(shell, p, Some("https://peal.network/nepal"))

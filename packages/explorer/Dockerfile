@@ -50,10 +50,15 @@ ENV VITE_RELAYER_URL=$VITE_RELAYER_URL
 RUN BTE_SKIP_WASM_PACK=1 pnpm --filter bte-sdk build && pnpm --filter bte-explorer build
 
 # -- stage 3: serve ----------------------------------------------------------
-FROM node:22-slim AS serve
-RUN npm i -g serve@14
-COPY --from=build /repo/packages/explorer/dist /app/dist
+# Caddy rather than `serve -s`. The build now writes a prerendered HTML file
+# for every developer page (dist/developers/<page>/index.html), and `serve -s`
+# answered those paths with the empty shell no matter how its rewrites were
+# arranged: a reader with no JavaScript, which is most agent fetchers, got a
+# header and a script tag. Caddy's try_files prefers the prerendered file and
+# falls back to the shell, and it is what the devnet-in-a-box edge already
+# runs, so the two deployments serve the same thing for the same URL.
+FROM caddy:2-alpine AS serve
+COPY packages/explorer/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /repo/packages/explorer/dist /srv/explorer
 ENV PORT=3000
 EXPOSE 3000
-# -s: SPA fallback so hash routes resolve to index.html.
-CMD serve -s /app/dist -l ${PORT}

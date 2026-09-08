@@ -7,7 +7,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && node scripts/build-peal-js.mjs && node scripts/build-skill.mjs && vite build",
+    "build": "tsc && node scripts/build-peal-js.mjs && node scripts/build-skill.mjs && vite build && node scripts/prerender-docs.mjs",
+    "prerender": "node scripts/prerender-docs.mjs",
     "build:peal-js": "node scripts/build-peal-js.mjs",
     "preview": "vite preview"
   },

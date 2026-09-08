@@ -1,0 +1,36 @@
+# The standalone explorer's edge. One job: serve dist/ so that a reader with
+# no JavaScript gets the words.
+#
+# Every developer page exists twice in dist/: as the shell the app boots from,
+# and as a prerendered file at <path>/index.html written by
+# scripts/prerender-docs.mjs. try_files prefers the prerendered file and falls
+# back to the shell, so /developers/howitworks is an article to curl and a
+# route to the app in the same response, and /shoonya (an auction name the app
+# resolves) still lands on the shell. The devnet-in-a-box edge in
+# docker/Caddyfile does the same through the coordinator; this is the version
+# with no coordinator behind it.
+#
+# PORT and EXPLORER_ROOT are environment placeholders so the same file serves
+# the container (Railway sets PORT) and a local check against a fresh build:
+#   EXPLORER_ROOT=dist PORT=5090 caddy run --config Caddyfile --adapter caddyfile
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT:3000} {
+	root * {$EXPLORER_ROOT:/srv/explorer}
+	encode zstd gzip
+
+	# Hashed by the build, so they can be held for ever. The shell and the
+	# prerendered pages cannot: they name which bundle to load.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	# The drop-in SDK is imported cross-origin by other people's pages.
+	@sdk path /peal.js /peal.js.map
+	header @sdk Access-Control-Allow-Origin *
+
+	try_files {path} {path}/index.html /index.html
+	file_server
+}

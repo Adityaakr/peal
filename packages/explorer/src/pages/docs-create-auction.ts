@@ -6,9 +6,10 @@
 import { renderDocs, type DocsPage } from '../docs';
 import { API_BASE } from '../api';
 
-export function renderCreateAuctionDocs(root: HTMLElement): () => void {
-  const base = API_BASE || window.location.origin;
-
+/** The page, given the API origin its examples should show. A function of
+ * `base` rather than a constant so the prerender step, which has no window, can
+ * build it with the production origin. */
+export function createAuctionDocsPage(base: string): DocsPage {
   const page: DocsPage = {
     title: 'Create an auction',
     lede: 'Sealed bid auctions in your own product: three calls, no wallet for your bidders, and nobody who can read a bid early.',
@@ -404,5 +405,10 @@ now: convert before you call \`bid\`, and keep what they typed for your records.
 `.trim(),
   };
 
-  return renderDocs(root, page, '#/developers/createauction');
+  return page;
+}
+
+export function renderCreateAuctionDocs(root: HTMLElement): () => void {
+  const base = API_BASE || window.location.origin;
+  return renderDocs(root, createAuctionDocsPage(base), '#/developers/createauction');
 }

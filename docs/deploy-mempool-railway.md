@@ -69,7 +69,13 @@ UI change means the full coordinator/node/cli Rust build (10+ min). Splitting th
 static site out lets UI changes deploy in a few minutes and auto-update on push.
 
 `packages/explorer/Dockerfile` builds the wasm SDK + the SPA and serves it, no
-coordinator binaries. The explorer imports the `bte-sdk` workspace package, so
+coordinator binaries. The image serves through Caddy (`packages/explorer/Caddyfile`)
+rather than `serve -s`, because the build also writes a prerendered HTML file for
+every developer page (`dist/developers/<page>/index.html`, from
+`scripts/prerender-docs.mjs`) and Caddy's `try_files` prefers that file over the
+shell. A reader with no JavaScript, which is most agent fetchers, gets the article;
+the app boots over it in a browser. The devnet-in-a-box edge does the same
+through the coordinator (`names.rs` prefers the prerendered file too). The explorer imports the `bte-sdk` workspace package, so
 the build context is the **repo root** (leave Root Directory empty). Point the
 service at this Dockerfile with a config file instead of the repo-root
 `railway.json` (which builds the devnet): set the service's **Config File** to
