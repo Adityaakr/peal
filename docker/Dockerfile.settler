@@ -1,0 +1,13 @@
+# The SealBid settler. Built from the REPO ROOT (it needs the pnpm workspace
+# for peal-auctionkit), so on Railway leave Root Directory empty and point the
+# service at this file with railway/settler.json.
+FROM node:22-alpine
+RUN corepack enable
+WORKDIR /app
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY packages ./packages
+COPY demos ./demos
+COPY examples ./examples
+# Only the settler and what it imports. Nothing here needs wasm or a build.
+RUN pnpm install --frozen-lockfile --filter sealbid-settler...
+CMD ["pnpm", "-C", "packages/sealbid-settler", "start"]

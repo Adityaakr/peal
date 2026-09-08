@@ -1,0 +1,21 @@
+{
+  "name": "sealbid-settler",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The committee's on-chain arm for SealBid: watches the coordinator for opened auction batches and registers, processes and finalizes the reveal on Tempo.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "peal-auctionkit": "workspace:*",
+    "tsx": "^4.19.0",
+    "viem": "2.54.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.3"
+  }
+}
