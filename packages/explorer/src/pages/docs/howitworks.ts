@@ -138,5 +138,53 @@ export const howItWorks: DocsPage = {
         round has opened, a round with three submissions still does not announce that it had three;
         decoys come back flagged <code>is_dummy</code>. And slot positions are derived from the
         ciphertext hashes rather than arrival order, so a batch cannot be reordered after the
-        fact.</p>`,
+        fact.</p>
+
+<h2>Why Peal, not drand tlock</h2>
+        <p>If you know timelock encryption you know <a href="https://docs.drand.love/docs/timelock-encryption/" target="_blank" rel="noopener">drand tlock</a>,
+        and you should ask this before reading further. tlock is free, it has run since 2020, and
+        its own docs list the same applications this site does: sealed-bid auctions, MEV
+        prevention, voting, responsible vulnerability disclosure. It is also the same primitive
+        family as Peal, threshold BLS over BLS12-381, run by the League of Entropy: Cloudflare,
+        EPFL, Protocol Labs, Kudelski Security and around twenty other named organisations. That
+        committee is more independent than Peal's devnet, whose five operators we run ourselves.
+        If a public unlock at a wall-clock time is all you need, use tlock.</p>
+
+        <div class="tcard">
+          <table>
+            <thead><tr><th></th><th>drand tlock</th><th>peal</th></tr></thead>
+            <tbody>
+              <tr><td>what opens it</td><td>the beacon's BLS signature for a round number: a point
+              in wall-clock time, every 3 s (quicknet) or 30 s (default)</td><td>a condition you
+              define: a deadline, or a block height on a chain you name</td></tr>
+              <tr><td>the unit</td><td>one ciphertext; each opens on its own, for everyone, once
+              the round signature is public</td><td>a round of up to 64 payloads; one 48-byte
+              share per operator opens the whole batch at once</td></tr>
+              <tr><td>what an observer learns before the cue</td><td>how many ciphertexts were
+              encrypted to that round, if they can see them</td><td>nothing about the count: the
+              batch is padded with decoys, and the count stays padded after it opens</td></tr>
+              <tr><td>committee traffic per reveal</td><td>one signature per round, shared by every
+              ciphertext aimed at it</td><td>one 48-byte share per operator per batch, constant
+              while the batch fills</td></tr>
+              <tr><td>a chain</td><td>none needed</td><td>none needed; three HTTP calls, and a chain
+              only if you anchor a root to one</td></tr>
+              <tr><td>who holds the keys today</td><td>the League of Entropy, around two dozen named
+              organisations</td><td>five operators we run, on a devnet, with dealer-generated keys.
+              Mainnet is five named, independent operators under DKG, none of them trusted, and
+              they will be listed here by name.</td></tr>
+              <tr><td>post-quantum</td><td>no, and drand says so</td><td>no; the same pairings</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p>Two honest notes. Batching buys coordination and bandwidth, not pairings: the paper
+        behind Peal is explicit that decryption costs a few pairings per ciphertext in every
+        scheme, its own included, so do not read the table as a compute win. And the row that
+        favours tlock is the one that matters most for value: until the operators are named and
+        the keys come from a distributed generation, tlock's trust model is the stronger one.</p>
+
+        <p class="field-hint">Sources: <a href="https://docs.drand.love/docs/timelock-encryption/" target="_blank" rel="noopener">drand, timelock encryption</a> ·
+        <a href="https://github.com/drand/tlock" target="_blank" rel="noopener">drand/tlock</a> ·
+        <a href="https://drand.love/about/" target="_blank" rel="noopener">drand, about</a> ·
+        <a href="https://eprint.iacr.org/2026/760" target="_blank" rel="noopener">Policharla, A Simple Batched Threshold Encryption Scheme, ePrint 2026/760</a>.</p>`,
 };

@@ -119,16 +119,22 @@ export function renderProtocol(root: HTMLElement): () => void {
 
       <section class="scroll-reveal">
         <h2 id="compare">Why threshold, not the alternatives</h2>
-        <p>Guaranteed reveal has three other known constructions. Each carries a cost Peal was
+        <p>Guaranteed reveal has four other known constructions. Each carries a cost Peal was
         built to avoid, and each has real uses; the table is a scoping tool, not a dismissal.</p>
         <div class="tcard">
           <table>
             <thead><tr><th>approach</th><th>how it reveals</th><th>the catch</th></tr></thead>
             <tbody>
-              <tr><td>timelock / VDF</td><td>anyone grinds sequential computation until the
+              <tr><td>timelock puzzle / VDF</td><td>anyone grinds sequential computation until the
               plaintext falls out</td><td>the deadline is denominated in compute, not clock
               time; someone must actually run the grind, and faster hardware moves the
               deadline</td></tr>
+              <tr><td>drand tlock</td><td>a long-running threshold beacon, the League of Entropy,
+              publishes a BLS signature every round; you encrypt to a future round number and
+              anyone decrypts with that round's signature</td><td>the schedule is the beacon's
+              rounds, 3 s or 30 s of wall clock, not your condition, and there is no block-height
+              cue; every ciphertext for a round opens for everyone with the same signature, one at
+              a time, and there is no batch, so nothing pads or hides how many were sealed</td></tr>
               <tr><td>TEE-held keys</td><td>an enclave releases the key at the
               deadline</td><td>the guarantee is the vendor's attestation chain; one enclave
               break is a total, silent compromise</td></tr>
@@ -144,7 +150,43 @@ export function renderProtocol(root: HTMLElement): () => void {
         <p>The batching is the point. One 48-byte share per operator opens up to 64 payloads, so
         the committee's work per reveal is constant while the batch fills. Wall-clock deadlines
         stay wall-clock. And every share is publicly verifiable against published keys, so a
-        lying operator is caught by arithmetic, not by reputation.</p>
+        lying operator is caught by arithmetic, not by reputation. Detection is live today; the
+        remedy is not: replacing a caught operator currently means a new ceremony.</p>
+        <h3 id="tlock">Why not drand tlock</h3>
+        <p>tlock deserves its own paragraph because it is the closest neighbour, not a strawman. It
+        is the same primitive family, threshold BLS over BLS12-381. It has run in production since
+        2020. Its own documentation lists the same applications this site does: sealed-bid
+        auctions, MEV prevention, voting, responsible vulnerability disclosure. And the League of
+        Entropy is a genuinely multi-organisation committee, Cloudflare, EPFL, Protocol Labs,
+        Kudelski Security and around twenty other named members, which Peal's devnet is not. If
+        what you need is a public wall-clock unlock and nothing else, tlock is the mature answer
+        and you should use it.</p>
+        <p>Peal differs in three specific ways. <strong>The condition is yours.</strong> A tlock
+        ciphertext opens at a beacon round, which is a point in wall-clock time; a Peal condition
+        is a deadline or a block height on a chain you name, and the cue is a row the coordinator
+        fires rather than a signature somebody else's schedule produces. <strong>The unit is a
+        round, not a ciphertext.</strong> Up to 64 payloads share one batch; one 48-byte share per
+        operator opens all of them, so committee traffic per reveal is constant while the batch
+        fills. The batch is padded with decoys, so while a round is open nothing says how many
+        were sealed, and once it opens the count is still padded. tlock has no batch: each
+        ciphertext is independent, and a public count of ciphertexts encrypted to a round is
+        exactly the number a competitor in a sealed auction wants. <strong>It is HTTP with no
+        chain.</strong> Three calls seal and open a round; a chain enters only when you anchor a
+        root to one.</p>
+        <p>Two things this comparison must not say. Neither scheme is post-quantum: both rest on
+        pairings, and drand says so of tlock in its own docs. And batching saves coordination and
+        bandwidth, not pairings: the paper is explicit that decryption costs a few pairings per
+        ciphertext in every scheme, its own included. What Peal does not have yet is tlock's
+        operator diversity. Today's committee is five processes we run, and until distributed key
+        generation and named third-party operators land, tlock's trust model is the stronger
+        one.</p>
+        <p class="fine">Sources: <a href="https://docs.drand.love/docs/timelock-encryption/" target="_blank" rel="noopener">drand, timelock encryption</a>
+        (mechanism, the applications list, the stated limitations) ·
+        <a href="https://github.com/drand/tlock" target="_blank" rel="noopener">drand/tlock</a> (round or
+        duration as the only triggers) · <a href="https://drand.love/about/" target="_blank" rel="noopener">drand, about</a>
+        (beacon cadence, League of Entropy membership) ·
+        <a href="https://eprint.iacr.org/2026/760" target="_blank" rel="noopener">Policharla, A Simple Batched Threshold Encryption Scheme, ePrint 2026/760</a>
+        (48-byte shares, the per-ciphertext pairing floor).</p>
       </section>
 
       <section class="scroll-reveal">
@@ -584,8 +626,8 @@ console.log(slot.text);</code></pre>
         <h2 id="production">Production posture</h2>
         <p>The current stack runs a transparent public devnet: a real threshold committee,
         public share verification, durable state on a mounted volume, recovery after restart,
-        TLS, rate limiting, and honest stall states. The decisive blocker for real value is the
-        ceremony.</p>
+        TLS, rate limiting, and honest stall states. The decisive blockers for real value are the
+        ceremony and the operator set: both are ours today.</p>
         <div class="tcard">
           <table>
             <thead><tr><th>layer</th><th>v0 today</th><th>production target</th></tr></thead>
@@ -618,6 +660,7 @@ console.log(slot.text);</code></pre>
             <h3>V0 still requires trust</h3>
             <ul>
               <li>the dealer did not retain or leak &tau;</li>
+              <li>the five operators do not collude; today they are all ours</li>
               <li>at least t operators answer after the cue</li>
               <li>the coordinator includes every submitted ciphertext</li>
               <li>the deployment preserves ciphertext availability</li>

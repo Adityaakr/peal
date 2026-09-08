@@ -297,7 +297,7 @@ export function renderMempoolLanding(root: HTMLElement): () => void {
       title: 'sealed to a distributed committee',
       chip: 't-of-n',
       visual: committeeRing(5, 3, 2),
-      body: 'the power to open your batch is split across a committee of independent operators. any 3 of the 5 can open it together, and only once the cue fires. no single operator, and no group smaller than the quorum, can read your order early.',
+      body: 'the power to open your batch is split across a committee of independent operators, none of them trusted. any 3 of the 5 can open it together, and only once the cue fires. no single operator, and no group smaller than the quorum, can read your order early. on this devnet all five are run by us, so treat the threshold as demonstrated and the independence as the mainnet commitment.',
       rows: [
         { label: 'committee', value: operatorDots(5, 3, 'any 3 of 5') },
         { label: 'params digest', value: hashCopy('1aab2c4871f09de3b52d6c797954', 8, 6) },
@@ -405,8 +405,8 @@ export function renderMempoolLanding(root: HTMLElement): () => void {
           <div class="ml-why-bottom">
             ${onDiagram(5, 8, 420)}
             <blockquote class="ml-quote">
-              <p>"batched threshold encryption addresses the drawbacks of both per-epoch and per-transaction schemes."</p>
-              <cite>the team behind today's only live threshold mempool</cite>
+              <p>"the shutter team anticipates that batched threshold encryption (BTE) is a potential way to address the drawbacks of both per-epoch and per-transaction schemes."</p>
+              <cite><a href="https://blog.shutter.network/applied-mev-protection-via-shutters-threshold-encryption/" target="_blank" rel="noopener">shutter</a>, who run today's live threshold mempool on a per-epoch design, oct 2025</cite>
             </blockquote>
           </div>
         </div>

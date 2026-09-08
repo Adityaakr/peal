@@ -343,7 +343,7 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
         <div class="sl-research-col">
           <span class="sl-case-label">from commonware</span>
           <ul class="sl-list">
-            <li>the scheme itself, from <b>"batched threshold encryption: a simple construction"</b>, guru vamsi policharla, iacr eprint 2026/760.</li>
+            <li>the scheme itself, from <b>"a simple batched threshold encryption scheme"</b>, guru-vamsi policharla (commonware), <a href="https://eprint.iacr.org/2026/760" target="_blank" rel="noopener">iacr eprint 2026/760</a>.</li>
             <li>every pairing operation, every group fft, and the fujisaki-okamoto transform, in <code>simple-bte</code>, used unmodified as a dependency and pinned to one commit.</li>
             <li>thresholdization, built into <code>crs::setup</code>. we planned a shamir fallback and did not need it.</li>
           </ul>
