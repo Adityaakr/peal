@@ -6,13 +6,15 @@
 // an .sl- prefix: the split-book stage and the before/now cards.
 //
 // One editorial rule governs every claim below, and it is not decoration:
-// **the page may only say what the deployed contracts actually do today.**
-// Slice 6, real Peal encryption, is not wired into the auction yet
-// (packages/explorer/src/pages/auction.ts:358 still stands in a placeholder
-// ciphertext hash). So this page describes a salted commitment scheme, which is
-// what is live, and marks threshold encryption as build. Claiming the sealed
-// bids are encrypted today would be the one lie that costs the product its
-// credibility with the exact reader it wants.
+// **the page may only say what the deployed contracts and the live pages
+// actually do today.** Bids are sealed in the browser to the committee with
+// batched threshold encryption (auction.ts calls the SDK's seal and registers
+// the real ciphertext hash; decisions/0005). What is still marked build is
+// what is still build: the committee is a testnet prop with derivable keys,
+// and the reveal root is attested by committee signatures rather than verified
+// onchain (decisions/0003 is the scheduled replacement). Claiming more than
+// that would be the one lie that costs the product its credibility with the
+// exact reader it wants.
 import { mountScrollReveal } from '../reveal';
 import { ACTIVE, ACTIVE_DEMO } from 'peal-auctionkit';
 
@@ -95,8 +97,7 @@ const USE_CASES: { title: string; before: string; now: string; chip?: string }[]
     title: 'onchain name auctions',
     before:
       'ENS ran a real sealed-bid auction in 2017. it took two transactions, commit and then reveal. bidders who lost their salt or missed the reveal window forfeited their deposit, and the mechanism was retired.',
-    now: 'the reveal is driven by a committee against a signed root, not by the bidder coming back. one commit is the bidder’s whole job.',
-    chip: 'build',
+    now: 'the bid is sealed to a committee that opens it at the close, and the reveal is driven against a signed root, not by the bidder coming back. one sealed commit is the bidder’s whole job, and there is no salt to lose.',
   },
   {
     title: 'token launches',
@@ -271,11 +272,11 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
       ${[
         {
           n: '1',
-          title: 'commit, do not disclose',
+          title: 'seal, do not disclose',
           chip: 'sealed',
-          body: 'the bidder hashes their quantity, their price and a random salt into one commitment, and posts that. the salt never leaves their machine, so the commitment is not searchable.',
+          body: 'the bidder encrypts their quantity, their price and a random salt to the committee in their own browser with batched threshold encryption, and posts a commitment to the same values beside the ciphertext hash. nothing readable leaves their machine, and nothing has to be kept: the salt travels inside the ciphertext.',
           rows: [
-            { label: 'onchain', value: 'one 32 byte commitment' },
+            { label: 'onchain', value: 'a commitment and a ciphertext hash' },
             { label: 'quantity and price', value: 'not published', tone: 'good' as const },
           ],
           visual: sealedBid('0xca75e985…e0a436', '336,000', '120,000', '2.80'),
@@ -295,7 +296,7 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
           n: '3',
           title: 'one reveal, all at once',
           chip: 't of n',
-          body: 'at close a threshold of the committee signs one root covering every bid. no bid opens before the root is registered, and the root has to cover the exact number of bids that were committed.',
+          body: 'at close the operators each publish a decryption share, and a threshold of them opens the whole batch at once. nobody sends a reveal transaction. the committee then signs one root covering every bid; each revealed bid is checked against the commitment its bidder posted before the close, and the root has to cover the exact number of bids that were committed.',
           rows: [
             { label: 'partial reveals', value: 'refused' },
             { label: 'a missing bid', value: 'halts settlement', tone: 'good' as const },
@@ -416,8 +417,12 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
           <p><b>the split is hidden, the size is not.</b> escrow is a token transfer of quantity times max price. prices are a ladder of at most 256 ticks, so anyone who tries can usually narrow the split to a few candidates. this is not bid size privacy and sealbid does not claim it.</p>
         </div>
         <div class="sl-limit">
+          <span class="ml-chip ml-chip-live">live</span>
+          <p><b>bids are threshold encrypted, and the bidder keeps nothing.</b> the salt rides inside the ciphertext, so a lost browser no longer costs an allocation. a bid whose ciphertext does not open to what was committed is voided and refunded; it cannot hold up anyone else.</p>
+        </div>
+        <div class="sl-limit">
           <span class="ml-chip ml-chip-build">build</span>
-          <p><b>bids are salted commitments, not yet threshold encrypted.</b> peal's encryption is not wired into the auction yet, so today the bidder holds the salt. until that lands, a bidder who loses their salt gets a refund instead of an allocation.</p>
+          <p><b>the reveal root is signed, not verified onchain.</b> the contract trusts a threshold of committee signatures over the root rather than checking the decryption shares itself. tempo has the pairing precompile and the gas has been measured, so this is scheduled work rather than an open question.</p>
         </div>
         <div class="sl-limit">
           <span class="ml-chip ml-chip-build">build</span>
@@ -434,7 +439,7 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
   <section class="ml-section sl-cta-band">
     <div class="ml-wrap scroll-reveal">
       <h2 class="ml-h2">seal now. clear together.</h2>
-      <p class="ml-sub">a live auction is open right now, with real escrow and real commitments.</p>
+      <p class="ml-sub">a live auction is open right now, with real escrow and bids sealed to the committee.</p>
       <div class="ml-hero-ctas"><a class="ml-cta" href="#/sealed-bid-auction">open the live auction</a></div>
     </div>
   </section>

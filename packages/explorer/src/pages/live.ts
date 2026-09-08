@@ -31,9 +31,10 @@ const POLL_MS = 2000;
  *
  * Only the hash. The amount is never persisted: it is public the moment the
  * batch opens, and until then writing it down would put a readable bid on the
- * device for no benefit, since the committee is what reopens it. Compare
- * auction.ts:139-143, where a salt IS persisted because it exists nowhere else
- * and losing it voids the bid. Nothing here is lost by forgetting.
+ * device for no benefit, since the committee is what reopens it. The on-chain
+ * auction (auction.ts) works the same way now that its bids are sealed too;
+ * it keeps a local record only to mark a bidder's own rows and to hold the
+ * preimage a void dispute would need. Nothing here is lost by forgetting.
  */
 function myBidKey(auctionId: string): string {
   return `peal-live:${auctionId}`;

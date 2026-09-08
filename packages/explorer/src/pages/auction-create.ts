@@ -21,11 +21,12 @@ import {
   DemoTokenAbi,
   claimFrom,
   fundGas,
+  epochFromConditionId,
   type AuctionConfig,
 } from 'peal-auctionkit';
 import {
   createPublicClient, createWalletClient, custom, formatUnits, http,
-  keccak256, parseUnits, stringToHex, type Address,
+  parseUnits, type Address,
 } from 'viem';
 import { BteClient } from 'bte-sdk';
 import {
@@ -381,6 +382,8 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
   let statusKind: 'info' | 'error' | 'ok' = 'info';
   let created: Address | null = null;
   let createdTx: `0x${string}` | null = null;
+  /** The coordinator condition the created auction's bids are sealed to. */
+  let createdCondition: string | null = null;
   let problems: string[] = [];
   const funded = new Set<string>();
   /** Read from the tokens themselves, never assumed.
@@ -510,7 +513,11 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
       protocolFeeBps: 0,
       feeRecipient: account,
       committeeSetId: ACTIVE.committeeSetId,
-      encryptionEpoch: keccak256(stringToHex(`${name}:${useCase}:${now}`)),
+      // Replaced in submit() with the id of the coordinator condition the bids
+      // are sealed to. Zero here so an auction can never be created against a
+      // value that is not a condition: the factory would accept it, and the
+      // auction would then be one nobody can bid in.
+      encryptionEpoch: `0x${'0'.repeat(64)}`,
       // Bound at creation, so a label shown beside an auction can be checked
       // against what its issuer actually committed to.
       metadataHash: metadataHash(name, useCase, details),
@@ -557,11 +564,23 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
     const eth = ethereum();
     if (!eth) return;
     busy = true;
-    status = 'Approve the supply, then confirm creation. Two transactions.';
+    status = 'Opening the reveal condition with the committee…';
     statusKind = 'info';
     draw();
 
     try {
+      // The condition every bid in this auction is sealed to. It fires at the
+      // same instant the contract stops taking bids, and its id rides in the
+      // auction's config so a bidder's browser can find it from the chain alone
+      // (peal-auctionkit condition.ts). Created before the contract, because
+      // an auction that exists without one can never take a sealed bid.
+      const conditionId = await live.condition({ at: Number(form.cfg.endTime), tag: 'sealbid' });
+      form.cfg.encryptionEpoch = epochFromConditionId(conditionId);
+      createdCondition = conditionId;
+
+      status = 'Approve the supply, then confirm creation. Two transactions.';
+      draw();
+
       await ensureChain(ACTIVE.chainId);
       const wallet = createWalletClient({ account, chain: activeChain, transport: custom(eth) });
       const res = await createAuction({
@@ -604,7 +623,9 @@ export function renderAuctionCreate(root: HTMLElement, initialKind: CreateKind =
               <a class="ml-btn ml-btn-dark" href="#/a/${created}">open it</a>
               <a class="ml-btn" href="${ACTIVE.explorer}/address/${created}" target="_blank" rel="noopener">the contract</a>
               ${createdTx ? `<a class="ml-btn" href="${ACTIVE.explorer}/tx/${createdTx}" target="_blank" rel="noopener">the transaction</a>` : ''}
+              ${createdCondition ? `<a class="ml-btn" href="#/condition/${esc(encodeURIComponent(createdCondition))}">the condition</a>` : ''}
             </div>
+            <p class="ak-hint">bids are sealed with batched threshold encryption to the committee under condition <code>${esc(createdCondition ?? '')}</code>, which opens at the close.</p>
           </div>` : `
           ${account
             ? `<div class="ak-acct"><span class="ak-live-dot"></span><code>${esc(account)}</code></div>`

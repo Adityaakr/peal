@@ -8,7 +8,11 @@
 // What is honestly private here, and what is not:
 //
 //   - HIDDEN until the auction closes: the split between quantity and price.
-//     The chain sees one commitment hash and nothing about what is inside it.
+//     The bid is sealed in this browser to the committee with batched
+//     threshold encryption, and the chain sees a commitment and a ciphertext
+//     hash. Nobody can open it before the condition fires, not the seller, not
+//     the operators, not us, and the bidder keeps nothing that has to survive
+//     until then: the salt rides inside the ciphertext.
 //   - VISIBLE immediately: the escrow. It is an ERC-20 transfer of
 //     quantity x maxPrice, so anyone watching sees that product. They cannot
 //     separate the factors, but a distinctive amount is a fingerprint.
@@ -30,6 +34,8 @@ import {
   readAuction,
   readBids,
   submitBid,
+  conditionIdFromEpoch,
+  encodeBidPayload,
   DemoTokenAbi,
   SealedBidAuctionAbi,
   supportsPermit,
@@ -53,12 +59,12 @@ import {
   custom,
   formatUnits,
   http,
-  keccak256,
   parseUnits,
-  stringToHex,
   type Address,
   type Hex,
 } from 'viem';
+import { BteClient } from 'bte-sdk';
+import { API_BASE } from '../api';
 import { recoverSeededBid } from '../demo-bids';
 import { session, onAuthChange, type Eip1193Like } from '../auth';
 import { recordTx, txlogHtml, onTxLogChange } from '../txlog';
@@ -91,6 +97,10 @@ const pub = createPublicClient({
   transport: http(RPC, { timeout: 15_000, retryCount: 2, retryDelay: 400 }),
   batch: { multicall: { wait: 16 } },
 });
+
+/** Seals in this browser; only the ciphertext leaves. Same coordinator and
+ * committee as every other sealed thing on this site. */
+const sealer = new BteClient({ url: API_BASE });
 
 /** viem errors carry the whole request body, which is unreadable in a banner.
  * Keep the one line that tells a person what to do. */
@@ -136,12 +146,13 @@ function briefly(e: unknown): string {
   return parts.join(' ').slice(0, 300);
 }
 
-/** Bids live in localStorage because the salt exists nowhere else.
+/** Bids this browser placed, for the page's own bookkeeping.
  *
- * Losing it means the bid can never be revealed: the commitment cannot be
- * reproduced, the reveal is voided, and the bidder gets a refund and no
- * allocation. That is the single most important thing this page persists, so
- * it is also offered as a downloadable file. */
+ * The contents of a bid, salt included, travel inside the ciphertext the
+ * committee opens at the close, so nothing here has to survive for the bid to
+ * reveal. What the record still buys: the page can mark which bids are yours
+ * before the reveal, and a bidder who believes a void was wrongful holds the
+ * preimage `disputeVoid` needs. Offered as a download for that second case. */
 const STORE_KEY = 'peal.auctionkit.bids.v1';
 
 interface SavedBid {
@@ -183,12 +194,10 @@ function writeBids(all: SavedBid[]): void {
 
 /** Persist a bid BEFORE its transaction is sent.
  *
- * This ordering is the whole point. The salt is generated locally and exists
- * nowhere else: not on the chain, not at the coordinator, not with the
- * committee. If it is written only after the receipt, then closing the tab
- * while the transaction is in flight leaves escrow locked against a bid that
- * can never be revealed. The bidder would be refunded and get no allocation,
- * with nothing anywhere to reconstruct what they meant to bid.
+ * The committee holds everything needed to reveal, so this is no longer what
+ * stands between a bidder and their allocation. It is still written first so a
+ * tab closed mid-commit leaves a record the page can match to its bid id once
+ * the receipt lands, rather than an orphan the bidder cannot explain.
  *
  * Keyed by commitment rather than bidId, because bidId does not exist yet. */
 function saveBid(b: SavedBid): void {
@@ -455,6 +464,35 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         );
       }
 
+      // Which condition this auction's bids open under. Read from the chain,
+      // never from the page. An auction that carries none cannot take a sealed
+      // bid, and there is deliberately no fallback to a bidder-held secret.
+      const conditionId = conditionIdFromEpoch(snap.config.encryptionEpoch);
+      if (!conditionId) {
+        throw new Error('This auction was created before bids were sealed to the committee, so it cannot take a bid here.');
+      }
+
+      // Seal in this browser. The payload carries everything the reveal needs,
+      // salt included, so from here on the bidder holds nothing that has to
+      // survive. The coordinator stores the ciphertext and returns its hash,
+      // which is what the contract records beside the commitment and what the
+      // settler uses to match the opened slot back to this bid.
+      status = 'Sealing your bid to the committee…';
+      draw();
+      const { ctHash } = await sealer.seal(
+        encodeBidPayload({
+          chainId: ACTIVE.chainId,
+          auction: target.auction,
+          bidder: account,
+          quantity: bid.quantity,
+          maxPriceTick: bid.maxPriceTick,
+          salt: bid.salt,
+          bidVersion: bid.bidVersion,
+        }),
+        conditionId,
+      );
+      const ciphertextHash = `0x${ctHash.replace(/^0x/, '')}` as Hex;
+
       await ensureChain(ACTIVE.chainId);
       const wallet = createWalletClient({ account, chain: CHAIN, transport: custom(eth) });
       // The message has to match what actually happens. A token with EIP-2612
@@ -490,16 +528,17 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
         auction: target.auction,
         quoteToken: target.quoteToken,
         bid,
-        // Stands in for the Peal ciphertext hash until sealing is wired in.
-        // Registered onchain so ciphertext loss stays provable and attributable.
-        ciphertextHash: keccak256(stringToHex(`${account}:${bid.salt}`)),
+        // sha256 of the sealed blob, as the coordinator computed it. Onchain
+        // so ciphertext loss is provable and attributable, and so the reveal
+        // can be joined to this bid without trusting the settler's say-so.
+        ciphertextHash,
       });
 
       recordTx(res.approvalTx as `0x${string}`, 'Approved escrow');
       recordTx(res.commitTx, `Sealed bid #${res.bidId}`);
       completeBid(bid.commitment, res.bidId, res.commitTx);
 
-      status = `Bid #${res.bidId} committed. Save your salt. Without it the bid cannot be revealed.`;
+      status = `Bid #${res.bidId} sealed and committed. The committee opens it at the close; there is nothing you need to keep.`;
       statusKind = 'ok';
     } catch (e) {
       status = briefly(e);
@@ -528,6 +567,10 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
     const c = snap.config;
     const now = BigInt(Math.floor(Date.now() / 1000));
     const ladder = priceLadder(c);
+    // Null for an auction created before bids were sealed to the committee.
+    // Such an auction gets no bid form: the page never falls back to a
+    // bidder-held secret, because that is the scheme this replaced.
+    const conditionId = conditionIdFromEpoch(c.encryptionEpoch);
     const saved = loadBids().filter(
       (b) => b.auction.toLowerCase() === target.auction.toLowerCase(),
     );
@@ -609,6 +652,9 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
       <div class="ak-share-row">
         <input class="ak-share-input" id="ak-share-url" readonly value="${esc(shareUrl(target.auction))}" />
       </div>
+      <p class="ak-hint ak-hero-cond">${conditionId
+        ? `Bids are sealed with batched threshold encryption to the committee under condition <a href="#/condition/${esc(encodeURIComponent(conditionId))}"><code>${esc(conditionId)}</code></a>, which opens at the close.`
+        : `Created before bids were sealed to the committee. It runs to its end, but takes no new bids here.`}</p>
     </div>
     <div class="ak-hero-vis" id="ak-hero-vis">
       <div class="ak-vault-3d">
@@ -653,13 +699,14 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
 
     <aside class="ak-col-side">
       <div class="ak-panel">
-        <h3>Place a sealed bid</h3>
+        <h3>Place a sealed bid <span class="ak-h2-note">batched threshold encryption</span></h3>
         ${account
           ? `<div class="ak-acct"><span class="ak-live-dot"></span><code>${esc(truncMiddle(account, 6, 4))}</code>
                <b>${fmt(quoteBalance, c.quoteDecimals, 2)} ${esc(target.quoteSymbol)}</b></div>`
           : `<button class="ak-btn ak-primary ak-wide" id="ak-connect">Sign in to bid</button>`}
 
-        ${account && snap.biddingOpen ? `
+        ${account && snap.biddingOpen && !conditionId ? `<p class="ak-hint ak-error">This auction was created before bids were sealed to the committee, so it cannot take a bid here. <a href="#/create">Create one</a> and it will.</p>` : ''}
+        ${account && snap.biddingOpen && conditionId ? `
         <form class="ak-form" id="ak-form">
           <label>Quantity <span>${esc(target.saleSymbol)}</span>
             <input id="ak-qty" type="text" inputmode="decimal" value="100" autocomplete="off" />
@@ -671,7 +718,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
           </label>
           <div class="ak-escrow-box" id="ak-escrow"></div>
           <button class="ak-btn ak-primary ak-wide" type="submit" ${busy ? 'disabled' : ''}>${busy ? 'Working…' : 'Seal and commit'}</button>
-          <p class="ak-hint">You pay the <em>clearing</em> price, never your own maximum.</p>
+          <p class="ak-hint">Encrypted in this browser with batched threshold encryption; only the committee can open it, and only at the close. You pay the <em>clearing</em> price, never your own maximum.</p>
         </form>` : ''}
         ${account && !snap.biddingOpen ? `<p class="ak-hint">Bidding is closed for this auction.</p>` : ''}
       </div>
@@ -702,7 +749,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
       ${saved.length ? `
       <div class="ak-panel">
         <h3>Your bids <span class="ak-h2-note">this browser</span></h3>
-        <p class="ak-hint">The <strong>salt</strong> exists nowhere else. Lose it and your bid cannot be revealed, so you get a refund instead of an allocation. Saved before the transaction is sent, so closing this tab mid-commit cannot strand a bid.</p>
+        <p class="ak-hint">Everything the reveal needs travels inside the ciphertext, so losing this list costs you nothing. It lets the page mark your bids before the close, and it holds the preimage you would need to dispute a wrongful void.</p>
         <table class="ak-table">
           <thead><tr><th>#</th><th>Qty</th><th>Max</th><th>Tx</th></tr></thead>
           <tbody>${saved.map((b) => `<tr${b.bidId === null ? ' class="ak-row-pending"' : ''}>
@@ -714,7 +761,7 @@ export function renderAuction(root: HTMLElement, target: AuctionTarget = DEMO_TA
               : '<span class="ak-pending">not confirmed</span>'}</td>
           </tr>`).join('')}</tbody>
         </table>
-        <button class="ak-btn ak-wide" id="ak-download">Download bids + salts</button>
+        <button class="ak-btn ak-wide" id="ak-download">Download my bids</button>
       </div>` : ''}
     </aside>
   </div>

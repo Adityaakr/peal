@@ -925,9 +925,9 @@ function Auction() {
         moreLabel="How sealed bidding works"
       />
       <p className="peal-fine">
-        The live auction seals bids with salted commitments today. Peal&rsquo;s threshold encryption
-        is not wired into it yet, which is why the auction pages mark that as build rather than
-        live, and why a bidder who loses their salt is refunded instead of allocated.
+        Bids in the live auction are sealed in the browser to the same committee, with the same
+        batched threshold encryption, as everything else on this site. The committee itself is
+        still a testnet prop with derivable keys, and the auction pages say so.
       </p>
     </Section>
   );
