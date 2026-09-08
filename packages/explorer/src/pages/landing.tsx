@@ -1318,14 +1318,6 @@ function Close() {
           The quickstart runs against the live network from the page itself. Nothing to install and
           nothing to sign up for.
         </p>
-        {/* Dropped from the section above when it was reframed, and it should
-            not be dropped from the page: somebody deciding whether to build on
-            this is entitled to know. */}
-        <p className="peal-close-note peal-close-fine">
-          Peal is a devnet. The parameters, the addresses and the endpoints are stable and
-          documented, the committee parameters are published, and the key is held by five
-          independent operators. None of it is carrying real money yet.
-        </p>
       </div>
     </section>
   );
