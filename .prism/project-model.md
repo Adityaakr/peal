@@ -1175,6 +1175,17 @@ mempool (unverified); Shutter does, per-epoch, on Gnosis (footnote 3).
 **Brand rule (user, 2026-09-08):** name "batched threshold encryption (BTE)"
 explicitly on every outward surface; the product is the primitive.
 
+**Operator names (user, 2026-09-08, reaffirmed over a pushback):** the five
+devnet operators carry institution-style names the user chose, Meridian Assay ·
+Halcyon Registry · Northwind Trust · Ardent Notary · Vantage Archive
+(`short` = first word, for the widget). They are invented; the guardrail is that
+`DEVNET_RING_NOTE` ("no organisation by those names operates a node") travels
+with every mention, and the limits page and tlock table say it in prose. Mapped
+onto wire ids 1..5 in `packages/explorer/src/operators.ts` (single source; the
+share log, the committee widget, limits and the tlock table all read it). They
+are labels for processes we run, never parties; every surface that shows a
+name carries "all run by us" beside it. Real operators replace the list once.
+
 ## Telemetry (site honesty pass)
 - divergence: 0.80 (evidence 1.00: the two lenses cited disjoint sources, repo
   file:line vs web URLs; conclusion 0.50) | threshold 0.30 UNCALIBRATED

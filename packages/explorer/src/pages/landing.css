@@ -928,6 +928,19 @@
   color: #0871e7;
 }
 
+/* The operator's name under its number. Small and quiet: it labels a process
+   we run, and the caption beside the widget says so. */
+.peal-cmt-name {
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: rgb(42 54 22 / 42%);
+  transition: color 240ms ease;
+}
+
+.peal-cmt-node.is-on .peal-cmt-name {
+  color: rgb(8 113 231 / 75%);
+}
+
 .peal-prose .peal-cmt-cap {
   margin: 30px auto 0;
   max-width: 520px;

@@ -7,6 +7,7 @@
 //
 // Content is Peal's own — only the structure/motion follow the supplied spec.
 import { StrictMode, useEffect, useRef, useState } from 'react';
+import { DEVNET_OPERATORS, DEVNET_RING, DEVNET_RING_NOTE } from '../operators';
 import { createRoot } from 'react-dom/client';
 import { motion, useScroll, useTransform } from 'motion/react';
 import './landing.css';
@@ -397,18 +398,19 @@ function CommitteeScene() {
         </div>
 
         <div className="peal-cmt-row">
-          {[0, 1, 2, 3, 4].map((i) => (
+          {DEVNET_OPERATORS.map((op, i) => (
             <button
-              key={i}
+              key={op.id}
               type="button"
               className={`peal-cmt-node${on.includes(i) ? ' is-on' : ''}`}
               style={{ ['--i' as string]: i }}
               onClick={() => toggle(i)}
               aria-pressed={on.includes(i)}
-              aria-label={`operator ${i + 1}, ${on.includes(i) ? 'holding a share' : 'not participating'}`}
+              aria-label={`${op.name}, operator ${op.id}, ${on.includes(i) ? 'holding a share' : 'not participating'}`}
             >
               <span className="peal-cmt-key" />
-              <span className="peal-cmt-n">{i + 1}</span>
+              <span className="peal-cmt-n">{op.id}</span>
+              <span className="peal-cmt-name">{op.short}</span>
             </button>
           ))}
         </div>
@@ -793,7 +795,8 @@ function Committee() {
         question, and the honest answer is:
         <strong> devnet, five operators we run ourselves</strong>, from one deployment, with keys
         dealt by a trusted dealer and, for the auction committee, derivable from a published
-        string. Nothing here is custody and nothing here should hold value.
+        string. They are {DEVNET_RING}: {DEVNET_RING_NOTE}. Nothing here is custody and nothing
+        here should hold value.
         <strong> Mainnet is five named, independently operated members</strong> under distributed
         key generation, published here by name before the network carries anything real.
       </p>

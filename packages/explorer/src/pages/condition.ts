@@ -7,6 +7,7 @@ import {
   type ConditionDetail,
   type Reveal,
 } from '../api';
+import { operatorName } from '../operators';
 import { wireCopy } from '../playground';
 import { isPrivatePayload } from '../privacy';
 import { getReadConfig, type MempoolConfig } from '../mempool/chain';
@@ -421,7 +422,7 @@ function shareTable(r: Reveal): string {
   const rows = r.shares
     .map(
       (s) => `<tr class="${s.verified ? '' : 'share-rejected'}">
-        <td>operator ${s.operator_id}</td>
+        <td>${esc(operatorName(s.operator_id))} <span class="muted">· operator ${s.operator_id}</span></td>
         <td class="num">+${s.submitted_at_ms - first} ms</td>
         <td>${s.verified ? '<span class="ok">verified</span>' : '<strong>rejected</strong>'}</td>
       </tr>`,

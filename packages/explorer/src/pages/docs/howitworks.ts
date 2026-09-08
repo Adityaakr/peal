@@ -1,4 +1,5 @@
 import type { DocsPage } from '../../docs';
+import { DEVNET_RING } from '../../operators';
 
 export const howItWorks: DocsPage = {
   title: 'How it works',
@@ -169,9 +170,9 @@ export const howItWorks: DocsPage = {
               <tr><td>a chain</td><td>none needed</td><td>none needed; three HTTP calls, and a chain
               only if you anchor a root to one</td></tr>
               <tr><td>who holds the keys today</td><td>the League of Entropy, around two dozen named
-              organisations</td><td>five operators we run, on a devnet, with dealer-generated keys.
-              Mainnet is five named, independent operators under DKG, none of them trusted, and
-              they will be listed here by name.</td></tr>
+              organisations</td><td>five operators we run, on a devnet, with dealer-generated keys:
+              ${DEVNET_RING}, names we chose for processes we run, not organisations. Mainnet is five named, independent operators under DKG, none of them trusted, and
+              their real names replace these.</td></tr>
               <tr><td>post-quantum</td><td>no, and drand says so</td><td>no; the same pairings</td></tr>
             </tbody>
           </table>
