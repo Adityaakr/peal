@@ -76,7 +76,7 @@ export const useCases: DocsPage = {
             <h3>Bounty and grant submissions</h3>
             <p>Entries open together at the deadline, so a late entrant cannot read the field and
             beat it by a nose, and a reviewer cannot leak one entry to another team.</p>
-            <p class="dev-use-how"><code>fires_at</code> · the deadline, as a unix second</p>
+            <p class="dev-use-how"><code>opens_at</code> · the deadline, RFC 3339 or unix seconds</p>
           </div>
           <div class="dev-use">
             <h3>Token allocations and fair launches</h3>
@@ -88,13 +88,13 @@ export const useCases: DocsPage = {
             <h3>Embargoes that hold themselves</h3>
             <p>Earnings, a security disclosure, a paper under embargo. Distribute it now in a form
             nobody can open early, and it publishes itself on the hour.</p>
-            <p class="dev-use-how"><code>fires_at</code> · an absolute unix second</p>
+            <p class="dev-use-how"><code>opens_at</code> · an absolute time</p>
           </div>
           <div class="dev-use">
             <h3>Anything with a deadline</h3>
             <p>Exam papers, a dead man's switch, a scheduled disclosure, a time capsule. If the rule
             is "not before this moment, and then everybody at once", it fits.</p>
-            <p class="dev-use-how"><code>in_secs</code> · relative, for anything short lived</p>
+            <p class="dev-use-how"><code>opens_in</code> · relative seconds, for anything short lived</p>
           </div>
         </div>`,
 };
