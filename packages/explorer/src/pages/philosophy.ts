@@ -55,10 +55,11 @@ const tenets = [
   },
 ];
 
-export function renderPhilosophy(root: HTMLElement): () => void {
-  const previousTitle = document.title;
-  document.title = 'The Peal philosophy. Programmable disclosure';
-  root.innerHTML = `
+/** The page as a string, with nothing touched in the document. Rendered into
+ * the document by `renderPhilosophy` and into a static file by src/prerender.ts, so a
+ * reader with no JavaScript gets the same words a browser does. */
+export function philosophyHtml(): string {
+  return `
     <article class="philosophy">
       <header class="philosophy-header scroll-reveal">
         <p class="philosophy-kicker">The Peal philosophy</p>
@@ -98,6 +99,12 @@ export function renderPhilosophy(root: HTMLElement): () => void {
       </footer>
     </article>
   `;
+}
+
+export function renderPhilosophy(root: HTMLElement): () => void {
+  const previousTitle = document.title;
+  document.title = 'The Peal philosophy. Programmable disclosure';
+  root.innerHTML = philosophyHtml();
 
   const cleanupReveal = mountScrollReveal(root);
 

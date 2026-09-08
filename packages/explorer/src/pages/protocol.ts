@@ -21,10 +21,11 @@ const sections = [
   ['trust', 'Trust model'],
 ] as const;
 
-export function renderProtocol(root: HTMLElement): () => void {
-  const previousTitle = document.title;
-  document.title = 'Peal protocol. how guaranteed reveal works';
-  root.innerHTML = `
+/** The page as a string, with nothing touched in the document. Rendered into
+ * the document by `renderProtocol` and into a static file by src/prerender.ts, so a
+ * reader with no JavaScript gets the same words a browser does. */
+export function protocolHtml(): string {
+  return `
     <article class="protocol-article">
       <header id="overview" class="scroll-reveal">
         <p class="kicker">Peal protocol reference · v0</p>
@@ -679,6 +680,12 @@ console.log(slot.text);</code></pre>
       </section>
     </article>
   `;
+}
+
+export function renderProtocol(root: HTMLElement): () => void {
+  const previousTitle = document.title;
+  document.title = 'Peal protocol. how guaranteed reveal works';
+  root.innerHTML = protocolHtml();
 
   const cleanupReveal = mountScrollReveal(root);
   const nav = root.querySelector<HTMLElement>('.protocol-nav');

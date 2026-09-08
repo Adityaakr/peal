@@ -223,9 +223,10 @@ function capsulePill(header: string): string {
 
 // ---- the page ----------------------------------------------------------
 
-export function renderMempoolLanding(root: HTMLElement): () => void {
-  const previousTitle = document.title;
-  document.title = 'Peal Network. the mempool goes dark';
+/** The page as a string, with nothing touched in the document. Rendered into
+ * the document by `renderMempoolLanding` and into a static file by src/prerender.ts, so a
+ * reader with no JavaScript gets the same words a browser does. */
+export function mempoolLandingHtml(): string {
 
   const publicSteps: Step[] = [
     {
@@ -320,7 +321,7 @@ export function renderMempoolLanding(root: HTMLElement): () => void {
     },
   ];
 
-  root.innerHTML = `
+  return `
     <div class="ml">
       <section class="ml-hero" id="ml-stage">
         <h1 class="ml-h1 scroll-reveal">the mempool goes dark.</h1>
@@ -422,6 +423,12 @@ export function renderMempoolLanding(root: HTMLElement): () => void {
       </section>
     </div>
   `;
+}
+
+export function renderMempoolLanding(root: HTMLElement): () => void {
+  const previousTitle = document.title;
+  document.title = 'Peal Network. the mempool goes dark';
+  root.innerHTML = mempoolLandingHtml();
 
   // The hero loop: 10 beats, ~1.1s each. Toggle phase classes on the stage.
   const stage = root.querySelector<HTMLElement>('#ml-stage')!;

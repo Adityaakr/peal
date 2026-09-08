@@ -45,28 +45,38 @@ const server = await createServer({
 });
 
 try {
-  const { prerenderDocs } = await server.ssrLoadModule('/src/prerender.ts');
+  const { prerenderDocs, prerenderPages } = await server.ssrLoadModule('/src/prerender.ts');
+  // Blocks marked scroll-reveal start invisible and are shown by the reveal
+  // observer at mount. With no script running nothing would show them, so the
+  // static page carries the one rule that makes them visible without it.
+  const noscript =
+    '<noscript><style>.scroll-reveal{opacity:1!important;transform:none!important;filter:none!important}</style></noscript>';
+  // Pages link by fragment, which the app's router understands and a reader
+  // with no JavaScript cannot follow. The static copy links every prerendered
+  // route by clean path instead; the router accepts those too, so the same
+  // anchor works for both kinds of reader.
+  const pathLinks = (html) =>
+    html.replace(/href="#\/(developers|protocol|auction|mempool|philosophy)(\/[a-z0-9-]+)?"/g, (_m, top, sub) => `href="/${top}${sub ?? ''}"`);
   let n = 0;
-  for (const page of prerenderDocs()) {
-    let html = shell.replace(/<title>[^<]*<\/title>/, `<title>${esc(page.title)} · Peal for developers</title>`);
-    html = replaceMeta(html, 'description', page.lede);
+  for (const page of [...prerenderDocs(), ...prerenderPages()]) {
+    const docs = page.path.startsWith('developers');
+    let html = shell.replace(/<title>[^<]*<\/title>/, `<title>${esc(page.title)}${docs ? ' · Peal for developers' : ''}</title>`);
+    if (page.lede) {
+      html = replaceMeta(html, 'description', page.lede);
+      html = replaceMeta(html, 'og:description', page.lede);
+    }
     html = replaceMeta(html, 'og:title', page.title);
-    html = replaceMeta(html, 'og:description', page.lede);
     // renderDocs adds this class at runtime to unclamp <main>; the static page
     // needs it from the first paint or the layout jumps when the app boots.
-    html = html.replace('<body>', '<body class="docs-page">');
-    // The shell's sidebar and pager link by fragment, which the app's router
-    // understands and a reader with no JavaScript cannot follow. The static
-    // copy links by clean path instead; the router accepts those too, so the
-    // same anchor works for both kinds of reader.
-    const article = page.html.replace(/href="#\/developers(\/[a-z0-9-]+)?"/g, (_m, sub) => `href="/developers${sub ?? ''}"`);
-    html = html.replace('<main id="app"></main>', `<main id="app">${article}</main>`);
+    if (docs) html = html.replace('<body>', '<body class="docs-page">');
+    html = html.replace('</head>', `${noscript}\n  </head>`);
+    html = html.replace('<main id="app"></main>', `<main id="app">${pathLinks(page.html)}</main>`);
     const out = join(dist, page.path, 'index.html');
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, html);
     n += 1;
   }
-  console.log(`prerender: wrote ${n} developer pages into dist/`);
+  console.log(`prerender: wrote ${n} pages into dist/`);
 } finally {
   await server.close();
 }

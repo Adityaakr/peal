@@ -24,6 +24,10 @@ import { network } from './pages/docs/network';
 import { x402Page } from './pages/docs/x402';
 import { roadmap } from './pages/docs/roadmap';
 import { createAuctionDocsPage } from './pages/docs-create-auction';
+import { protocolHtml } from './pages/protocol';
+import { sealbidLandingHtml } from './pages/sealbid-landing';
+import { mempoolLandingHtml } from './pages/mempool-landing';
+import { philosophyHtml } from './pages/philosophy';
 
 export interface PrerenderedDoc {
   /** The clean path, without a leading slash: `developers/quickstart`. */
@@ -61,4 +65,20 @@ export function prerenderDocs(): PrerenderedDoc[] {
       html: docsShellHtml(page, `#/${path}`, page.wide ? '' : tocLinksHtml(body)),
     };
   });
+}
+
+/** The four pages the developer docs point at for the committee, the ceremony
+ * and the threat model. Vanilla renderers, so each exposes its markup as a
+ * string and the page is written out the same way the docs are. The widgets
+ * on them (the hero loops, the section nav, copy buttons) are wired by the
+ * renderer at mount and fall back to their static content here. */
+const PAGES_STATIC: [string, string, () => string][] = [
+  ['protocol', 'Peal protocol. how guaranteed reveal works', protocolHtml],
+  ['auction', 'SealBid. sealed-bid auctions on Peal', sealbidLandingHtml],
+  ['mempool', 'Peal Network. the mempool goes dark', mempoolLandingHtml],
+  ['philosophy', 'The Peal philosophy. Programmable disclosure', philosophyHtml],
+];
+
+export function prerenderPages(): PrerenderedDoc[] {
+  return PAGES_STATIC.map(([path, title, html]) => ({ path, title, lede: '', html: html() }));
 }

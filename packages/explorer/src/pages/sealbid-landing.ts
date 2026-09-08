@@ -144,11 +144,12 @@ function useCaseCard(c: (typeof USE_CASES)[number]): string {
   </article>`;
 }
 
-export function renderSealbidLanding(root: HTMLElement): Cleanup {
-  const prevTitle = document.title;
-  document.title = 'SealBid. sealed-bid auctions on Peal';
+/** The page as a string, with nothing touched in the document. Rendered into
+ * the document by `renderSealbidLanding` and into a static file by src/prerender.ts, so a
+ * reader with no JavaScript gets the same words a browser does. */
+export function sealbidLandingHtml(): string {
 
-  root.innerHTML = `
+  return `
 <div class="ml sl">
   <section class="ml-hero">
     <p class="ml-kicker scroll-reveal">sealbid</p>
@@ -444,6 +445,12 @@ export function renderSealbidLanding(root: HTMLElement): Cleanup {
     </div>
   </section>
 </div>`;
+}
+
+export function renderSealbidLanding(root: HTMLElement): Cleanup {
+  const prevTitle = document.title;
+  document.title = 'SealBid. sealed-bid auctions on Peal';
+  root.innerHTML = sealbidLandingHtml();
 
   // The hero loop. Eight beats, and the order is the argument: the open book
   // is read and then beaten by one tick, while the sealed book sits inert
