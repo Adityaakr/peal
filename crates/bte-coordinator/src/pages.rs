@@ -247,6 +247,17 @@ pub const PAGES: &[Page] = &[
         share: None,
     },
     Page {
+        path: "stakeholder-tokens",
+        route: "#/stakeholder-tokens",
+        title: "Stakeholder tokens. Startup fundraising powered by Peal.",
+        description:
+            "A complete startup fundraising and investor-management platform: funded commitments stay private while the book forms, then one clearing valuation, every allocation and every refund can be verified after the close.",
+        schema: "WebPage",
+        index: true,
+        image: None,
+        share: None,
+    },
+    Page {
         path: "auction",
         route: "#/auction",
         title: "Sealed bid auctions where nobody can see a bid early.",

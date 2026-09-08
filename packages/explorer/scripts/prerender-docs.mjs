@@ -56,7 +56,7 @@ try {
   // route by clean path instead; the router accepts those too, so the same
   // anchor works for both kinds of reader.
   const pathLinks = (html) =>
-    html.replace(/href="#\/(developers|protocol|auction|mempool|philosophy)(\/[a-z0-9-]+)?"/g, (_m, top, sub) => `href="/${top}${sub ?? ''}"`);
+    html.replace(/href="#\/(developers|protocol|auction|mempool|stakeholder-tokens|philosophy)(\/[a-z0-9-]+)?"/g, (_m, top, sub) => `href="/${top}${sub ?? ''}"`);
   let n = 0;
   for (const page of [...prerenderDocs(), ...prerenderPages()]) {
     const docs = page.path.startsWith('developers');

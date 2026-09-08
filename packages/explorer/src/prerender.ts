@@ -27,6 +27,7 @@ import { createAuctionDocsPage } from './pages/docs-create-auction';
 import { protocolHtml } from './pages/protocol';
 import { sealbidLandingHtml } from './pages/sealbid-landing';
 import { mempoolLandingHtml } from './pages/mempool-landing';
+import { stakeholderTokensHtml } from './pages/stakeholder-tokens';
 import { philosophyHtml } from './pages/philosophy';
 
 export interface PrerenderedDoc {
@@ -76,6 +77,7 @@ const PAGES_STATIC: [string, string, () => string][] = [
   ['protocol', 'Peal protocol. how guaranteed reveal works', protocolHtml],
   ['auction', 'SealBid. sealed-bid auctions on Peal', sealbidLandingHtml],
   ['mempool', 'Peal Network. the mempool goes dark', mempoolLandingHtml],
+  ['stakeholder-tokens', 'Stakeholder tokens. Startup fundraising powered by Peal', stakeholderTokensHtml],
   ['philosophy', 'The Peal philosophy. Programmable disclosure', philosophyHtml],
 ];
 

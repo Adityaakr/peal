@@ -14,6 +14,7 @@ import { renderLanding } from './pages/landing';
 import { renderLive } from './pages/live';
 import { renderMempool } from './pages/mempool';
 import { renderMempoolLanding } from './pages/mempool-landing';
+import { renderStakeholderTokens } from './pages/stakeholder-tokens';
 import { renderPhilosophy } from './pages/philosophy';
 import { renderProtocol } from './pages/protocol';
 import { renderCreateAuctionDocs } from './pages/docs-create-auction';
@@ -147,7 +148,7 @@ const PAGE_PATHS = new Set([
   'developers/auctions', 'developers/createauction', 'developers/usecases',
   'developers/api', 'developers/x402', 'developers/limits', 'developers/network',
   'developers/roadmap',
-  'protocol', 'mempool', 'auction', 'execution', 'philosophy', 'create', 'app',
+  'protocol', 'mempool', 'auction', 'stakeholder-tokens', 'execution', 'philosophy', 'create', 'app',
 ]);
 
 /** Whether a fragment names a developer page, so it can be upgraded to a path. */
@@ -287,6 +288,8 @@ function route(): void {
     cleanup = renderExecution(root);
   } else if (hash === '#/mempool') {
     cleanup = renderMempoolLanding(root);
+  } else if (hash === '#/stakeholder-tokens') {
+    cleanup = renderStakeholderTokens(root);
   } else if (hash === '#/encrypted-mempool') {
     cleanup = renderMempool(root);
   } else if (hash === '#/protocol') {
