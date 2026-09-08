@@ -100,6 +100,11 @@ onchain at bid time, so loss is provable, and the reveal-deadline refund path is
 permissionless so funds are never trapped. **This is an availability
 single-point-of-failure and is a production blocker.**
 
+Since [0005](./decisions/0005-wire-bte.md) this assumption is live rather than
+stated: every bid's plaintext, salt included, exists only inside its ciphertext
+and in the bidder's browser as a convenience. The bidder is no longer a liveness
+dependency; the coordinator's store is.
+
 ### 5. No domain separation in the cipher
 
 `seal()` accepts no associated data (`crates/bte-crypto/src/lib.rs:169`). Domain
@@ -129,6 +134,17 @@ Neither is trusted with funds:
 There is deliberately **no admin sweep function**. Fee configuration is
 snapshotted into each auction at creation and cannot change afterwards. Pausing,
 if enabled, must never block refunds.
+
+### 8. The settler
+
+Bids are hidden by batched threshold encryption (BTE), not by anything the
+settler does. `packages/sealbid-settler` closes bidding, registers the reveal
+root, processes reveals and finalizes. It cannot alter a bid (each is checked against its
+commitment), omit one (the root must cover the committed count) or invent a
+root (threshold signatures). On the testnet deployment it derives the demo
+committee's signing keys, which makes it the committee for signing purposes;
+that is the prop the pages already describe, not a new assumption. A real
+deployment gives it a gas key only.
 
 ## Summary table
 

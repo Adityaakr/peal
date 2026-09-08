@@ -49,3 +49,35 @@ suites and all TypeScript suites unchanged.
 **Not yet built.** Slices 6–8 and 10–19: real Peal encryption wiring, the
 committee node's independent close check, SDK, API, indexer, relayer, both UIs,
 white-label config, receipts, E2E.
+
+## 2026-09-08 — slice 6: the auction is sealed to the committee
+
+An outside reader caught the contradiction: the landing page's own honest-limits
+section admitted the live auction used salted commitments with the bidder holding
+the salt, which is commit-reveal, the scheme the site argues against. Recorded as
+[0005](./decisions/0005-wire-bte.md); the short version is that AuctionKit
+stopped after the contract slices and slice 6 never happened.
+
+**Built.** The auction now runs on batched threshold encryption (BTE), the
+network's own primitive, with no contract change. The create page opens a coordinator condition at
+the auction's end time and carries its id in `encryptionEpoch` (it fits: 29
+ASCII bytes in a bytes32). The bid page seals a 232-byte payload, salt included,
+in the browser through the SDK and commits the real ciphertext hash. A settler
+(`packages/sealbid-settler`, modelled on the mempool one) joins opened slots to
+committed bids by that hash, builds the reveal tree with one leaf per committed
+bid, signs the digest with a threshold of committee keys, and drives
+`registerRevealRoot` → `processReveals` → `finalize`, or `failOnRevealTimeout`
+after the deadline. A bid that does not open to its commitment becomes a void
+entry rather than a halt.
+
+**Tests.** 19 new vitest cases in `peal-auctionkit` (condition, payload, merkle,
+settle); the anvil e2e now settles through `planReveal`. 45 pass, 4 skip without
+anvil. Explorer typechecks and builds.
+
+**Copy.** The "not yet threshold encrypted" limit became a live item; a new build
+item states what is still true, that the root is signed rather than verified
+onchain. Home page fine print and the bid page's salt warnings rewritten.
+
+**Not yet built.** Node-side signing (slice 8), onchain share verification (8b),
+a multi-batch settlement check (7), and a new demo auction: the one at
+`ACTIVE_DEMO.auction` predates the change and takes no bids.

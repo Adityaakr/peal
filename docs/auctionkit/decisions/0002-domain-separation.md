@@ -46,6 +46,32 @@ plainly:
 So a replay costs the attacker a wasted batch slot and an escrow they get
 refunded. It cannot corrupt a result.
 
+## As built (2026-09-08, [0005](./0005-wire-bte.md))
+
+The payload that shipped is narrower than the list above and the reasons are
+recorded here so the two do not look like a disagreement:
+
+```
+"PEALBID1" || abi.encode(chainId, auction, bidder, quantity, maxPriceTick, salt, bidVersion)
+```
+
+- `bidId` is gone from the payload for the reason [0004](./0004-void-and-dispute.md)
+  removed it from the commitment: the bidder cannot know it before committing.
+  The settler joins an opened slot to its bid by the ciphertext hash the
+  contract stored at commit time, which needs no id inside the plaintext.
+- `auctionId` and `batchIndex` are gone because the auction address on one
+  chain is the id, and the batch a ciphertext lands in is the coordinator's
+  choice, not the bidder's.
+- `encryptionEpoch` is gone because it now *is* the condition id
+  (`condition.ts`), so it is bound by which condition the bid was sealed to
+  rather than repeated inside it.
+- `bidder` is present and checked. It is what stops a payload sealed by one
+  account being matched to another account's commitment.
+
+The consequence is unchanged: detection at reveal, not prevention at submit.
+A payload whose `chainId`, `auction` or `bidder` does not match, or whose
+commitment does not recompute, becomes a void entry (`settle.ts`).
+
 ## When to revisit
 
 If `bte-crypto` ever gains an AAD parameter — which would be a change to

@@ -11,7 +11,9 @@ export const intro: DocsPage = {
     <p>Peal is a programmable confidentiality layer for time-bound digital markets. Bids, offers,
     votes, commitments and agent intents arrive encrypted and remain unreadable until a
     predefined condition is met. When that moment arrives, the entire set is revealed
-    together.</p>
+    together. The primitive underneath every one of those is batched threshold encryption
+    (BTE): a payload is encrypted on the client to a committee, and only a threshold of its
+    operators, acting after the condition fires, can open the batch.</p>
 
     <blockquote class="doc-quote">Most products with a submission deadline have a hidden trust
     problem: the operator can see what participants submit before everyone else. They can promise

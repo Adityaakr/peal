@@ -15,9 +15,10 @@ export function renderCreateAuctionDocs(root: HTMLElement): () => void {
     markdown: `
 ## What you are building
 
-A sealed bid auction where every bid is encrypted before it leaves the bidder's
-device, nothing is readable while bidding is open, and every bid opens in the
-same instant when the clock runs out. No bidder can see another's number, you
+A sealed bid auction where every bid is encrypted with batched threshold
+encryption (BTE) before it leaves the bidder's device, nothing is readable while
+bidding is open, and every bid opens in the same instant when the clock runs
+out. No bidder can see another's number, you
 cannot see them either, and neither can we.
 
 Your bidders need no wallet, no account and no gas. They need a browser.

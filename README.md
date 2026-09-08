@@ -70,6 +70,26 @@ seller holds rather than hidden in the interface.
 [`packages/live`](packages/live) is the pure half, 217 tests, no DOM and no
 network.
 
+## SealBid
+
+The escrowed, on-chain sealed-bid auction, live on Tempo Moderato. An issuer
+funds a supply and sets a price ladder; bidders escrow quantity times their
+maximum price and everyone who wins pays one uniform clearing price. Each bid is
+sealed in the bidder's browser with **batched threshold encryption (BTE)**, the
+same primitive as everything else here: the bid page encrypts quantity, price
+and salt to the auction's condition under the committee's public parameters and
+commits the ciphertext hash beside a salted commitment. There is no
+commit-reveal in it. The commitment only binds the decrypted bid to its bidder;
+BTE is what hides it. At the close the batch opens, a
+settler ([`packages/sealbid-settler`](packages/sealbid-settler)) registers the
+committee-signed reveal root and processes every bid, and the contract checks
+each revealed bid against the commitment its bidder posted before the close.
+Nobody keeps a salt and nobody sends a reveal transaction. The contracts, the
+client and the trust assumptions are in [`docs/auctionkit`](docs/auctionkit);
+decision [0005](docs/auctionkit/decisions/0005-wire-bte.md) is where the
+sealing was wired in, and [`docs/deploy-sealbid-settler.md`](docs/deploy-sealbid-settler.md)
+is how the settler goes live.
+
 ## The encrypted mempool
 
 The flagship demo. It is the same swap sent into two mempools at once, live on

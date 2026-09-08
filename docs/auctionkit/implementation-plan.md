@@ -30,13 +30,13 @@ Each slice ends with tests passing before the next begins.
 | 3 | **Auction mathematics, standalone and tested** | **done** |
 | 4 | Contract lifecycle, escrow, custody | **done** |
 | 5 | Bid commitments | **done** |
-| 6 | Real Peal encryption integration | pending |
-| 7 | Multi-batch support | pending |
-| 8 | Committee-controlled reveal | **contract side done**, node side pending |
+| 6 | Real Peal encryption integration | **done**, see [0005](./decisions/0005-wire-bte.md) |
+| 7 | Multi-batch support | pending (settler untested past one batch) |
+| 8 | Committee-controlled reveal | **contract side done**, settler done (`packages/sealbid-settler`), node-side signing pending |
 | 8b | Onchain share verification (replaces the signature layer) | **benchmarked**, see [0003](./decisions/0003-onchain-share-verification.md) |
 | 9 | Settlement + recovery | **done** |
 | 10 | SDK + API | pending |
-| 11 | Indexer + relayer | pending |
+| 11 | Indexer + relayer | settler done; indexer pending |
 | 12 | Bidder interface | pending |
 | 13 | Issuer interface | pending |
 | 14 | White-label configuration | pending |

@@ -44,8 +44,9 @@ const demos: Demo[] = [
   {
     id: 'auction-bid',
     title: '2. Place a sealed bid',
-    note: `The amount goes into a fixed width record and is encrypted here, so what reaches the
-           network is 320 bytes whether the bid is five dollars or five hundred thousand. Run it
+    note: `The amount goes into a fixed width record and is encrypted here with batched threshold
+           encryption, so what reaches the network is 320 bytes of ciphertext whether the bid is
+           five dollars or five hundred thousand. Run it
            more than once to add bidders: none of them can see the others.`,
     code: `await peal.bid(auction.id, {
   amountMinor: 125_00,       // 125.00 in a 2 decimal currency
@@ -124,7 +125,8 @@ export const auctions: DocsPage = {
     ${demos.map(demoHtml).join('')}
 
     <h2 id="the-rules">The rules, and why each one is there</h2>
-    <p>The rounds API gives you submissions that open together. An auction is that plus the rules
+    <p>The rounds API gives you submissions sealed with batched threshold encryption (BTE) that
+    open together when a threshold of the committee produces its shares. An auction is that plus the rules
     that decide what a bid <em>means</em>, and those rules are the reason this lives in the API
     rather than being left to every caller to get subtly wrong.</p>
     <ul class="doc-list">

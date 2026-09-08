@@ -7,8 +7,8 @@ description: Use when adding sealed submissions or timed disclosure to an applic
 
 Peal collects encrypted submissions and opens them all at the same moment.
 
-A caller encrypts a payload in their own process and sends only the ciphertext.
-Nobody can read it early: not other participants, not the application owner,
+A caller encrypts a payload in their own process with batched threshold
+encryption (BTE) and sends only the ciphertext. Nobody can read it early: not other participants, not the application owner,
 not the operators. At the deadline, every submission opens at once.
 
 **The reveal is not a participant's move.** In commit-and-reveal, whoever is

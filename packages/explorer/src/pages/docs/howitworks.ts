@@ -5,9 +5,10 @@ export const howItWorks: DocsPage = {
   lede: 'Three pieces, and which one does what, because somebody deciding whether to build on this needs the mechanism rather than the pitch.',
   html: `
 <h2>How it works</h2>
-        <p>Your app encrypts locally and sends a ciphertext. The coordinator stores it and holds no
-        key that opens it. When the moment arrives, three of the five operators open the whole
-        batch at once, and everyone reads the same result.</p>
+        <p>Your app encrypts locally with batched threshold encryption (BTE) and sends a
+        ciphertext. The coordinator stores it and holds no key that opens it. When the moment
+        arrives, three of the five operators each publish a decryption share, the whole batch
+        opens at once, and everyone reads the same result.</p>
 
         <figure class="dev-figure">
           <svg viewBox="0 0 920 352" role="img" class="sketch"

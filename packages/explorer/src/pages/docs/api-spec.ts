@@ -131,7 +131,7 @@ export const ENDPOINTS: Endpoint[] = [
     path: '/v1/rounds/{id}/seals',
     title: 'Seal a payload to a round',
     summary:
-      'Hand over a ciphertext. The encryption happened on your machine; this endpoint has never accepted a plaintext and never will.',
+      'Hand over a ciphertext. The encryption happened on your machine, with batched threshold encryption (BTE) under the committee\'s public parameters; this endpoint has never accepted a plaintext and never will.',
     params: [
       { name: 'id', in: 'path', type: 'string', required: true, carry: 'round', description: 'The round to seal to.' },
       { name: 'ciphertext_b64', in: 'body', type: 'string', required: true, description: 'The sealed payload, base64. Parsed, on curve and subgroup checked before it is stored.' },
@@ -229,7 +229,7 @@ export const ENDPOINTS: Endpoint[] = [
     path: '/v1/auctions',
     title: 'Open an auction',
     summary:
-      'A round with the rules that decide what a bid means. Rules that cannot be satisfied are refused here rather than at the close.',
+      'A round with the rules that decide what a bid means. Every bid is sealed with batched threshold encryption and opens only when the round fires. Rules that cannot be satisfied are refused here rather than at the close.',
     params: [
       { name: 'closes_in', in: 'body', type: 'integer', description: 'Seconds from now.', example: '3600', numeric: true },
       { name: 'closes_at', in: 'body', type: 'string | integer', description: 'Instead of closes_in: RFC 3339 with an offset, or unix seconds.' },
