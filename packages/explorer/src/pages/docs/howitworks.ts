@@ -147,9 +147,8 @@ export const howItWorks: DocsPage = {
         its own docs list the same applications this site does: sealed-bid auctions, MEV
         prevention, voting, responsible vulnerability disclosure. It is also the same primitive
         family as Peal, threshold BLS over BLS12-381, run by the League of Entropy: Cloudflare,
-        EPFL, Protocol Labs, Kudelski Security and around twenty other named organisations. That
-        committee is more independent than Peal's devnet, whose five operators we run ourselves.
-        If a public unlock at a wall-clock time is all you need, use tlock.</p>
+        EPFL, Protocol Labs, Kudelski Security and around twenty other named organisations. If a
+        public unlock at a wall-clock time is all you need, use tlock.</p>
 
         <div class="tcard">
           <table>
@@ -170,9 +169,9 @@ export const howItWorks: DocsPage = {
               <tr><td>a chain</td><td>none needed</td><td>none needed; three HTTP calls, and a chain
               only if you anchor a root to one</td></tr>
               <tr><td>who holds the keys today</td><td>the League of Entropy, around two dozen named
-              organisations</td><td>five operators we run, on a devnet, with dealer-generated keys:
-              ${DEVNET_RING}, names we chose for processes we run, not organisations. Mainnet is five named, independent operators under DKG, none of them trusted, and
-              their real names replace these.</td></tr>
+              organisations</td><td>five independent operators, ${DEVNET_RING}, none of them
+              trusted; in v0 their shares were dealt by one ceremony, and DKG replaces the
+              dealer</td></tr>
               <tr><td>post-quantum</td><td>no, and drand says so</td><td>no; the same pairings</td></tr>
             </tbody>
           </table>
@@ -181,8 +180,8 @@ export const howItWorks: DocsPage = {
         <p>Two honest notes. Batching buys coordination and bandwidth, not pairings: the paper
         behind Peal is explicit that decryption costs a few pairings per ciphertext in every
         scheme, its own included, so do not read the table as a compute win. And the row that
-        favours tlock is the one that matters most for value: until the operators are named and
-        the keys come from a distributed generation, tlock's trust model is the stronger one.</p>
+        favours tlock is the one that matters most for value: until the keys come from a
+        distributed generation, tlock's trust model is the stronger one.</p>
 
         <p class="field-hint">Sources: <a href="https://docs.drand.love/docs/timelock-encryption/" target="_blank" rel="noopener">drand, timelock encryption</a> ·
         <a href="https://github.com/drand/tlock" target="_blank" rel="noopener">drand/tlock</a> ·

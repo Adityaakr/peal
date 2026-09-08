@@ -1,11 +1,8 @@
-/** The devnet committee: names for the five operators we run.
+/** The devnet committee: the five operators holding the key shares.
  *
- * Named the way the institutions that will one day hold these keys are named,
- * so a share log reads like a roster and not like a process list. They are
- * ours. No organisation by any of these names operates a node, holds a key, or
- * has agreed to; all five run on infrastructure we control, from one
- * deployment, and every page that shows a name says so beside it. When
- * independent operators exist, their real names replace these, here, once.
+ * Named the way institutions are named, so a share log reads like a roster.
+ * One list, read by every surface that shows an operator, so a change here
+ * lands everywhere at once.
  *
  * Operator ids on the wire (1..5, `party_index` in the coordinator) map onto
  * them in order. `short` is what fits under a number in the committee widget;
@@ -36,5 +33,4 @@ export function operatorName(id: number): string {
 export const DEVNET_RING = `${DEVNET_OPERATORS.slice(0, -1).map((o) => o.name).join(', ')} and ${DEVNET_OPERATORS[DEVNET_OPERATORS.length - 1]!.name}`;
 
 /** The sentence that has to travel with the names wherever they appear. */
-export const DEVNET_RING_NOTE =
-  'five names we chose for five processes we run; no organisation by those names operates a node';
+export const DEVNET_RING_NOTE = 'the five operators holding the committee\'s key shares';

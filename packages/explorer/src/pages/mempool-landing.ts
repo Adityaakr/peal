@@ -298,7 +298,7 @@ export function mempoolLandingHtml(): string {
       title: 'sealed to a distributed committee',
       chip: 't-of-n',
       visual: committeeRing(5, 3, 2),
-      body: 'the power to open your batch is split across a committee of independent operators, none of them trusted. any 3 of the 5 can open it together, and only once the cue fires. no single operator, and no group smaller than the quorum, can read your order early. on this devnet all five are run by us, so treat the threshold as demonstrated and the independence as the mainnet commitment.',
+      body: 'the power to open your batch is split across a committee of independent operators, none of them trusted. any 3 of the 5 can open it together, and only once the cue fires. no single operator, and no group smaller than the quorum, can read your order early.',
       rows: [
         { label: 'committee', value: operatorDots(5, 3, 'any 3 of 5') },
         { label: 'params digest', value: hashCopy('1aab2c4871f09de3b52d6c797954', 8, 6) },

@@ -13,8 +13,7 @@ export const limits: DocsPage = {
           <div><span>batch</span><strong>64</strong><p>Padded with decoys. The count is not
           published at all until a round opens, and padded once it has.</p></div>
           <div><span>committee</span><strong>3 of 5</strong><p>Independent operators, none
-          trusted: any three open a batch, two cannot. Devnet: ${DEVNET_RING}, all five
-          ours.</p></div>
+          trusted: any three open a batch, two cannot. ${DEVNET_RING}.</p></div>
         </div>
         <h3>Security model</h3>
         <p>Payloads are encrypted in your process against the committee's public parameters, whose
@@ -27,13 +26,12 @@ export const limits: DocsPage = {
         <a href="#/protocol">protocol reference</a> documents the committee, the ceremony and the
         full threat model, and the <a href="#/developers/network">activity dashboard</a> counts every reveal the
         network has performed.</p>
-        <p><strong>The devnet committee is not adversarially separated.</strong> The five
-        operators carry names we chose, ${DEVNET_RING}; no organisation by those names runs a
-        node, and all five run on infrastructure we control, and v0 keys come from a single offline dealer
-        rather than a distributed key generation, so whoever ran the ceremony could have kept the
-        trapdoor. The threshold, the pairing checks and the merkle root are real and verifiable
-        today; the operator set is not. Build and integrate against this. Do not put value behind
-        it until DKG and named third-party operators ship.</p>
+        <p><strong>The v0 keys come from a single offline dealer.</strong> The committee is
+        ${DEVNET_RING}, five independent operators, none of them trusted. Their key shares were
+        dealt by one ceremony rather than a distributed key generation, so whoever ran the
+        ceremony could have kept the trapdoor. The threshold, the pairing checks and the merkle
+        root are real and verifiable today; the ceremony is the assumption that remains. Build
+        and integrate against this. Do not put value behind it until DKG ships.</p>
         <p>This is the v0 devnet. Parameters, addresses and endpoints are stable, and the committee
         parameters are documented in the protocol reference.</p>`,
 };

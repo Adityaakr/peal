@@ -605,8 +605,7 @@ export const network: DocsPage = {
               <p class="field-hint">Measured across ${nf.format(o.samples)} opened
               batch${o.samples === 1 ? '' : 'es'}, from the moment the batch froze to the moment its
               payloads were readable. It covers the committee's work, not the wait for the deadline
-              you set. Share arrivals measure liveness on a devnet whose five operators we run,
-              not their independence.</p>`;
+              you set. Share arrivals measure liveness, not independence.</p>`;
           }
         }
       });

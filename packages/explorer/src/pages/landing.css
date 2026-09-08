@@ -928,8 +928,7 @@
   color: #0871e7;
 }
 
-/* The operator's name under its number. Small and quiet: it labels a process
-   we run, and the caption beside the widget says so. */
+/* The operator's name under its number. Small and quiet. */
 .peal-cmt-name {
   font-size: 10.5px;
   letter-spacing: 0.02em;

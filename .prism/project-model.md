@@ -1175,6 +1175,11 @@ mempool (unverified); Shutter does, per-epoch, on Gnosis (footnote 3).
 **Brand rule (user, 2026-09-08):** name "batched threshold encryption (BTE)"
 explicitly on every outward surface; the product is the primitive.
 
+**Positioning (user, 2026-09-08, decided over two pushbacks):** the site says
+"the key is held by five independent operators" and does NOT say the operators
+are run by us anywhere. The dealer ceremony stays stated as the remaining trust
+assumption. Do not reintroduce "run by us" / "ours today" copy.
+
 **Operator names (user, 2026-09-08, reaffirmed over a pushback):** the five
 devnet operators carry institution-style names the user chose, Meridian Assay ·
 Halcyon Registry · Northwind Trust · Ardent Notary · Vantage Archive

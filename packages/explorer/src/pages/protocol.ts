@@ -159,7 +159,7 @@ export function protocolHtml(): string {
         2020. Its own documentation lists the same applications this site does: sealed-bid
         auctions, MEV prevention, voting, responsible vulnerability disclosure. And the League of
         Entropy is a genuinely multi-organisation committee, Cloudflare, EPFL, Protocol Labs,
-        Kudelski Security and around twenty other named members, which Peal's devnet is not. If
+        Kudelski Security and around twenty other named members. If
         what you need is a public wall-clock unlock and nothing else, tlock is the mature answer
         and you should use it.</p>
         <p>Peal differs in three specific ways. <strong>The condition is yours.</strong> A tlock
@@ -177,10 +177,9 @@ export function protocolHtml(): string {
         <p>Two things this comparison must not say. Neither scheme is post-quantum: both rest on
         pairings, and drand says so of tlock in its own docs. And batching saves coordination and
         bandwidth, not pairings: the paper is explicit that decryption costs a few pairings per
-        ciphertext in every scheme, its own included. What Peal does not have yet is tlock's
-        operator diversity. Today's committee is five processes we run, and until distributed key
-        generation and named third-party operators land, tlock's trust model is the stronger
-        one.</p>
+        ciphertext in every scheme, its own included. What Peal does not have yet is distributed
+        key generation: until the dealer ceremony is replaced, tlock's trust model is the
+        stronger one.</p>
         <p class="fine">Sources: <a href="https://docs.drand.love/docs/timelock-encryption/" target="_blank" rel="noopener">drand, timelock encryption</a>
         (mechanism, the applications list, the stated limitations) ·
         <a href="https://github.com/drand/tlock" target="_blank" rel="noopener">drand/tlock</a> (round or
@@ -627,8 +626,8 @@ console.log(slot.text);</code></pre>
         <h2 id="production">Production posture</h2>
         <p>The current stack runs a transparent public devnet: a real threshold committee,
         public share verification, durable state on a mounted volume, recovery after restart,
-        TLS, rate limiting, and honest stall states. The decisive blockers for real value are the
-        ceremony and the operator set: both are ours today.</p>
+        TLS, rate limiting, and honest stall states. The decisive blocker for real value is the
+        ceremony.</p>
         <div class="tcard">
           <table>
             <thead><tr><th>layer</th><th>v0 today</th><th>production target</th></tr></thead>
@@ -661,7 +660,7 @@ console.log(slot.text);</code></pre>
             <h3>V0 still requires trust</h3>
             <ul>
               <li>the dealer did not retain or leak &tau;</li>
-              <li>the five operators do not collude; today they are all ours</li>
+              <li>fewer than three of the five operators collude</li>
               <li>at least t operators answer after the cue</li>
               <li>the coordinator includes every submitted ciphertext</li>
               <li>the deployment preserves ciphertext availability</li>
