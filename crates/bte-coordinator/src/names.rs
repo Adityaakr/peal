@@ -371,7 +371,9 @@ fn prerendered_path(index: &str, page_path: &str) -> Option<std::path::PathBuf> 
     // parent segment or an absolute root would leave the explorer directory.
     if page_path.is_empty()
         || page_path.starts_with('/')
-        || page_path.split('/').any(|seg| seg.is_empty() || seg == "." || seg == "..")
+        || page_path
+            .split('/')
+            .any(|seg| seg.is_empty() || seg == "." || seg == "..")
     {
         return None;
     }
@@ -653,11 +655,15 @@ mod tests {
         let at = |p: &str| prerendered_path("/srv/explorer/index.html", p);
         assert_eq!(
             at("developers/quickstart"),
-            Some(std::path::PathBuf::from("/srv/explorer/developers/quickstart/index.html"))
+            Some(std::path::PathBuf::from(
+                "/srv/explorer/developers/quickstart/index.html"
+            ))
         );
         assert_eq!(
             at("developers"),
-            Some(std::path::PathBuf::from("/srv/explorer/developers/index.html"))
+            Some(std::path::PathBuf::from(
+                "/srv/explorer/developers/index.html"
+            ))
         );
         // The home page has no directory of its own; it is the shell.
         assert_eq!(at(""), None);
