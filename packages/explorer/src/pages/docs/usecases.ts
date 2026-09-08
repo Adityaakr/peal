@@ -22,8 +22,11 @@ export const useCases: DocsPage = {
           <p>Peal supplies the part nobody can build for themselves, which is the evidence that no
           one could peek, copy, alter or open early. <a href="https://docs.x402.org/introduction"
           target="_blank" rel="noopener">x402</a> supplies payment and discovery without an
-          account. <a href="#/developers/roadmap">The API shape and pricing are on the roadmap</a>. The primitive they are built on is live and running
-          the examples on this page today.</p>
+          account. <code>POST /v1/seals</code> is the one-call shape and it is live; the metered twin
+          at <code>/v1/x402</code> answers 402 until it is shown a payment, currently 0.001 USD a
+          call. <a href="#/developers/roadmap">The roadmap</a> has the proof format and
+          <a href="#/developers/x402">metered calls</a> has the handshake. The primitive they are
+          built on is live and running the examples on this page today.</p>
         </div>
 
         <div class="dev-uses">
