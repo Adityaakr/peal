@@ -596,8 +596,8 @@ pub fn llms_txt(origin: &str) -> String {
          \n\
          Use it when people submit something that others must not see yet: sealed bid auctions, \
          private voting, encrypted mempools, quote and procurement rounds, prediction \
-         tournaments, bounty submissions, and actions taken by autonomous agents that must not be \
-         front run.\n\
+         tournaments, bounty submissions, reviewer scoring for grants, hackathons and admissions, \
+         and actions taken by autonomous agents that must not be front run.\n\
          \n\
          What makes it different from a commit and reveal scheme: the reveal is not a \
          participant's move. In commit and reveal, whoever is losing can simply decline to \

@@ -82,6 +82,14 @@ export const useCases: DocsPage = {
             <p class="dev-use-how"><code>opens_at</code> · the deadline, RFC 3339 or unix seconds</p>
           </div>
           <div class="dev-use">
+            <h3>Reviewer scoring for grants, hackathons and admissions</h3>
+            <p>Each reviewer seals their scores. They open together after the panel closes, so
+            nobody anchors on the first score in the sheet, nobody is ranked by who submitted
+            first, and the program can publish the receipt showing that no one, the organisers
+            included, read a score early. Reviewers need no wallet.</p>
+            <p class="dev-use-how"><code>tag: 'panel:&lt;cycle&gt;'</code> · scores as payloads, one condition per cycle</p>
+          </div>
+          <div class="dev-use">
             <h3>Token allocations and fair launches</h3>
             <p>A private order book that opens all at once and clears at one price. No visible
             order flow to trade against, and no allocator advantage from seeing the book first.</p>
