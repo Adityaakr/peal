@@ -1,0 +1,40 @@
+[package]
+name = "peal-bonsai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Peal Links: Bonsai private-payment core over the pinned ZK-Pari circuits (parameters, wallet state, deterministic ledger, verifier path)"
+
+[features]
+default = ["parallel", "ledger"]
+# Native builds prove and verify on all cores. The wasm wallet turns this off:
+# rayon needs threads, threads need SharedArrayBuffer, and the host does not
+# serve the cross-origin isolation headers (docs/peal-links/decisions/0006).
+parallel = ["zkpari/parallel"]
+# The durable sqlite ledger store and the deterministic ledger STF. Off for
+# the wasm wallet, which only needs the wallet and proving side.
+ledger = ["dep:rusqlite"]
+
+[dependencies]
+zkpari = { workspace = true }
+ark-bls12-381 = { workspace = true }
+ark-ec = { workspace = true }
+ark-ff = { workspace = true }
+ark-serialize = { workspace = true }
+ark-std = { workspace = true }
+ark-r1cs-std = "0.6"
+ark-relations = "0.6"
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+hex = { workspace = true }
+rand_chacha = { version = "0.3", default-features = false }
+getrandom = "0.2"
+rusqlite = { version = "0.40.1", features = ["bundled"], optional = true }
+# Account spend authority: ed25519 signatures over registration and submission
+# envelopes (the proofs themselves carry the value authority).
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

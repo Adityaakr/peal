@@ -6,6 +6,7 @@ members = [
     "crates/bte-coordinator",
     "crates/bte-cli",
     "crates/bte-wasm",
+    "crates/peal-bonsai",
 ]
 
 [workspace.package]
@@ -15,6 +16,10 @@ license = "Apache-2.0"
 repository = "https://github.com/Adityaakr/batched-threshold-encryption"
 
 [workspace.dependencies]
+# Bonsai private payments: the ZK-Pari prototype with the payment circuits
+# (R_send, R_recv, R_op), pinned at the head of upstream PR #2. Provenance in
+# docs/peal-links/RESEARCH.md. Bump only with a decision record.
+zkpari = { git = "https://github.com/guruvamsi-policharla/zk-pari", rev = "a8266aac58314214552a214fead1c0258f8de418", default-features = false, features = ["std", "circuits"] }
 bte-crypto = { path = "crates/bte-crypto", features = ["full"] }
 simple-bte = { package = "simple-batched-threshold-encryption", git = "https://github.com/commonwarexyz/simple-bte", rev = "147a08788f6c9b25b52dc58f03518ac30e94d5b8", default-features = false }
 ark-bls12-381 = "0.6.0"

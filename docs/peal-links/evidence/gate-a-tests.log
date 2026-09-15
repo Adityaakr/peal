@@ -1,0 +1,33 @@
+   Compiling peal-bonsai v0.1.0 (/Users/adityakrx/peal-network/crates/peal-bonsai)
+    Finished `release` profile [optimized] target(s) in 7.81s
+     Running unittests src/lib.rs (target/release/deps/peal_bonsai-880db8aafd72674e)
+
+running 2 tests
+test encoding::tests::proof_decoding_rejects_garbage_and_wrong_length ... ok
+test encoding::tests::field_roundtrip_and_noncanonical_rejected ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/gate_a.rs (target/release/deps/gate_a-3392c457c29adfee)
+
+running 3 tests
+test constraint_profile_fits_the_expected_domain ... ok
+test batch_isolates_invalid_proofs_and_resolves_races_deterministically ... ok
+test send_and_claim_on_a_persistent_ledger_with_invalid_operations_rejected ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.35s
+
+     Running tests/parity.rs (target/release/deps/parity-ecc6cbea10e127f5)
+
+running 2 tests
+test claimed_set_matches_upstream_smt ... ok
+test receipt_tree_matches_upstream_roots_and_paths ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+   Doc-tests peal_bonsai
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
