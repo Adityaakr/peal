@@ -164,5 +164,18 @@ Residual risks: committee-attested bridge with a single-process signer fixture (
 4. Explorer polish from inspected screenshots; `.env.example` entries; README section.
 5. Watcher unit tests with an RPC double (narrow unit tests only).
 
+## Reality audit (Phase E, 2026-09-16)
+
+1. **Test doubles, fixtures, demo flags** (`grep -rniE 'mock|stub|fixture|todo|fake|unimplemented|demo|skip|dev_mint'` over the Peal Links crates, SDK, pages, contracts, scripts and config; full output in the session log, summarised here):
+   - `crates/peal-links-node/src/api.rs` dev-mint endpoint: mounted only when `dev_mint` is on (`PEAL_LINKS_DEV_MINT=1` or config), refused with a mainnet namespace, labelled in the status document, the node log and the app. **Not reachable from the default demo path**: `stack.sh` no longer sets it and both SDK tests and both browser specs fund through real deposits. Blocker record below stays until the endpoint is removed.
+   - `crates/peal-links-node/src/settlement.rs` single-process signer committee: **reachable by design in the local demo**, labelled `signer_mode: single-process-fixture` in the status document, in the node log at start, in the withdraw dialog and in every document; refused with a mainnet namespace. Blocker: settlement trust (decision 0005).
+   - `packages/explorer/src/pages/bonsai-landing.ts` hero preview: fictional data, labelled "illustration · fictional data" on the card.
+   - `MemoryStore` in `packages/links/src/account.ts`: an in-memory `WalletStore` used by Node tests; the explorer uses `indexedDbStore`. Not a fake of anything (storage is an interface).
+   - Test tokens (`TestUSD` faucet, anvil public keys): local and test chains only; the faucet is refused on a mainnet namespace by the SDK and the token is never placed by the scripts on one.
+   - No `todo!`, `unimplemented!`, `TODO` or skipped tests in the Peal Links code. Verifier paths: `ZkPari::verify` and `batch_verify` only; no hash-check or return-true verifier exists.
+2. **Private material on the wire and in logs**: the browser flow captures every request both contexts send to `/links/v1/` and asserts no `spend_seed`, `enc_seed`, `balance`, `claimed`, `pending_deposits`, `sent_openings` or passphrase appears in any body or URL, that inbox posts carry ciphertext without an `amount`, and that operation submissions carry exactly the envelope fields (evidence/phase-d/links-flow-playwright.log). The node log after the full suites contains no hex string of 200 or more characters (no proofs or envelopes are logged) and no `spend_seed`, `enc_seed`, `randomness`, `passphrase` or `"balance"`; the product store's inbox rows contain no `amount` field (ciphertext only). Analytics: none on these routes.
+3. **Existing Peal routes**: the screenshot spec captures home, the mempool landing and the developer docs at three widths with no page errors; `pnpm -C packages/explorer build` succeeds (17 prerendered pages, 247 assets) with the new pages included; `cargo test --workspace` and `forge test` run in Phase F.
+4. **Gate evidence matches commits**: Gate A `06703bf`; Gates B, C, D recorded in the commits that added them; every artifact path listed exists under `docs/peal-links/evidence/`.
+
 ### Next step
-Run the browser flow with the withdrawal step, then the reality audit.
+Finish the Phase E edge tests (reload during proving, backup restore in a fresh browser), record Gate E, then Phase F: workspace-wide tests, clean-checkout run of `scripts/peal-links/demo.sh`, handoff.

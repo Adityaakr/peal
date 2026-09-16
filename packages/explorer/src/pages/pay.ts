@@ -144,7 +144,9 @@ function html(s: PayState): string {
         : `<span class="pl-status pl-status-bad"><span class="pl-status-dot"></span>signature does not verify: do not pay</span>`;
 
   let action = '';
-  if (state === 'payable' && s.manifestOk && paidHere !== null && s.stage === 'idle') {
+  if (state === 'payable' && s.manifestOk && paidHere === null && s.stage === 'idle' && s.request.reserved) {
+    action = `<p class="pl-small" style="text-align:center;margin:0">Another payer reserved this request a few minutes ago. If they do not complete it, the reservation expires and this page updates by itself.</p>`;
+  } else if (state === 'payable' && s.manifestOk && paidHere !== null && s.stage === 'idle') {
     action = `<a class="pl-btn pl-btn-block" href="#/bonsai/app">Open my payments</a><p class="pl-small" style="text-align:center;margin:0">This link was paid from this browser. Paying it again would send a second payment.</p>`;
   } else if (state === 'payable' && s.manifestOk) {
     if (s.stage === 'delivered' || s.stage === 'delivery_pending' || s.stage === 'accepted') {
@@ -275,7 +277,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
   };
 
   const pay = async (account: LinksAccount) => {
-    const req = await client.getRequest(requestId);
+    const req = await client.getRequest(requestId, s.intentId);
     s.request = req;
     await run('checking the request and reserving it', 'preparing', async () => {
       // The SDK verifies the manifest, reserves, proves, submits, delivers.
@@ -397,7 +399,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
   void (async () => {
     await loadStatus();
     try {
-      s.request = await client.getRequest(requestId);
+      s.request = await client.getRequest(requestId, s.intentId);
     } catch (e) {
       if (stale) return;
       if (e instanceof LinksApiError && e.status === 404) root.innerHTML = problem('request not found', 'The Peal Links node does not know this request. It may have been created on another deployment, or the local stack was reset.');
@@ -421,7 +423,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     const timer = window.setInterval(async () => {
       if (stale) return;
       try {
-        const fresh = await client.getRequest(requestId);
+        const fresh = await client.getRequest(requestId, s.intentId);
         if (fresh.status !== s.request?.status || fresh.reserved !== s.request?.reserved) {
           s.request = fresh;
           paint();

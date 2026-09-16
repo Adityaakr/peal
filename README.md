@@ -90,6 +90,29 @@ decision [0005](docs/auctionkit/decisions/0005-wire-bte.md) is where the
 sealing was wired in, and [`docs/deploy-sealbid-settler.md`](docs/deploy-sealbid-settler.md)
 is how the settler goes live.
 
+## Peal Links
+
+Private payment links on the Bonsai construction (Commonware's account-based
+private payments with the ZK-Pari SNARK). Someone creates a payment request,
+shares the link or QR code, and receives a payment into a private balance on
+a Peal-run ledger; the payer's browser makes the proof. Deposits and
+withdrawals go through an ERC-20 gateway on a backing chain and are public;
+everything between them is inside commitments and 128-byte proofs.
+
+- Landing `#/bonsai`, app `#/bonsai/app`, checkout `#/pay/<id>`.
+- Core crate [`crates/peal-bonsai`](crates/peal-bonsai) (pinned upstream
+  circuits, wallet journal, ledger STF), node
+  [`crates/peal-links-node`](crates/peal-links-node), wasm wallet
+  [`crates/peal-links-wasm`](crates/peal-links-wasm), SDK
+  [`packages/links`](packages/links), gateway
+  [`contracts/src/links`](contracts/src/links).
+- Run it: `scripts/peal-links/stack.sh up` (two anvil chains, gateways, node,
+  explorer), then open http://localhost:5173/#/bonsai. Tests:
+  `pnpm -C packages/links test`, `pnpm -C packages/explorer test:e2e`.
+- What the demo trusts, and what stands between it and real money:
+  [`docs/peal-links/MAINNET_READINESS.md`](docs/peal-links/MAINNET_READINESS.md).
+  The full build log is [`docs/peal-links/BUILD_STATUS.md`](docs/peal-links/BUILD_STATUS.md).
+
 ## The encrypted mempool
 
 The flagship demo. It is the same swap sent into two mempools at once, live on

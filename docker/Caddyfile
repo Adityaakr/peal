@@ -15,6 +15,13 @@
 		reverse_proxy {$BTE_UPSTREAM:coordinator:8080}
 	}
 
+	# Peal Links node (ledger, requests, inbox). Separate service, separate
+	# upstream; same-origin for the app so no CORS or cookie question arises.
+	@links path /links/*
+	handle @links {
+		reverse_proxy {$LINKS_UPSTREAM:links:8790}
+	}
+
 	# peal.js is imported by URL from other people's pages, and a browser
 	# fetches a module script in CORS mode whether or not the page is on this
 	# origin. Without this header the import in the quickstart worked from

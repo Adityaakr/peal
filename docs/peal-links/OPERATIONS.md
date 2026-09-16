@@ -13,6 +13,10 @@ How to run, reset and inspect the local stack, and what each process is. Docker 
 
 Proving keys: `.dev-params/` (`op.pk` 30 MB uncompressed, `op.vk`, `deposit.pk`, `deposit.vk`, `circuit-id`), generated on the node's first start in about a second, never committed. Deleting the directory regenerates a **different** setup, which invalidates every wallet and ledger made under the old circuit id: reset the data directory at the same time.
 
+## One command
+
+`scripts/peal-links/demo.sh` brings the stack up from a clean checkout (installs, wasm build, Playwright browser if missing) and drives the SDK bridge flow and the two-context browser flow with real proofs and real chain transactions. Non-zero exit on any failure.
+
 ## Commands
 
 ```
@@ -24,6 +28,12 @@ scripts/peal-links/stack.sh reset    # down, wipe ledger + product state, up
 ```
 
 Development fixture: `PEAL_LINKS_DEV_MINT=1 scripts/peal-links/stack.sh up` mounts `POST /links/v1/dev/mint`, which credits a registered deposit intent without a chain event. It is labelled in the node log, in `GET /links/v1/status` (`dev_mint: true`) and in the app ("Add test funds (dev mint)"), refuses to start with a mainnet namespace configured, and is replaced by the watcher in Phase D.
+
+## Compose and the edge (prepared, not exercised here)
+
+- `docker/Dockerfile.links` builds the node image; `docker/docker-compose.links.yml` runs anvil A and B, a one-shot `bootstrap` that places the contracts and writes the node config, the node, and the explorer dev server. Docker was not available on the build machine, so these files are documentation until someone runs `docker compose -f docker/docker-compose.links.yml up --build` and records the result in BUILD_STATUS.md.
+- Edge: both Caddyfiles route `/links/*` to the node (`LINKS_UPSTREAM`, default `links:8790` in the production compose and `127.0.0.1:8790` for the standalone explorer). The vite dev server proxies `/links` to `LINKS_URL` (default `http://localhost:8790`).
+- Profiles: `config/peal-links.profiles.example.json` carries Ethereum, Base and Arbitrum mainnet and testnet namespaces with empty addresses and `enabled: false`. The node validates the file (`peal-links-node --config config/peal-links.profiles.example.json` loads it and stops only at creating `/var/lib/peal-links`). A namespace becomes available only after the watcher verifies chain id and contract code against its RPC; the signer fixture and the dev-mint flag are refused when any namespace is `mainnet`.
 
 ## Health and status
 

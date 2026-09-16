@@ -444,7 +444,9 @@ fn request_out(
     } else {
         status
     };
-    let reserved = status == "active" && reserved_until.is_some_and(|u| u as u64 > now);
+    let held = status == "active" && reserved_until.is_some_and(|u| u as u64 > now);
+    let mine = caller_intent.is_some() && reserved_by.as_deref() == caller_intent;
+    let reserved = held && !mine;
     Ok(RequestOut {
         manifest,
         status: status.to_string(),
@@ -538,14 +540,14 @@ async fn create_request(
 async fn list_requests(State(app): State<App>, headers: HeaderMap) -> Res<Json<Value>> {
     let session = require_session(&app, &headers)?;
     let conn = app.product.lock().expect("product lock");
-    let mut stmt = db(conn.prepare(
-        "SELECT manifest, status, fulfilled_at, reserved_until FROM requests WHERE owner_address = ?1 ORDER BY created_at DESC LIMIT 500",
-    ))?;
+    let mut stmt = db(conn.prepare(&format!(
+        "SELECT {REQUEST_COLS} FROM requests WHERE owner_address = ?1 ORDER BY created_at DESC LIMIT 500"
+    )))?;
     let rows = db(stmt.query_map(params![session.address], request_row))?;
     let mut out = Vec::new();
     for row in rows {
-        let (mj, st, fa, ru) = db(row)?;
-        out.push(request_out(&mj, &st, fa, ru)?);
+        let (mj, st, fa, ru, rb) = db(row)?;
+        out.push(request_out(&mj, &st, fa, ru, rb, None)?);
     }
     Ok(Json(json!({ "requests": out })))
 }

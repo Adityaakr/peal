@@ -31,6 +31,13 @@
 	@sdk path /peal.js /peal.js.map
 	header @sdk Access-Control-Allow-Origin *
 
+	# Peal Links node, when one is deployed beside this explorer. Without
+	# LINKS_UPSTREAM the pages say the services are not running.
+	@links path /links/*
+	handle @links {
+		reverse_proxy {$LINKS_UPSTREAM:127.0.0.1:8790}
+	}
+
 	try_files {path} {path}/index.html /index.html
 	file_server
 }

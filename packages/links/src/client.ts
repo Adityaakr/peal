@@ -280,8 +280,11 @@ export class NodeClient {
     return this.call('/requests');
   }
 
-  getRequest(id: string): Promise<PaymentRequest> {
-    return this.call(`/requests/${encodeURIComponent(id)}`);
+  /** `intentId` is the caller's payer intent: the node then reports
+   * `reserved` only when someone else holds the reservation. */
+  getRequest(id: string, intentId?: string): Promise<PaymentRequest> {
+    const q = intentId ? `?intent=${encodeURIComponent(intentId)}` : '';
+    return this.call(`/requests/${encodeURIComponent(id)}${q}`);
   }
 
   archiveRequest(id: string): Promise<{ ok: true }> {

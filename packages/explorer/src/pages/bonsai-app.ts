@@ -418,8 +418,16 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
   page = { view: null, requests: [], busy: null, error: null, notice: null, lastLink: null, walletTokenBalance: null, withdrawals: [] };
   MINT_SENDER = localStorage.getItem(MINT_SENDER_KEY) ?? '';
 
+  let deferredPaint = false;
   const paint = () => {
     if (stale) return;
+    // Never replace the DOM under an open dialog (a file the person picked
+    // cannot be restored); repaint once it closes.
+    if (root.querySelector('dialog[open]') && !page.lastLink) {
+      deferredPaint = true;
+      return;
+    }
+    deferredPaint = false;
     // Preserve typed passphrases across re-renders triggered by auth events.
     const active = document.activeElement as HTMLInputElement | null;
     const activeName = active?.name;
@@ -577,10 +585,8 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       void run('archiving', async () => void (await client.archiveRequest(id)));
     } else if (btn.hasAttribute('data-close')) {
       btn.closest('dialog')?.close();
-      if (btn.closest('#pl-link-dialog')) {
-        page.lastLink = null;
-        paint();
-      }
+      if (btn.closest('#pl-link-dialog')) page.lastLink = null;
+      if (deferredPaint || btn.closest('#pl-link-dialog')) paint();
     }
   });
 
