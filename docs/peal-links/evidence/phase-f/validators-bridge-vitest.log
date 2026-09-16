@@ -1,11 +1,11 @@
 
  RUN  v3.2.6 /Users/adityakrx/peal-network/packages/links
 
- ✓ test/bridge.test.ts (1 test) 53535ms
-   ✓ peal-links bridge (real deposits and withdrawals on two local chains) > deposit is credited after confirmations, moves privately, and withdraws through the committee  52899ms
+ ✓ test/bridge.test.ts (1 test) 54077ms
+   ✓ peal-links bridge (real deposits and withdrawals on two local chains) > deposit is credited after confirmations, moves privately, and withdraws through the committee  53450ms
 
  Test Files  1 passed (1)
       Tests  1 passed (1)
-   Start at  10:56:22
-   Duration  53.94s (transform 92ms, setup 0ms, collect 295ms, tests 53.53s, environment 0ms, prepare 26ms)
+   Start at  11:06:46
+   Duration  54.45s (transform 93ms, setup 0ms, collect 264ms, tests 54.08s, environment 0ms, prepare 28ms)
 

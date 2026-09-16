@@ -140,8 +140,11 @@ describe('peal-links bridge (real deposits and withdrawals on two local chains)'
     const recipient = '0x000000000000000000000000000000000000dEaD';
     const recipientBefore = await pc.readContract({ address: token, abi: ERC20_ABI, functionName: 'balanceOf', args: [recipient] });
     const { position, certificate } = await bob.withdraw('4000000', recipient);
-    expect(certificate.signatures.length).toBe(3);
+    // The fixture signs with every key; the distributed committee stops at
+    // the threshold. Either way the gateway needs `threshold` valid ones.
     expect(certificate.threshold).toBe(2);
+    expect(certificate.signatures.length).toBeGreaterThanOrEqual(certificate.threshold);
+    expect(certificate.signatures.length).toBeLessThanOrEqual(certificate.signers.length);
     expect(certificate.message.recipient).toBe(recipient.toLowerCase());
     expect(certificate.message.amount).toBe('4000000');
     expect((await bob.view()).balance).toBe('6000000');
