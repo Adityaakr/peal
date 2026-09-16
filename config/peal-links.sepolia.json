@@ -19,6 +19,20 @@
       "environment": "testnet",
       "enabled": false,
       "explorer_url": "https://sepolia.etherscan.io"
+    },
+    {
+      "label": "sepolia/USDC",
+      "chain_id": 11155111,
+      "chain_name": "Ethereum Sepolia",
+      "rpc_url": "https://ethereum-sepolia-rpc.publicnode.com",
+      "token_address": "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238",
+      "token_symbol": "USDC",
+      "decimals": 6,
+      "gateway": "",
+      "confirmations": 2,
+      "environment": "testnet",
+      "enabled": false,
+      "explorer_url": "https://sepolia.etherscan.io"
     }
   ]
 }

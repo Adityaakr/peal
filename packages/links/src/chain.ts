@@ -142,6 +142,40 @@ export async function withdrawOnChain(ns: NamespaceInfo, provider: EIP1193Provid
   return hash;
 }
 
+/** Where a tester gets the namespace's asset, on non-mainnet namespaces:
+ * the chain's own gas faucet when the asset is the gas token, the test
+ * token's public `faucet` function, or an external page (Circle's faucet
+ * for testnet USDC). Null on mainnet or when nothing is known. */
+export function testFundsSource(ns: NamespaceInfo): { kind: 'chain-faucet' } | { kind: 'token-faucet' } | { kind: 'external'; url: string } | null {
+  if (ns.environment === 'mainnet') return null;
+  const gas = GAS_FAUCET[ns.chain_id];
+  if (gas && gas.token.toLowerCase() === ns.token_address.toLowerCase()) return { kind: 'chain-faucet' };
+  if (ns.token_symbol === 'tUSD') return { kind: 'token-faucet' };
+  if (ns.token_symbol === 'USDC') return { kind: 'external', url: 'https://faucet.circle.com' };
+  return null;
+}
+
+/** Get test funds for `address` from the source `testFundsSource` names.
+ * Returns what was done, for the interface. */
+export async function claimTestFunds(ns: NamespaceInfo, provider: EIP1193Provider, address: Address): Promise<'chain-faucet' | 'token-faucet'> {
+  const source = testFundsSource(ns);
+  if (!source || source.kind === 'external') throw new Error('no faucet the app can call for this asset');
+  if (source.kind === 'chain-faucet') {
+    const faucet = GAS_FAUCET[ns.chain_id]!;
+    const pc = publicClientFor(ns, undefined, ns.rpc_url);
+    const before = await pc.readContract({ address: faucet.token, abi: ERC20_ABI, functionName: 'balanceOf', args: [address] });
+    await pc.request({ method: faucet.method as 'eth_chainId', params: [address.toLowerCase()] as never });
+    for (let i = 0; i < 20; i++) {
+      if ((await pc.readContract({ address: faucet.token, abi: ERC20_ABI, functionName: 'balanceOf', args: [address] })) > before) return 'chain-faucet';
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    throw new Error('the chain did not fund this wallet in time');
+  }
+  await ensureGas(ns, address);
+  await faucet(ns, provider, address, address, 1_000n * 10n ** BigInt(ns.decimals));
+  return 'token-faucet';
+}
+
 /** Local and test chains only: mint test tokens from the faucet. */
 export async function faucet(ns: NamespaceInfo, provider: EIP1193Provider, from: Address, to: Address, amount: bigint): Promise<Hex> {
   if (ns.environment === 'mainnet') throw new Error('no faucet on a mainnet namespace');

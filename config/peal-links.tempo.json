@@ -19,6 +19,20 @@
       "environment": "testnet",
       "enabled": false,
       "explorer_url": "https://explore.testnet.tempo.xyz"
+    },
+    {
+      "label": "tempo-moderato/PathUSD",
+      "chain_id": 42431,
+      "chain_name": "Tempo Moderato",
+      "rpc_url": "https://rpc.moderato.tempo.xyz",
+      "token_address": "0x20c0000000000000000000000000000000000000",
+      "token_symbol": "PathUSD",
+      "decimals": 6,
+      "gateway": "",
+      "confirmations": 10,
+      "environment": "testnet",
+      "enabled": false,
+      "explorer_url": "https://explore.testnet.tempo.xyz"
     }
   ]
 }

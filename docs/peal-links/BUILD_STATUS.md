@@ -318,6 +318,9 @@ On chain (gateway logs from the deployment block): 2 `Deposit` events and 1 `Wit
 What it proves: the same node, contracts and browser flow run on two public chains with different block times, gas models and estimators (Sepolia 12 s blocks and ETH gas; Tempo half-second blocks and ERC-20 gas with a faucet), with no change to the ledger, the proofs or the trust model.
 Residual risks: as for Sepolia; the 29M gas limit is a blanket value for the chain (unused gas is not charged there); the fee shown before authorization is an estimate.
 
+### Testnet assets beyond the faucet token  [2026-09-16]
+`NETWORK=<net> scripts/peal-links/testnet.sh allow <token> [cap]` puts an existing token on the gateway's allowlist (owner call) and enables the profile namespace that names it. Allowed and served: `sepolia/USDC` (Circle's testnet USDC `0x1c7d4b196cb0c7b01d743fbc6116a902379c7238`, 6 decimals, faucet at https://faucet.circle.com) and `tempo-moderato/PathUSD` (Tempo's own USD `0x20c0000000000000000000000000000000000000`, 6 decimals, the chain's gas token, handed out by `tempo_fundAddress`). Both nodes report all four namespaces available after restart. The app now offers test funds where it can (`testFundsSource` / `claimTestFunds`: the chain's faucet for PathUSD, the test token's `faucet` for tUSD, a link to Circle's faucet for USDC) on the dashboard's wallet balance and on the checkout's "Not enough funds" state. Caps: 1,000,000 units per withdrawal on the new assets. Not yet run through the browser suite on the new assets (the suite drives the first namespace); their on-chain legs use the same gateway code the tUSD runs exercised.
+
 ### Next step
 Hosting for public testers (a reachable node and explorer with HTTPS), then Base Sepolia and Arbitrum Sepolia namespaces the same way. Mainnet stays blocked as recorded in MAINNET_READINESS.md.
 

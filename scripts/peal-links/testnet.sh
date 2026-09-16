@@ -156,20 +156,53 @@ print(text[-1500:], file=sys.stderr); sys.exit(1)' "$log"
 }
 
 write_config() {
+  # Every namespace on this chain gets the deployed gateway; a namespace
+  # with an empty token address is the faucet test token, the others name
+  # an existing asset that `allow` put on the gateway's allowlist.
   python3 - "$CONFIG" "$TN/config.json" "$TN/deployments.json" "$TN/signers.json" "$RPC" "$NODE_PORT" <<'PY'
 import json, sys
 src, dst, dep, signers, rpc, port = sys.argv[1:]
 cfg = json.load(open(src))
 d = json.load(open(dep))
+allowed = {a.lower() for a in d.get("allowed", [])}
 for ns in cfg["namespaces"]:
-    if ns["chain_id"] == d["chain_id"]:
-        ns.update(gateway=d["gateway"].lower(), token_address=d["token"].lower(), start_block=max(0, d["start_block"] - 2), enabled=True, rpc_url=rpc)
+    if ns["chain_id"] != d["chain_id"]:
+        continue
+    token = (ns.get("token_address") or "").lower() or d["token"].lower()
+    enabled = token == d["token"].lower() or token in allowed
+    ns.update(gateway=d["gateway"].lower(), token_address=token, start_block=max(0, d["start_block"] - 2), enabled=enabled, rpc_url=rpc)
 cfg["listen"] = f"127.0.0.1:{port}"
 cfg["signer_keys_file"] = signers
 cfg["signer_threshold"] = 2
 json.dump(cfg, open(dst, "w"), indent=2)
 PY
   echo "config written: $TN/config.json"
+}
+
+# Put an existing token on the gateway's allowlist (owner call) and record
+# it, so the namespace in the profile that names it becomes enabled.
+#   NETWORK=tempo scripts/peal-links/testnet.sh allow 0x20c0... 1000000000000
+cmd_allow() {
+  local token="$1" cap="${2:-1000000000000}" key deployer gw
+  [ -n "$token" ] || { echo "usage: $0 allow <token> [cap]" >&2; exit 2; }
+  key=$(cat "$DEPLOYER_KEY_FILE")
+  deployer=$(cast wallet address --private-key "$key")
+  gw=$(python3 -c "import json;print(json.load(open('$TN/deployments.json'))['gateway'])")
+  local gas=()
+  [ -n "${CREATE_GAS:-}" ] && gas=(--gas-limit "$CREATE_GAS")
+  echo "token $(cast call "$token" 'symbol()(string)' --rpc-url "$RPC") decimals $(cast call "$token" 'decimals()(uint8)' --rpc-url "$RPC") on gateway $gw, cap $cap base units"
+  cast send "$gw" "configureToken(address,bool,uint256)" "$token" true "$cap" --rpc-url "$RPC" --private-key "$key" ${gas[@]+"${gas[@]}"} >/dev/null
+  python3 - "$TN/deployments.json" "$token" <<'PY'
+import json, sys
+p, token = sys.argv[1:]
+d = json.load(open(p))
+allowed = d.setdefault("allowed", [])
+if token.lower() not in [a.lower() for a in allowed]:
+    allowed.append(token.lower())
+json.dump(d, open(p, "w"))
+PY
+  write_config
+  echo "allowed; restart the node (NETWORK=$NETWORK $0 down && ... up) to serve it"
 }
 
 cmd_up() {
@@ -200,5 +233,6 @@ case "${1:-}" in
   up) cmd_up ;;
   down) cmd_down ;;
   status) cmd_status ;;
-  *) echo "usage: NETWORK=sepolia|tempo $0 deploy|up|down|status" >&2; exit 2 ;;
+  allow) cmd_allow "${2:-}" "${3:-}" ;;
+  *) echo "usage: NETWORK=sepolia|tempo $0 deploy|up|down|status|allow <token> [cap]" >&2; exit 2 ;;
 esac

@@ -11,7 +11,7 @@
 // a reload resumes without paying twice. Every terminal state is its own
 // honest screen.
 import type { LinksAccount, PaymentRequest } from 'peal-links';
-import { depositOnChain, ensureGas, gasSymbol, LinksApiError, newIntentId, paymentIntentTypedData, providerSigner, publicClientFor, tokenBalance } from 'peal-links';
+import { claimTestFunds, depositOnChain, ensureGas, gasSymbol, LinksApiError, newIntentId, paymentIntentTypedData, providerSigner, publicClientFor, testFundsSource, tokenBalance } from 'peal-links';
 import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
 import { esc } from '../util';
@@ -218,7 +218,12 @@ function html(s: PayState): string {
         ? `<button type="button" class="pl-btn pl-btn-primary pl-btn-block" id="pay-now">Approve and pay ${esc(amount)} ${esc(symbol)}</button>
            <p class="pl-small" style="text-align:center;margin:8px 0 0">Adds ${esc(added)} ${esc(symbol)} from your wallet to your private balance first (the ${esc(short)} ${esc(symbol)} missing, rounded up to a whole unit) (two wallet confirmations, public on ${esc(ns.chain_name)}; credited after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}, which can take a few minutes on slower chains), then pays privately.</p>`
         : ns.available
-          ? `<div class="pl-notice pl-notice-warn"><strong>Not enough funds.</strong> Your private balance is ${formatUnits(s.balance!, ns.decimals)} ${esc(symbol)} and your wallet holds ${s.walletTokenBalance !== null ? formatUnits(s.walletTokenBalance, ns.decimals) : '—'} ${esc(symbol)} on ${esc(ns.chain_name)}; this request needs ${esc(short)} ${esc(symbol)} more.</div>`
+          ? `<div class="pl-notice pl-notice-warn"><strong>Not enough funds.</strong> Your private balance is ${formatUnits(s.balance!, ns.decimals)} ${esc(symbol)} and your wallet holds ${s.walletTokenBalance !== null ? formatUnits(s.walletTokenBalance, ns.decimals) : '—'} ${esc(symbol)} on ${esc(ns.chain_name)}; this request needs ${esc(short)} ${esc(symbol)} more.</div>${(() => {
+              const src = testFundsSource(ns);
+              if (!src) return '';
+              if (src.kind === 'external') return `<a class="pl-btn pl-btn-block" href="${esc(src.url)}" target="_blank" rel="noreferrer">Get testnet ${esc(symbol)}</a>`;
+              return `<button type="button" class="pl-btn pl-btn-block" id="pay-test-funds">Get test ${esc(symbol)} for my wallet</button>`;
+            })()}`
           : `<div class="pl-small" style="text-align:center">Deposits on ${esc(ns.chain_name)} are not available on this node.</div>`;
     } else {
       action = `<button type="button" class="pl-btn pl-btn-primary pl-btn-block" id="pay-now">Pay ${esc(amount)} ${esc(symbol)}</button>
@@ -442,6 +447,14 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     else if (btn.id === 'pay-login') session().login();
     else if (btn.id === 'pay-login-injected') void connectInjected().then(refreshWalletBalance).then(paint).catch((e) => { s.error = describeError(e); paint(); });
     else if (btn.id === 'pay-activate') void run('setting up private payments for your wallet', null, async () => void (await activate()));
+    else if (btn.id === 'pay-test-funds') {
+      const ns = nsOf()!;
+      const evm = session();
+      void run(`getting test ${ns.token_symbol} for your wallet`, null, async () => {
+        await claimTestFunds(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address);
+        await refreshWalletBalance();
+      });
+    }
     else if (btn.id === 'pl-code-saved') {
       acknowledgeRecoveryCode();
       paint();

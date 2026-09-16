@@ -8,8 +8,8 @@
 // fixture data. Money is base units as decimal strings until the moment it
 // is formatted for a human.
 import QRCode from 'qrcode';
-import type { LinksAccount, PaymentRequest, WalletView } from 'peal-links';
-import { depositOnChain, ensureGas, LinksApiError, tokenBalance, withdrawOnChain } from 'peal-links';
+import type { LinksAccount, NamespaceInfo, PaymentRequest, WalletView } from 'peal-links';
+import { claimTestFunds, depositOnChain, ensureGas, LinksApiError, testFundsSource, tokenBalance, withdrawOnChain } from 'peal-links';
 import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
 import { esc } from '../util';
@@ -215,7 +215,7 @@ function balances(): string {
       <div class="pl-balance">
         <div class="pl-balance-label"><span>wallet balance · public on ${esc(ns.chain_name)}</span>${demo ? `<span class="pl-badge pl-badge-demo">${esc(ns.environment)} funds</span>` : ''}</div>
         <div class="pl-balance-amount">${wallet ?? '—'}<span class="pl-amount-unit">${esc(ns.token_symbol)}</span></div>
-        <div class="pl-balance-sub">${wallet !== null ? 'in your wallet; anyone can see it' : 'connect a wallet to see it'}</div>
+        <div class="pl-balance-sub">${wallet !== null ? 'in your wallet; anyone can see it' : 'connect a wallet to see it'}${testFundsLink(ns)}</div>
       </div>
       <div class="pl-balance">
         <div class="pl-balance-label"><span>private balance · ${esc(ns.token_symbol)}</span></div>
@@ -228,6 +228,15 @@ function balances(): string {
         <div class="pl-balance-sub">claiming adds it to available</div>
       </div>
     </div>`;
+}
+
+/** On a test namespace, where to get the asset: a button the app can act
+ * on, or a link to an external faucet. */
+function testFundsLink(ns: NamespaceInfo): string {
+  const src = testFundsSource(ns);
+  if (!src || !session().address) return '';
+  if (src.kind === 'external') return ` · <a class="pl-linkbtn" href="${esc(src.url)}" target="_blank" rel="noreferrer">get testnet ${esc(ns.token_symbol)}</a>`;
+  return ` · <button type="button" class="pl-linkbtn" id="pl-test-funds">get test ${esc(ns.token_symbol)}</button>`;
 }
 
 function actions(): string {
@@ -680,6 +689,15 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     if (btn.id === 'pl-login') session().login();
     else if (btn.id === 'pl-login-injected') void run('connecting browser wallet', async () => void (await connectInjected()));
     else if (btn.id === 'pl-activate') void doActivate();
+    else if (btn.id === 'pl-test-funds') {
+      const ns = l.namespace!;
+      const evm = session();
+      void run(`getting test ${ns.token_symbol} for your wallet`, async () => {
+        const how = await claimTestFunds(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address);
+        await refreshWalletBalance();
+        page.notice = how === 'chain-faucet' ? `${ns.chain_name} funded your wallet with ${ns.token_symbol}.` : `The test token's faucet sent 1,000 ${ns.token_symbol} to your wallet.`;
+      });
+    }
     else if (btn.id === 'pl-code-saved') {
       acknowledgeRecoveryCode();
       paint();
