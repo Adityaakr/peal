@@ -1,0 +1,6 @@
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › e2e/links-flow.spec.ts:107:1 › receiver creates a link, payer pays with a real proof, receiver claims later (52.2s)
+
+  1 passed (52.7s)

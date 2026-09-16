@@ -1,0 +1,30 @@
+# Peal Links node image. Built from the repo root:
+#   docker build -f docker/Dockerfile.links -t peal-links-node .
+#
+# Runtime expectations (see docs/peal-links/OPERATIONS.md):
+#   /data      sqlite stores (mount a volume)
+#   /params    proving material; generated on first start if absent, which
+#              is a LOCAL DEVELOPMENT SETUP (no ceremony). A production
+#              deployment mounts ceremony output here read-only.
+#   PEAL_LINKS_CONFIG  path to the node config (mount it), default /config/peal-links.json
+#
+# Not exercised on the build machine (Docker unavailable there); the tested
+# path is scripts/peal-links/stack.sh. Recorded in BUILD_STATUS.md.
+
+FROM rust:1.97-bookworm AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+# Only the node and its dependencies; the other workspace members are not
+# needed for this image.
+RUN cargo build --release -p peal-links-node
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
+COPY --from=build /src/target/release/peal-links-node /usr/local/bin/peal-links-node
+ENV PEAL_LINKS_CONFIG=/config/peal-links.json
+ENV PEAL_LINKS_LISTEN=0.0.0.0:8790
+VOLUME ["/data", "/params"]
+EXPOSE 8790
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD curl -fsS http://127.0.0.1:8790/healthz || exit 1
+ENTRYPOINT ["peal-links-node"]

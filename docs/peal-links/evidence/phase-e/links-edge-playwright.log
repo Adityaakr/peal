@@ -1,0 +1,10 @@
+
+Running 5 tests using 1 worker
+
+  ✓  1 [chromium] › e2e/links-edge.spec.ts:110:1 › terminal request states are their own honest screens (5.9s)
+  ✓  2 [chromium] › e2e/links-edge.spec.ts:134:1 › wallet rejection and wrong network are recoverable, not silent (8.7s)
+  ✓  3 [chromium] › e2e/links-edge.spec.ts:180:1 › a reload in the middle of proving never pays twice; a concurrent payer is held off (30.6s)
+  ✓  4 [chromium] › e2e/links-edge.spec.ts:231:1 › backup export restores an account in a fresh browser with its balance and receipts (41.1s)
+  ✓  5 [chromium] › e2e/links-edge.spec.ts:299:1 › checkout is reachable by keyboard (1.5s)
+
+  5 passed (1.5m)

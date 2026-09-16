@@ -1,0 +1,27 @@
+{
+  "name": "peal-links",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Peal Links SDK: a typed client for the Bonsai private-payment ledger, requests, inbox and the browser wallet (wasm).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker": "./src/worker.ts",
+    "./local": "./src/local.ts"
+  },
+  "scripts": {
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "typescript": "^5.7.3",
+    "viem": "^2.54.3",
+    "vitest": "^3.0.0"
+  }
+}

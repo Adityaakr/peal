@@ -1,0 +1,101 @@
+# Peal Links local stack under compose: two anvil chains, the node, and the
+# explorer dev server. Mirrors scripts/peal-links/stack.sh, which is the
+# path exercised on the build machine (Docker was not available there, see
+# BUILD_STATUS.md blocker "Docker not available"). Contract placement and
+# the config with addresses are done by the `bootstrap` one-shot service
+# using the same Foundry script and the same anvil test keys.
+#
+#   docker compose -f docker/docker-compose.links.yml up --build
+#
+# Everything here is local test funds. Nothing is real money.
+services:
+  anvil-a:
+    image: ghcr.io/foundry-rs/foundry:latest
+    command: ["anvil", "--host", "0.0.0.0", "--port", "8545", "--chain-id", "31337", "--block-time", "1", "--mnemonic", "test test test test test test test test test test test junk", "--silent"]
+    ports: ["8545:8545"]
+    healthcheck:
+      test: ["CMD-SHELL", "cast chain-id --rpc-url http://127.0.0.1:8545 >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      retries: 30
+
+  anvil-b:
+    image: ghcr.io/foundry-rs/foundry:latest
+    command: ["anvil", "--host", "0.0.0.0", "--port", "8546", "--chain-id", "31338", "--block-time", "1", "--mnemonic", "test test test test test test test test test test test junk", "--silent"]
+    ports: ["8546:8546"]
+    healthcheck:
+      test: ["CMD-SHELL", "cast chain-id --rpc-url http://127.0.0.1:8546 >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      retries: 30
+
+  # Places the gateway and test token on both chains and writes the node
+  # config with their addresses into the shared config volume.
+  bootstrap:
+    image: ghcr.io/foundry-rs/foundry:latest
+    depends_on:
+      anvil-a: { condition: service_healthy }
+      anvil-b: { condition: service_healthy }
+    volumes:
+      - ../contracts:/contracts:ro
+      - ../config:/config-src:ro
+      - links-config:/config
+    working_dir: /contracts
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        export LINKS_OWNER=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+        export LINKS_SIGNERS=0x14dC79964da2C08b23698B3D3cc7Ca32193d9955,0x976EA74026E726554dB657fA54763abd0C3a0aa9,0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc
+        export LINKS_THRESHOLD=2 LINKS_DEPLOY_TEST_TOKEN=1
+        KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+        A=$(forge script script/DeployLinksGateway.s.sol --rpc-url http://anvil-a:8545 --private-key $KEY --broadcast 2>&1)
+        B=$(forge script script/DeployLinksGateway.s.sol --rpc-url http://anvil-b:8546 --private-key $KEY --broadcast 2>&1)
+        GA=$(echo "$A" | grep -E '^\s*gateway ' | awk '{print $2}'); TA=$(echo "$A" | grep -E '^\s*token ' | awk '{print $2}')
+        GB=$(echo "$B" | grep -E '^\s*gateway ' | awk '{print $2}'); TB=$(echo "$B" | grep -E '^\s*token ' | awk '{print $2}')
+        for acct in 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC; do
+          cast send $TA "faucet(address,uint256)" $acct 100000000000 --rpc-url http://anvil-a:8545 --private-key $KEY >/dev/null
+          cast send $TB "faucet(address,uint256)" $acct 100000000000 --rpc-url http://anvil-b:8546 --private-key $KEY >/dev/null
+        done
+        echo '["0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba","0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e","0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356"]' > /config/signers.json
+        sed -e "s#\"gateway\": \"\"#\"gateway\": \"$GA\"#1" -e "s#\"token_address\": \"\"#\"token_address\": \"$TA\"#1" \
+            -e "s#http://127.0.0.1:8545#http://anvil-a:8545#" -e "s#http://127.0.0.1:8546#http://anvil-b:8546#" \
+            -e "s#\"enabled\": false#\"enabled\": true#g" -e "s#\".dev-params\"#\"/params\"#" -e "s#\".dev-state/peal-links/data\"#\"/data\"#" \
+            /config-src/peal-links.local.json \
+          | sed -e "0,/\"gateway\": \"\"/s##\"gateway\": \"$GB\"#" -e "0,/\"token_address\": \"\"/s##\"token_address\": \"$TB\"#" \
+          | sed -e "s#\"signer_threshold\": 2#\"signer_threshold\": 2#" > /config/peal-links.json
+        # signer fixture file path and threshold
+        sed -i 's#^}$#,"signer_keys_file":"/config/signers.json","signer_threshold":2}#' /config/peal-links.json || true
+        echo "gateway A $GA token $TA; gateway B $GB token $TB"
+
+  node:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.links
+    depends_on:
+      bootstrap: { condition: service_completed_successfully }
+    environment:
+      PEAL_LINKS_CONFIG: /config/peal-links.json
+      PEAL_LINKS_LISTEN: 0.0.0.0:8790
+      RUST_LOG: info
+    volumes:
+      - links-config:/config:ro
+      - links-data:/data
+      - links-params:/params
+    ports: ["8790:8790"]
+
+  explorer:
+    image: node:22-bookworm
+    working_dir: /repo
+    depends_on:
+      node: { condition: service_healthy }
+    environment:
+      LINKS_URL: http://node:8790
+      BTE_URL: http://coordinator:8080
+    volumes:
+      - ..:/repo
+    command: ["sh", "-c", "corepack enable && pnpm install --frozen-lockfile && pnpm -C packages/explorer dev --host 0.0.0.0 --port 5173"]
+    ports: ["5173:5173"]
+
+volumes:
+  links-config:
+  links-data:
+  links-params:

@@ -1,0 +1,57 @@
+
+== tooling ==
+
+== stack ==
+ledger and product state wiped (/private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/data)
+anvil-a started (pid 45128) -> /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/logs/anvil-a.log
+anvil-b started (pid 45132) -> /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/logs/anvil-b.log
+    Finished `release` profile [optimized] target(s) in 1m 13s
+chain A gateway 0x5FbDB2315678afecb367f032d93F642f64180aa3 token 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512 (from block 75)
+chain B gateway 0x5FbDB2315678afecb367f032d93F642f64180aa3 token 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512 (from block 77)
+node-0 started (pid 56565) -> /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/logs/node-0.log
+node-1 started (pid 56568) -> /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/logs/node-1.log
+node-2 started (pid 56571) -> /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/logs/node-2.log
+node-0 ready at http://127.0.0.1:8790/healthz
+node-1 ready at http://127.0.0.1:8791/healthz
+node-2 ready at http://127.0.0.1:8792/healthz
+explorer started (pid 56631) -> /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/logs/explorer.log
+explorer ready at http://localhost:5173/
+
+explorer  http://localhost:5173/#/bonsai
+node      http://127.0.0.1:8790/links/v1/status
+validators 3 (ports 8790..8792, p2p 9790..9792)  scripts/peal-links/stack.sh consensus
+anvil A   http://127.0.0.1:8545 (chain 31337)   anvil B http://127.0.0.1:8546 (chain 31338)
+
+== SDK bridge flow (real deposit, private payment, certified withdrawal) ==
+
+ RUN  v3.2.6 /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/packages/links
+
+ ✓ test/bridge.test.ts (1 test) 53735ms
+   ✓ peal-links bridge (real deposits and withdrawals on two local chains) > deposit is credited after confirmations, moves privately, and withdraws through the committee  53090ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  11:18:43
+   Duration  54.11s (transform 94ms, setup 0ms, collect 256ms, tests 53.73s, environment 0ms, prepare 30ms)
+
+
+== browser flow (two contexts, real proofs in Web Workers) ==
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › e2e/links-flow.spec.ts:107:1 › receiver creates a link, payer pays with a real proof, receiver claims later (51.3s)
+
+  1 passed (51.7s)
+
+== done ==
+circuit d308e51fe73daf20... | setup local-dev | ledger simplex-3-validators | signers one-key-per-validator
+  local-a/tUSD available gateway 0x5fbdb2315678afecb367f032d93f642f64180aa3
+  local-b/tUSD available gateway 0x5fbdb2315678afecb367f032d93f642f64180aa3
+  ledger da1b5b4488a9... receipts 10 seq 14
+  ledger 248118dcc296... receipts 0 seq 0
+validators (height, head, applied state root):
+b5f2ae42737e  height   251  head 4d46f81cbe71bb33  state f546676a7ff8d63e  ledgers b5d77028be63d22c ca0cc37b686bbff6  mempool 0
+013b52a7343b  height   251  head 4d46f81cbe71bb33  state f546676a7ff8d63e  ledgers b5d77028be63d22c ca0cc37b686bbff6  mempool 0
+b18e1af6b731  height   251  head 4d46f81cbe71bb33  state f546676a7ff8d63e  ledgers b5d77028be63d22c ca0cc37b686bbff6  mempool 0
+explorer: http://localhost:5173/#/bonsai
+demo exit 0

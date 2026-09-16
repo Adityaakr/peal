@@ -1,0 +1,19 @@
+== all three
+f75129564b58  height  7181  head 596f02dc46c5e104  state 964aa3cbc3acaa35  ledgers a2095cbf58be8a7d ca0cc37b686bbff6  mempool 0
+11336802d915  height  7181  head 596f02dc46c5e104  state 964aa3cbc3acaa35  ledgers a2095cbf58be8a7d ca0cc37b686bbff6  mempool 0
+2c07c24d15e9  height  7181  head 596f02dc46c5e104  state 964aa3cbc3acaa35  ledgers a2095cbf58be8a7d ca0cc37b686bbff6  mempool 0
+node-2 stopped
+== validator 2 stopped for 6 s
+f75129564b58  height  7181  head 596f02dc46c5e104  state 964aa3cbc3acaa35  ledgers a2095cbf58be8a7d ca0cc37b686bbff6  mempool 0
+11336802d915  height  7181  head 596f02dc46c5e104  state 964aa3cbc3acaa35  ledgers a2095cbf58be8a7d ca0cc37b686bbff6  mempool 0
+node-2: no answer
+== 12 s
+f75129564b58  height  7181  head 596f02dc46c5e104  state 964aa3cbc3acaa35  ledgers a2095cbf58be8a7d ca0cc37b686bbff6  mempool 0
+11336802d915  height  7181  head 596f02dc46c5e104  state 964aa3cbc3acaa35  ledgers a2095cbf58be8a7d ca0cc37b686bbff6  mempool 0
+node-2: no answer
+node-2 started (pid 42159) -> /Users/adityakrx/peal-network/.dev-state/peal-links/logs/node-2.log
+node-2 ready at http://127.0.0.1:8792/healthz
+== validator 2 back for 10 s
+f75129564b58  height  7201  head 1296da64aa83a46a  state 964aa3cbc3acaa35  ledgers a2095cbf58be8a7d ca0cc37b686bbff6  mempool 0
+11336802d915  height  7201  head 1296da64aa83a46a  state 964aa3cbc3acaa35  ledgers a2095cbf58be8a7d ca0cc37b686bbff6  mempool 0
+2c07c24d15e9  height  7202  head 10d3a33251bcb246  state 964aa3cbc3acaa35  ledgers a2095cbf58be8a7d ca0cc37b686bbff6  mempool 0

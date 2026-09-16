@@ -1,0 +1,144 @@
+
+[1m== tooling ==[0m
+$ node scripts/build.mjs
+[INFO]: 🎯  Checking for the Wasm target...
+[INFO]: 🌀  Compiling to Wasm...
+   Compiling wasm-bindgen-shared v0.2.126
+   Compiling rustversion v1.0.22
+   Compiling bumpalo v3.20.3
+   Compiling cfg-if v1.0.4
+   Compiling once_cell v1.21.4
+   Compiling unicode-ident v1.0.24
+   Compiling futures-core v0.3.32
+   Compiling slab v0.4.12
+   Compiling pin-project-lite v0.2.17
+   Compiling syn v2.0.118
+   Compiling futures-task v0.3.32
+   Compiling zerocopy v0.8.53
+   Compiling generic-array v0.14.7
+   Compiling typenum v1.20.1
+   Compiling futures-util v0.3.32
+   Compiling num-traits v0.2.19
+   Compiling getrandom v0.3.4
+   Compiling ahash v0.8.12
+   Compiling allocator-api2 v0.2.21
+   Compiling hashbrown v0.17.1
+   Compiling num-integer v0.1.46
+   Compiling either v1.16.0
+   Compiling num-bigint v0.4.8
+   Compiling itertools v0.14.0
+   Compiling serde_core v1.0.228
+   Compiling ppv-lite86 v0.2.21
+   Compiling wasm-bindgen-macro-support v0.2.126
+   Compiling keccak v0.1.6
+   Compiling byteorder v1.5.0
+   Compiling enum-ordinalize-derive v4.4.1
+   Compiling zeroize_derive v1.5.0
+   Compiling ark-serialize-derive v0.6.0
+   Compiling ark-ff-asm v0.6.0
+   Compiling enum-ordinalize v4.4.1
+   Compiling ark-ff-macros v0.6.0
+   Compiling zeroize v1.9.0
+   Compiling serde_derive v1.0.228
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling digest v0.10.7
+   Compiling sha2 v0.10.9
+   Compiling wasm-bindgen v0.2.126
+   Compiling thiserror-impl v2.0.18
+   Compiling thiserror v2.0.18
+   Compiling serde v1.0.228
+   Compiling hex v0.4.3
+   Compiling wasm-bindgen-macro v0.2.126
+   Compiling educe v0.6.0
+   Compiling js-sys v0.3.103
+   Compiling rand_core v0.9.5
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.4
+   Compiling getrandom v0.2.17
+   Compiling serde-wasm-bindgen v0.6.5
+   Compiling rand_core v0.6.4
+   Compiling rand_chacha v0.3.1
+   Compiling merlin v3.0.0
+   Compiling rand v0.8.6
+   Compiling ark-std v0.6.0
+   Compiling ark-serialize v0.6.0
+   Compiling ark-ff v0.6.0
+   Compiling ark-poly v0.6.0
+   Compiling ark-ec v0.6.0
+   Compiling ark-bls12-381 v0.6.0
+   Compiling simple-batched-threshold-encryption v0.1.0 (https://github.com/commonwarexyz/simple-bte?rev=147a08788f6c9b25b52dc58f03518ac30e94d5b8#147a0878)
+   Compiling bte-crypto v0.1.0 (/private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/crates/bte-crypto)
+   Compiling bte-wasm v0.1.0 (/private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/crates/bte-wasm)
+    Finished `release` profile [optimized] target(s) in 18.00s
+[INFO]: ⬇️  Installing wasm-bindgen...
+[INFO]: found wasm-opt at "/opt/homebrew/bin/wasm-opt"
+[INFO]: Optimizing wasm binaries with `wasm-opt`...
+[INFO]: Optional field missing from Cargo.toml: 'repository'. This is not necessary, but recommended
+[INFO]: License key is set in Cargo.toml but no LICENSE file(s) were found; Please add the LICENSE file(s) to your project directory
+[INFO]: ✨   Done in 18.91s
+[INFO]: 📦   Your wasm pkg is ready to publish at crates/bte-wasm/pkg-seal.
+[INFO]: 🎯  Checking for the Wasm target...
+[INFO]: 🌀  Compiling to Wasm...
+   Compiling bte-crypto v0.1.0 (/private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/crates/bte-crypto)
+   Compiling bte-wasm v0.1.0 (/private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/crates/bte-wasm)
+    Finished `release` profile [optimized] target(s) in 1.98s
+[INFO]: ⬇️  Installing wasm-bindgen...
+[INFO]: found wasm-opt at "/opt/homebrew/bin/wasm-opt"
+[INFO]: Optimizing wasm binaries with `wasm-opt`...
+[INFO]: Optional field missing from Cargo.toml: 'repository'. This is not necessary, but recommended
+[INFO]: License key is set in Cargo.toml but no LICENSE file(s) were found; Please add the LICENSE file(s) to your project directory
+[INFO]: ✨   Done in 2.66s
+[INFO]: 📦   Your wasm pkg is ready to publish at crates/bte-wasm/pkg-verify.
+bte-sdk build complete
+
+[1m== stack ==[0m
+explorer stopped
+node stopped
+anvil-b stopped
+anvil-a stopped
+ledger and product state wiped (/private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/data)
+anvil-a started (pid 94190) -> /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/logs/anvil-a.log
+anvil-b started (pid 94193) -> /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/logs/anvil-b.log
+    Finished `release` profile [optimized] target(s) in 0.15s
+chain A gateway 0x5FbDB2315678afecb367f032d93F642f64180aa3 token 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512 (from block 3)
+chain B gateway 0x5FbDB2315678afecb367f032d93F642f64180aa3 token 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512 (from block 5)
+node started (pid 94346) -> /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/logs/node.log
+node ready at http://127.0.0.1:8790/healthz
+explorer started (pid 94379) -> /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/.dev-state/peal-links/logs/explorer.log
+explorer ready at http://localhost:5173/
+
+explorer  http://localhost:5173/#/bonsai
+node      http://127.0.0.1:8790/links/v1/status
+anvil A   http://127.0.0.1:8545 (chain 31337)   anvil B http://127.0.0.1:8546 (chain 31338)
+
+[1m== SDK bridge flow (real deposit, private payment, certified withdrawal) ==[0m
+
+ RUN  v3.2.6 /private/tmp/claude-501/-Users-adityakrx-peal-network/bc685f8d-0352-4fd0-9da3-2a4772b4574a/scratchpad/peal-clean/packages/links
+
+ ✓ test/bridge.test.ts (1 test) 52830ms
+   ✓ peal-links bridge (real deposits and withdrawals on two local chains) > deposit is credited after confirmations, moves privately, and withdraws through the committee  52194ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  10:09:05
+   Duration  53.17s (transform 89ms, setup 0ms, collect 234ms, tests 52.83s, environment 0ms, prepare 28ms)
+
+
+[1m== browser flow (two contexts, real proofs in Web Workers) ==[0m
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › e2e/links-flow.spec.ts:107:1 › receiver creates a link, payer pays with a real proof, receiver claims later (48.1s)
+
+  1 passed (48.5s)
+
+[1m== done ==[0m
+circuit d308e51fe73daf20... | setup local-dev | ledger single-node | signers single-process-fixture
+  local-a/tUSD available gateway 0x5fbdb2315678afecb367f032d93f642f64180aa3
+  local-b/tUSD available gateway 0x5fbdb2315678afecb367f032d93f642f64180aa3
+  ledger da1b5b4488a9... receipts 10 seq 14
+  ledger 248118dcc296... receipts 0 seq 0
+explorer: http://localhost:5173/#/bonsai
+scripts/peal-links/demo.sh  120.46s user 8.45s system 90% cpu 2:21.69 total
+demo exit 0

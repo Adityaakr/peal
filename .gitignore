@@ -34,3 +34,7 @@ packages/explorer/public/skill/
 
 # local dev server logs and pids
 .dev-state/
+
+# Peal Links: generated proving material and local stack state
+.dev-params/
+.dev-state/peal-links/

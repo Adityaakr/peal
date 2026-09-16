@@ -1,0 +1,57 @@
+== cargo test --workspace --release
+     Running unittests src/main.rs (target/release/deps/bte_cli-1a75dacbbe90825a)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/release/deps/bte_coordinator-00987ee49f08fc60)
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/main.rs (target/release/deps/bte_coordinator-94e043b1dd775f0a)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/integration.rs (target/release/deps/integration-0b0dd6067afc46c7)
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.26s
+     Running tests/intents_v1.rs (target/release/deps/intents_v1-522b80d8f2054946)
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running unittests src/lib.rs (target/release/deps/bte_crypto-ba0aa05113d8079c)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/api.rs (target/release/deps/api-3190033f9e6c58f3)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running unittests src/lib.rs (target/release/deps/bte_node-f3ff62685b5f7b89)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+     Running unittests src/main.rs (target/release/deps/bte_node-a92a59657daada9c)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/release/deps/bte_wasm-f73fe1aad0836103)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/release/deps/peal_bonsai-4060fe11e2452cbb)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+     Running tests/gate_a.rs (target/release/deps/gate_a-b2a1863355db9dbe)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.88s
+     Running tests/parity.rs (target/release/deps/parity-5a60964ef4a3aa83)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+     Running unittests src/lib.rs (target/release/deps/peal_links_consensus-87f6432aa25e611b)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/consensus.rs (target/release/deps/consensus-f4e2f88b76bd9b42)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.54s
+     Running unittests src/lib.rs (target/release/deps/peal_links_node-21380cf2ba7fd7da)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/main.rs (target/release/deps/peal_links_node-d9e00a2c38086768)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/release/deps/peal_links_wasm-9559ee0e7fd21333)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+cargo exit 
+== clippy
+    Checking peal-links-node v0.1.0 (/Users/adityakrx/peal-network/crates/peal-links-node)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 21.21s
+clippy exit 
+== typecheck
+packages/live typecheck: Done
+packages/actions typecheck: Done
+packages/sealbid-settler typecheck: Done
+typecheck exit 
+== forge
+Ran 14 test suites in 22.33ms (119.05ms CPU time): 125 tests passed, 0 failed, 0 skipped (125 total tests)

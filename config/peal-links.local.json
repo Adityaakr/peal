@@ -1,0 +1,35 @@
+{
+  "listen": "127.0.0.1:8790",
+  "data_dir": ".dev-state/peal-links/data",
+  "params_dir": ".dev-params",
+  "auth_domains": ["localhost:5173", "localhost", "127.0.0.1:5173"],
+  "root_window": 1024,
+  "namespaces": [
+    {
+      "label": "local-a/tUSD",
+      "chain_id": 31337,
+      "chain_name": "local chain A",
+      "rpc_url": "http://127.0.0.1:8545",
+      "token_address": "",
+      "token_symbol": "tUSD",
+      "decimals": 6,
+      "gateway": "",
+      "confirmations": 2,
+      "environment": "local",
+      "enabled": false
+    },
+    {
+      "label": "local-b/tUSD",
+      "chain_id": 31338,
+      "chain_name": "local chain B",
+      "rpc_url": "http://127.0.0.1:8546",
+      "token_address": "",
+      "token_symbol": "tUSD",
+      "decimals": 6,
+      "gateway": "",
+      "confirmations": 2,
+      "environment": "local",
+      "enabled": false
+    }
+  ]
+}
