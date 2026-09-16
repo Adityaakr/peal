@@ -16,7 +16,7 @@ import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, onAuthChange, resumeInjected, session } from '../auth';
 import { esc } from '../util';
 import { describeError, formatUnits, fmtTime, shortHex } from '../links/format';
-import { acknowledgeRecoveryCode, activate, client, disconnect, ensureWalletChain, links, loadStatus, onLinksChange, recoverWithCode, resumeSignIn } from '../links/session';
+import { acknowledgeRecoveryCode, activate, client, disconnect, ensureWalletChain, links, loadStatus, onLinksChange, recoverWithCode, resumeSignIn, selectNamespace } from '../links/session';
 import { connectorChoices, connectorLine } from '../links/connectors';
 import '../links.css';
 
@@ -276,6 +276,16 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
   const s: PayState = { request: null, manifestOk: null, profileOk: null, stage: 'idle', error: null, busy: null, balance: null, position: null, intentId: intentFor(requestId), walletTokenBalance: null, feeWei: null };
   const cleanups: Array<() => void> = [];
   const nsOf = () => links().status?.namespaces.find((n) => n.id === s.request?.manifest.namespace) ?? null;
+  /** The request decides the asset domain, not the node's namespace order.
+   * The session boots on the first namespace it sees; a request for any
+   * other one must move the session there BEFORE an account is unlocked or
+   * created, or the payer ends up with an account on the wrong ledger and
+   * every payment fails with "request is for another asset domain". Safe to
+   * call repeatedly: a no-op when the session is already on the right one. */
+  const syncNamespace = async () => {
+    const ns = nsOf();
+    if (ns && links().namespace?.id !== ns.id) await selectNamespace(ns);
+  };
   const paint = () => {
     if (stale) return;
     const active = document.activeElement as HTMLInputElement | null;
@@ -370,6 +380,12 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     const req = await client.getRequest(requestId, s.intentId);
     s.request = req;
     const ns = nsOf()!;
+    if (account.namespace !== ns.id) {
+      // An account unlocked for another domain: drop it so the page offers
+      // to set up (or unlock) the one this request is for.
+      await syncNamespace();
+      throw new Error(`this request is paid on ${ns.chain_name}; set up private payments for that ledger to continue`);
+    }
     const evm = session();
     if (!evm.address || !evm.provider) throw new Error('connect a wallet first');
     await run('confirm the payment in your wallet', 'approve', async () => {
@@ -456,7 +472,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
       s.walletTokenBalance = null;
       paint();
     }
-    else if (btn.id === 'pay-activate') void run('setting up private payments for your wallet', null, async () => void (await activate()));
+    else if (btn.id === 'pay-activate') void run('setting up private payments for your wallet', null, async () => { await syncNamespace(); await activate(); });
     else if (btn.id === 'pay-test-funds') {
       const ns = nsOf()!;
       const evm = session();
@@ -495,6 +511,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
       else root.innerHTML = problem('something went wrong', esc(e instanceof Error ? e.message : String(e)));
       return;
     }
+    await syncNamespace();
     paint();
     // Verify the manifest in wasm before showing a pay button. This loads
     // the worker but not the proving keys.
