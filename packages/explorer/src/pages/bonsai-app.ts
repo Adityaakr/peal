@@ -18,6 +18,7 @@ import {
   acknowledgeRecoveryCode,
   activate,
   client,
+  disconnect,
   ensureWalletChain,
   links,
   loadStatus,
@@ -125,14 +126,15 @@ function walletPanel(): string {
         </div>
       </div>`;
   }
-  const who = `<span class="pl-small">wallet <span class="pl-mono">${esc(shortHex(evm.address, 6, 4))}</span></span>`;
+  const who = `<span class="pl-small">${evm.source === 'privy' ? 'Privy wallet' : 'browser wallet'} <span class="pl-mono">${esc(shortHex(evm.address, 6, 4))}</span></span>`;
+  const leave = `<button type="button" class="pl-btn" id="pl-disconnect" title="${evm.source === 'privy' ? 'log out of Privy and lock the account on this device' : 'forget this browser wallet and lock the account on this device'}">Disconnect</button>`;
   if (l.account && page.view) {
     const v = page.view;
     return `
       <div class="pl-panel">
         <div class="pl-panel-head">
           <h2 class="pl-panel-title">${esc(page.displayName ?? shortHex(evm.address, 6, 4))}</h2>
-          <div class="pl-actions" style="margin:0">${who}<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>private payments on</span><button type="button" class="pl-btn" id="pl-lock">Lock</button></div>
+          <div class="pl-actions" style="margin:0">${who}<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>private payments on</span><button type="button" class="pl-btn" id="pl-lock">Lock</button>${leave}</div>
         </div>
         <div style="padding:14px 18px" class="pl-small">
           recovery: ${page.recovery === 'wallet-signature' ? 'your wallet signature opens your backup on any device' : 'your recovery code opens your backup on any device'}
@@ -175,7 +177,7 @@ function walletPanel(): string {
   }
   return `
     <div class="pl-panel">
-      <div class="pl-panel-head"><h2 class="pl-panel-title">private payments</h2><div>${who}</div></div>
+      <div class="pl-panel-head"><h2 class="pl-panel-title">private payments</h2><div class="pl-actions" style="margin:0">${who}${leave}</div></div>
       <div style="padding:14px 18px">${body}</div>
     </div>`;
 }
@@ -706,6 +708,12 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     } else if (btn.id === 'pl-lock') {
       lockAccount();
       page.view = null;
+      paint();
+    } else if (btn.id === 'pl-disconnect') {
+      disconnect();
+      page.view = null;
+      page.requests = [];
+      page.walletTokenBalance = null;
       paint();
     } else if (btn.id === 'pl-show-restore') root.querySelector<HTMLDialogElement>('#pl-restore-dialog')?.showModal();
     else if (btn.id === 'pl-new-request') root.querySelector<HTMLDialogElement>('#pl-request-dialog')?.showModal();
