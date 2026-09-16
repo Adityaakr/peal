@@ -244,6 +244,14 @@ export function lockAccount(): void {
   publish({ account: null, setup: 'idle', setupDetail: null });
 }
 
+/** Leave the wallet: end the product session, lock the account, and
+ * disconnect the connector (Privy logs out; a browser wallet is forgotten). */
+export function disconnect(): void {
+  signOut();
+  const evm = evmSession();
+  evm.logout();
+}
+
 export function signOut(): void {
   client.token = null;
   try {
