@@ -33,6 +33,10 @@ Validator mode (decision 0010): `PEAL_LINKS_VALIDATORS=3 scripts/peal-links/stac
 
 Development fixture: `PEAL_LINKS_DEV_MINT=1 scripts/peal-links/stack.sh up` mounts `POST /links/v1/dev/mint`, which credits a registered deposit intent without a chain event. It is labelled in the node log, in `GET /links/v1/status` (`dev_mint: true`) and in the app ("Add test funds (dev mint)"), refuses to start with a mainnet namespace configured, and is replaced by the watcher in Phase D.
 
+## Public testnet (Ethereum Sepolia)
+
+`scripts/peal-links/testnet.sh deploy|up|down|status` runs the same node against Sepolia: `deploy` puts the gateway and the faucet test token on chain from a deployer key in `.dev-state/peal-links/sepolia-deployer.key` (never in git; fund it from a faucet), generates the testnet settlement fixture and writes `.dev-state/peal-links/sepolia/config.json` from `config/peal-links.sepolia.json`; `up` starts a single-node instance on :8795 and an explorer on :5174 next to the local stack. Testers need Sepolia ETH for gas; the app calls the token's public faucet for them. Blocks are 12 s apart, so a funding leg at checkout takes about 30 to 40 s. The browser suite runs against it with `LINKS_URL=http://127.0.0.1:8795 EXPLORER_URL=http://localhost:5174 FUNDER_KEY=<deployer key>`.
+
 ## Compose and the edge (prepared, not exercised here)
 
 - `docker/Dockerfile.links` builds the node image; `docker/docker-compose.links.yml` runs anvil A and B, a one-shot `bootstrap` that places the contracts and writes the node config, the node, and the explorer dev server. Docker was not available on the build machine, so these files are documentation until someone runs `docker compose -f docker/docker-compose.links.yml up --build` and records the result in BUILD_STATUS.md.

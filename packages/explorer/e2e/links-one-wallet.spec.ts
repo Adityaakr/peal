@@ -28,6 +28,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.SHOTS_DIR ?? join(here, '..', '..', '..', 'docs', 'peal-links', 'evidence', 'phase-g');
 const HEX64 = /\b[0-9a-f]{64}\b/i;
 
+/** The chain the node's first namespace lives on: anvil locally, a public
+ * testnet when `LINKS_URL` points at a testnet node. */
+let CHAIN = 31337;
+
 test.describe.configure({ mode: 'serial' });
 test.beforeAll(() => mkdirSync(OUT, { recursive: true }));
 
@@ -40,6 +44,7 @@ let ALICE: `0x${string}` = KEYS.alice;
 let bobAddress = '';
 const carolAddress = privateKeyToAccount(KEYS.carol).address;
 test.beforeAll(async () => {
+  CHAIN = (await new NodeClient({ baseUrl: NODE }).status()).namespaces[0]!.chain_id;
   BOB = await freshWallet(0n);
   ALICE = await freshWallet();
   bobAddress = privateKeyToAccount(BOB).address;
@@ -65,7 +70,7 @@ test('1, 3, 4, 7: Bob creates a link, receives while away, sees Incoming become 
   test.setTimeout(600_000);
   const bobCtx = await browser.newContext();
   captureTraffic(bobCtx, traffic);
-  await injectWallet(bobCtx, BOB, { chainId: 31337 });
+  await injectWallet(bobCtx, BOB, { chainId: CHAIN });
   const bob = await bobCtx.newPage();
   await activateOnDashboard(bob);
   await expectNoBonsaiIdentifiers(bob);
@@ -86,7 +91,7 @@ test('1, 3, 4, 7: Bob creates a link, receives while away, sees Incoming become 
   // ---- Alice pays through the unified checkout (criterion 2) ----
   const aliceCtx = await browser.newContext();
   captureTraffic(aliceCtx, traffic);
-  await injectWallet(aliceCtx, ALICE, { chainId: 31337, nonDeterministic: true });
+  await injectWallet(aliceCtx, ALICE, { chainId: CHAIN, nonDeterministic: true });
   const alice = await aliceCtx.newPage();
   await alice.goto(linkUrl.replace(/^https?:\/\/[^/]+/, ''));
   await expect(alice.getByText('Logo files, final')).toBeVisible();
@@ -115,7 +120,7 @@ test('1, 3, 4, 7: Bob creates a link, receives while away, sees Incoming become 
   // ---- Bob returns: Incoming, then Available, then withdraw (4, 3, 7) ----
   const bobCtx2 = await browser.newContext();
   captureTraffic(bobCtx2, traffic);
-  await injectWallet(bobCtx2, BOB, { chainId: 31337 });
+  await injectWallet(bobCtx2, BOB, { chainId: CHAIN });
   const bob2 = await bobCtx2.newPage();
   // A fresh context is a fresh browser: recovery through the wallet
   // signature (criterion 5, EOA path).
@@ -141,7 +146,7 @@ test('5: Alice recovers on a fresh browser with her recovery code; a wrong code 
   test.setTimeout(300_000);
   const ctx = await browser.newContext();
   captureTraffic(ctx, traffic);
-  await injectWallet(ctx, ALICE, { chainId: 31337, nonDeterministic: true });
+  await injectWallet(ctx, ALICE, { chainId: CHAIN, nonDeterministic: true });
   const page = await ctx.newPage();
   await page.goto('/#/bonsai/app');
   await page.getByRole('button', { name: 'Use browser wallet' }).click();
@@ -167,7 +172,7 @@ test('8: paying an address that never activated private receiving is an invitati
   test.setTimeout(300_000);
   const ctx = await browser.newContext();
   captureTraffic(ctx, traffic);
-  await injectWallet(ctx, ALICE, { chainId: 31337, nonDeterministic: true });
+  await injectWallet(ctx, ALICE, { chainId: CHAIN, nonDeterministic: true });
   const page = await ctx.newPage();
   await page.goto('/#/bonsai/app');
   await page.getByRole('button', { name: 'Use browser wallet' }).click();
@@ -212,7 +217,7 @@ test('6: a reload in the middle of the checkout never pays twice', async ({ brow
   test.setTimeout(400_000);
   // Bob publishes a second link through the UI (same fresh-browser path).
   const bobCtx = await browser.newContext();
-  await injectWallet(bobCtx, BOB, { chainId: 31337 });
+  await injectWallet(bobCtx, BOB, { chainId: CHAIN });
   const bob = await bobCtx.newPage();
   await activateOnDashboard(bob);
   await bob.getByRole('button', { name: 'New payment link' }).click();
@@ -225,7 +230,7 @@ test('6: a reload in the middle of the checkout never pays twice', async ({ brow
 
   const ctx = await browser.newContext();
   captureTraffic(ctx, traffic);
-  await injectWallet(ctx, ALICE, { chainId: 31337, nonDeterministic: true });
+  await injectWallet(ctx, ALICE, { chainId: CHAIN, nonDeterministic: true });
   const page = await ctx.newPage();
   await page.goto(`/#/pay/${requestId}`);
   await page.getByRole('button', { name: 'Use browser wallet' }).click();

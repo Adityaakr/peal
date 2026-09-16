@@ -17,7 +17,15 @@ import { ERC20_ABI, NodeClient } from 'peal-links';
 setSignEntropy(`0x${'00'.repeat(32)}`);
 
 export const NODE = process.env.LINKS_URL ?? 'http://127.0.0.1:8790';
-export const RPC_BY_CHAIN: Record<number, string> = { 31337: 'http://127.0.0.1:8545', 31338: 'http://127.0.0.1:8546' };
+export const RPC_BY_CHAIN: Record<number, string> = {
+  31337: 'http://127.0.0.1:8545',
+  31338: 'http://127.0.0.1:8546',
+  11155111: process.env.SEPOLIA_RPC ?? 'https://ethereum-sepolia-rpc.publicnode.com',
+};
+/** Pays gas for fresh test wallets: anvil's account 0 locally, or the key in
+ * `FUNDER_KEY` on a public testnet (a testnet deployer, never real funds). */
+const FUNDER_KEY = (process.env.FUNDER_KEY ?? '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80') as `0x${string}`;
+const GAS_GRANT = BigInt(process.env.GAS_GRANT_WEI ?? (process.env.FUNDER_KEY ? '3000000000000000' : '1000000000000000000'));
 // Wallets the browser suites own (the SDK suites use anvil 0 to 3 and the
 // settlement fixture uses 5 to 7), so a profile published by another suite
 // never changes what a test sees.
@@ -134,11 +142,11 @@ export async function freshWallet(tokens = 1_000_000_000n): Promise<`0x${string}
   const ns = (await client.status()).namespaces[0]!;
   const rpc = RPC_BY_CHAIN[ns.chain_id]!;
   const chain = { id: ns.chain_id, name: ns.chain_name, nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpc] } } };
-  const funder = privateKeyToAccount('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'); // anvil 0
+  const funder = privateKeyToAccount(FUNDER_KEY);
   const wc = createWalletClient({ account: funder, chain, transport: http(rpc) });
   const pc = createPublicClient({ chain, transport: http(rpc) });
   const to = privateKeyToAccount(key).address;
-  const gas = await wc.sendTransaction({ to, value: 10n ** 18n });
+  const gas = await wc.sendTransaction({ to, value: GAS_GRANT });
   await pc.waitForTransactionReceipt({ hash: gas });
   if (tokens > 0n) await fundFromFaucet(key, tokens);
   return key;
