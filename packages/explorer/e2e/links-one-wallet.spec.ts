@@ -20,7 +20,7 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { privateKeyToAccount } from 'viem/accounts';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { NodeClient } from 'peal-links';
 import { captureTraffic, FORBIDDEN_ON_WIRE, freshWallet, injectWallet, KEYS, NODE, shot } from './wallet';
 
@@ -37,12 +37,13 @@ test.beforeAll(() => mkdirSync(OUT, { recursive: true }));
 
 let linkUrl = '';
 let aliceRecoveryCode = '';
-// Bob and Alice are new wallets for this run; Carol (anvil 4) never
-// activates private receiving anywhere.
+// Bob and Alice are new wallets for this run; Carol is a fresh address that
+// never activates private receiving anywhere (a fixed key would keep a
+// profile on the persistent local stack once anyone activated it).
 let BOB: `0x${string}` = KEYS.bob;
 let ALICE: `0x${string}` = KEYS.alice;
 let bobAddress = '';
-const carolAddress = privateKeyToAccount(KEYS.carol).address;
+const carolAddress = privateKeyToAccount(generatePrivateKey()).address;
 test.beforeAll(async () => {
   CHAIN = (await new NodeClient({ baseUrl: NODE }).status()).namespaces[0]!.chain_id;
   BOB = await freshWallet(0n);

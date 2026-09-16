@@ -33,7 +33,6 @@ const GAS_GRANT = BigInt(process.env.GAS_GRANT_WEI ?? (process.env.FUNDER_KEY ? 
 export const KEYS = {
   bob: '0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97', // anvil 8
   alice: '0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6', // anvil 9
-  carol: '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a', // anvil 4, never activates
 } as const;
 
 export interface WalletOpts {

@@ -96,19 +96,17 @@ test('a wallet that declines, and a wallet on the wrong network, are told so and
   await rej.close();
 
   // Wrong network: the wallet sits on chain B and refuses to switch; the
-  // request is on chain A. Setup works (signatures are chain-agnostic), the
-  // funding leg is refused with the reason, and nothing is charged.
+  // request is on chain A. Setup asks the wallet to switch first, is told
+  // no, and says exactly that: which chain the wallet is on and which one
+  // the request needs. Nothing is signed or charged, and the page can retry.
   const wrong = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await injectWallet(wrong, payer, { chainId: 31338 });
   const p2 = await wrong.newPage();
   await p2.goto(`/#/pay/${req.manifest.request_id}`);
   await p2.getByRole('button', { name: 'Use browser wallet' }).click();
   await p2.getByRole('button', { name: /Continue with wallet/ }).click();
-  await expect(p2.getByRole('button', { name: /Approve and pay|Not enough funds/ }).or(p2.getByText('Not enough funds'))).toBeVisible({ timeout: 180_000 });
-  if (await p2.getByRole('button', { name: /Approve and pay/ }).isVisible()) {
-    await p2.getByRole('button', { name: /Approve and pay/ }).click();
-    await expect(p2.getByRole('alert')).toContainText(/chain|network|declined/i, { timeout: 120_000 });
-  }
+  await expect(p2.getByRole('alert')).toContainText(/on chain 31338 and the switch to local chain A \(id 31337\) was declined/, { timeout: 60_000 });
+  await expect(p2.getByRole('button', { name: /Continue with wallet/ })).toBeVisible();
   await expect(p2.getByText('Payment sent.')).toHaveCount(0);
   await shot(p2, 'edge-wrong-network');
   await wrong.close();
@@ -156,19 +154,20 @@ test('checkout is reachable by keyboard', async ({ browser }) => {
   const page = await ctx.newPage();
   await page.goto(`/#/pay/${req.manifest.request_id}`);
   await expect(page.getByText('verified on this device')).toBeVisible({ timeout: 60_000 });
-  // Tab from the top of the document to the wallet buttons: the first step
-  // of paying must be reachable without a mouse.
+  // Tab from the top of the document to the wallet chooser: the first step
+  // of paying must be reachable without a mouse, and both connectors
+  // (browser wallet first, Privy second) must be in the tab order.
   const reached: string[] = [];
   for (let i = 0; i < 25; i++) {
     await page.keyboard.press('Tab');
     const desc = await page.evaluate(() => {
       const el = document.activeElement as HTMLElement | null;
-      return el ? `${el.tagName.toLowerCase()}:${(el as HTMLInputElement).name || el.textContent?.trim().slice(0, 30) || ''}` : '';
+      return el ? `${el.tagName.toLowerCase()}:${(el as HTMLInputElement).name || el.getAttribute('aria-label') || el.textContent?.trim().slice(0, 30) || ''}` : '';
     });
     reached.push(desc);
-    if (desc.startsWith('button:Use browser wallet')) break;
+    if (desc === 'button:Use Privy wallet') break;
   }
-  expect(reached.some((d) => d === 'button:Connect wallet')).toBe(true);
-  expect(reached.at(-1)).toMatch(/^button:Use browser wallet/);
+  expect(reached.at(-2)).toBe('button:Use browser wallet');
+  expect(reached.at(-1)).toBe('button:Use Privy wallet');
   await ctx.close();
 });

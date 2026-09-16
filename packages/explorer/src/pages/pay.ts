@@ -13,10 +13,11 @@
 import type { LinksAccount, PaymentRequest } from 'peal-links';
 import { claimTestFunds, depositOnChain, ensureGas, gasSymbol, LinksApiError, newIntentId, paymentIntentTypedData, providerSigner, publicClientFor, testFundsSource, tokenBalance } from 'peal-links';
 import type { Address, EIP1193Provider } from 'viem';
-import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
+import { connectInjected, onAuthChange, resumeInjected, session } from '../auth';
 import { esc } from '../util';
 import { describeError, formatUnits, fmtTime, shortHex } from '../links/format';
-import { acknowledgeRecoveryCode, activate, client, ensureWalletChain, links, loadStatus, onLinksChange, recoverWithCode, resumeSignIn } from '../links/session';
+import { acknowledgeRecoveryCode, activate, client, disconnect, ensureWalletChain, links, loadStatus, onLinksChange, recoverWithCode, resumeSignIn } from '../links/session';
+import { connectorChoices, connectorLine } from '../links/connectors';
 import '../links.css';
 
 function setMeta(name: string, content: string): () => void {
@@ -197,8 +198,8 @@ function html(s: PayState): string {
     } else if (s.stage !== 'idle') {
       action = `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(s.busy ?? 'working')}</span></div>${stageList(s.stage, needsFunds)}`;
     } else if (!evm.address) {
-      action = `<div class="pl-actions" style="margin:0"><button type="button" class="pl-btn pl-btn-primary" id="pay-login">Connect wallet</button>${injectedProvider() ? `<button type="button" class="pl-btn" id="pay-login-injected">Use browser wallet</button>` : ''}</div>
-        <p class="pl-small" style="margin:8px 0 0">Your existing wallet is all you need. Peal keeps a private account behind it; the payment hides the amount and the parties.</p>`;
+      action = `<p class="pl-small" style="margin:0 0 8px">Pay with the wallet you already have, or with a Privy wallet behind your email. Peal keeps a private account behind either; the payment hides the amount and the parties.</p>
+        ${connectorChoices('pay')}`;
     } else if (!l.account) {
       if (l.setup === 'needs-recovery-code') {
         action = `<form id="pay-recovery-code"><label class="pl-field"><span class="pl-label">your Peal Links recovery code</span><input class="pl-input pl-mono" name="code" required autocomplete="off" placeholder="PEAL-XXXXX-XXXXX-XXXXX-XXXXX"></label><button type="submit" class="pl-btn pl-btn-primary pl-btn-block">Open my account and continue</button></form>`;
@@ -258,6 +259,7 @@ function html(s: PayState): string {
       <div class="pl-row"><span class="pl-row-label">created</span><span class="pl-row-value">${esc(fmtTime(m.created_at))}</span></div>
       ${m.expires_at ? `<div class="pl-row"><span class="pl-row-label">expires</span><span class="pl-row-value">${esc(fmtTime(m.expires_at))}</span></div>` : ''}
       <div class="pl-row"><span class="pl-row-label">request</span><span class="pl-row-value">${manifestLine}</span></div>
+      ${evm.address ? `<div class="pl-row"><span class="pl-row-label">paying from</span><span class="pl-row-value">${connectorLine()}${s.stage === 'idle' && paidHere === null ? ` · <button type="button" class="pl-link-btn" id="pay-switch-wallet" title="disconnect this wallet and choose another">switch wallet</button>` : ''}</span></div>` : ''}
     </div>
     <div>${stateLine}</div>
     ${s.error ? `<div class="pl-notice pl-notice-bad" role="alert" style="margin-top:12px">${esc(s.error)}</div>` : ''}
@@ -447,6 +449,13 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     if (btn.id === 'pay-now' && l.account) void pay(l.account);
     else if (btn.id === 'pay-login') session().login();
     else if (btn.id === 'pay-login-injected') void connectInjected().then(refreshWalletBalance).then(paint).catch((e) => { s.error = describeError(e); paint(); });
+    else if (btn.id === 'pay-switch-wallet') {
+      disconnect();
+      s.error = null;
+      s.balance = null;
+      s.walletTokenBalance = null;
+      paint();
+    }
     else if (btn.id === 'pay-activate') void run('setting up private payments for your wallet', null, async () => void (await activate()));
     else if (btn.id === 'pay-test-funds') {
       const ns = nsOf()!;

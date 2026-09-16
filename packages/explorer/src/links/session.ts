@@ -193,6 +193,9 @@ export async function ensureWalletChain(ns: NamespaceInfo): Promise<void> {
   } catch (e) {
     const code = (e as { code?: number }).code;
     const msg = e instanceof Error ? e.message : String(e);
+    if (code === 4001 || /rejected|denied/i.test(msg)) {
+      throw new Error(`Your wallet is on chain ${current} and the switch to ${ns.chain_name} (id ${ns.chain_id}) was declined. Switch it there yourself and try again.`);
+    }
     if (code !== 4902 && !/unrecognized|not added|Unknown chain|4902/i.test(msg)) throw e;
     const symbol = gasSymbol(ns.chain_id);
     await evm.provider.request({

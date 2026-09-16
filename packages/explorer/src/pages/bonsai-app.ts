@@ -11,7 +11,8 @@ import QRCode from 'qrcode';
 import type { LinksAccount, NamespaceInfo, PaymentRequest, WalletView } from 'peal-links';
 import { claimTestFunds, depositOnChain, ensureGas, LinksApiError, testFundsSource, tokenBalance, withdrawOnChain } from 'peal-links';
 import type { Address, EIP1193Provider } from 'viem';
-import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
+import { connectInjected, onAuthChange, resumeInjected, session } from '../auth';
+import { connectorChoices, connectorLine } from '../links/connectors';
 import { esc } from '../util';
 import { describeError, formatUnits, fmtTime, parseUnits, shortHex } from '../links/format';
 import {
@@ -107,10 +108,6 @@ function setupNotice(): string {
     : '';
 }
 
-function connectButtons(): string {
-  const injected = injectedProvider();
-  return `<button type="button" class="pl-btn pl-btn-primary" id="pl-login">Connect wallet</button>${injected ? `<button type="button" class="pl-btn" id="pl-login-injected">Use browser wallet</button>` : ''}`;
-}
 
 /** The wallet panel: connect, continue, recover, or the active account. */
 function walletPanel(): string {
@@ -122,11 +119,11 @@ function walletPanel(): string {
         <div class="pl-panel-head"><h2 class="pl-panel-title">your wallet</h2></div>
         <div style="padding:14px 18px">
           <p class="pl-p">Your existing wallet is your payment identity here. Peal keeps a private account behind it: nothing to install, no second address to manage. Payments between Peal users hide the amount and the parties; deposits and withdrawals are public on the chain.</p>
-          <div class="pl-actions" style="margin:0">${connectButtons()}</div>
+          ${connectorChoices('pl')}
         </div>
       </div>`;
   }
-  const who = `<span class="pl-small">${evm.source === 'privy' ? 'Privy wallet' : 'browser wallet'} <span class="pl-mono">${esc(shortHex(evm.address, 6, 4))}</span></span>`;
+  const who = `<span class="pl-small">${connectorLine()}</span>`;
   const leave = `<button type="button" class="pl-btn" id="pl-disconnect" title="${evm.source === 'privy' ? 'log out of Privy and lock the account on this device' : 'forget this browser wallet and lock the account on this device'}">Disconnect</button>`;
   if (l.account && page.view) {
     const v = page.view;
