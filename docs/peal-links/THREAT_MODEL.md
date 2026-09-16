@@ -26,6 +26,9 @@ Legend: **sees** = learns directly; **link** = can correlate; blank = does not l
 | Settlement signers | | **sees** withdrawal amounts and recipients | sees when | | sees the withdrawing account id and the burn's receipt opening | |
 | Gateway contract and its chain | sees depositor and withdrawal recipient addresses | sees deposit and withdrawal amounts | sees block times | | sees the receipt commitment `rho` of a deposit (a hiding commitment; the account inside it is not derivable) and the `withdrawalId` (hash of namespace and burn position) | |
 | Watcher (in the node) | sees depositor addresses | sees deposit amounts | sees block numbers | | links a deposit event to a registered intent's receipt, so it learns which receipt a deposit funds; it does not learn the account, which only the R_dep witness holds | |
+| Directory (in the node; decisions 0011, 0013) | **sees** every registered user's 0x address | | sees profile publication times; lookups are rate-counted, not logged | | **sees the 0x-to-Bonsai association**: each signed receiving profile names the wallet address, the Bonsai account id, the receiving encryption key and the manifest signing key. A signed-in user learns the same for the addresses they look up. Validators learn nothing from it | sees the IP and session of publishers and lookers |
+| Deposit gateway and its chain (one-wallet flow; decision 0013) | sees the depositor's 0x address | sees the amount | sees block times | | sees `rho`, a hiding commitment to the destination account; **does not learn the account**. The public link is `0x depositor -> rho -> mint position`; which account claims that position is hidden by the receive proof, up to amount-and-timing correlation | |
+| Backup service (in the node; decision 0012) | **sees** the 0x address that uploads | | sees upload times and ciphertext sizes | | ciphertext only: the backup key is derived from a wallet signature or a recovery code that never reaches the node; the association it holds is `0x -> an encrypted blob` | sees IP and session |
 
 ## Trust boundaries and what each layer enforces
 
@@ -86,11 +89,24 @@ Legend: **sees** = learns directly; **link** = can correlate; blank = does not l
 | A validator's settlement key signs for a withdrawal its ledger does not hold | `sign_for_peer` runs `SignerPolicy::check` against the local replicated ledger, matches the message to the claim and the namespace, reads the epoch from its own RPC, records the attested digest per position | bridge suite on the validator stack (two peer co-signatures logged after checks); first-round refusal and retry observed in the logs |
 | One of three validators is down | Consensus halts (no quorum); API submissions answer with a storage error after their deadline, never a fake success | fault probe evidence |
 
+## Threats added by the one-wallet addendum (decisions 0011 to 0013)
+
+| Threat | Enforcement | Exercised by |
+|---|---|---|
+| The directory serves a substituted receiving key or profile | The sender verifies the profile's EIP-712 signature against the 0x address it typed (EOA by recovery, contract wallets by ERC-1271 on the named chain), the ledger domain and expiry, and that a payment link's manifest is signed by the profile's `profileKey` | one-wallet browser suite: a tampered profile is refused |
+| Directory rollback or withholding | Append-only hash chain per address; a client that saw version n refuses an older one; expiry bounds staleness | node unit test on the directory log |
+| Phishing for the recovery signature | Any site can request the same `personal_sign`; the message names Peal and its purpose, the setup step warns, and the optional recovery code wraps the derived key so a stolen signature alone opens nothing. The signature is never transmitted or stored | setup copy; recovery-code test |
+| A wallet that signs the recovery message non-deterministically | Sign twice at setup and compare; if they differ the derived-key path is not offered and the recovery code is required | setup logic; contract-wallet stand-in in the browser suite |
+| Backup rollback | The node refuses uploads with a lower state version; restore reconciles against the ledger and refuses to spend from a stale snapshot | recovery test on a fresh browser |
+| A payment intent replayed or forged | It is local: verified in the client against the connected address before proving, bound to amount, recipient profile hash, request id, ledger domain, account state version, nonce and expiry; never transmitted, so nothing to replay against | checkout logic |
+| Paying an address that never activated private receiving | No profile means no receiving key: the invitation state moves no funds and creates no account | one-wallet browser suite, criterion 8 |
+
 ## Not protected (stated plainly)
 
 - Which account acts, and when, is visible to the ledger and anyone reading its log.
 - Deposit and withdrawal amounts and EVM addresses are public.
 - Submission metadata (IP, timing) can link operations to people.
+- The node learns which 0x address owns which Bonsai account (directory, request creation, backups). The interface hides the machinery; it does not make the wallet and the private account cryptographically unlinkable, and the landing page says so.
 - The ledger operator can censor or delay. In single-node mode that is one process; in validator mode the leader of a view chooses what to include and a set of three validators tolerates no faulty member (four would tolerate one). All validators run on one machine under one operator: the consensus path works, the decentralisation does not exist yet.
 - The settlement committee can release reserves incorrectly if a threshold of signers is compromised (decision 0005). Locally the committee is either a single-process fixture inside the node or one key per local validator process; neither is independent custody.
 - Consensus liveness depends on every validator's chain view: a validator whose RPC lags votes against mints it cannot confirm, and one whose RPC is down abstains. Three validators with one abstaining cannot finalize.

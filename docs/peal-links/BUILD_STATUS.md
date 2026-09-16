@@ -2,7 +2,7 @@
 
 Living log. Read this first every session. Spec: `SPEC.md`.
 
-## Current phase: F (production preparation and QA), complete on 2026-09-16 including the validator-mode addendum
+## Current phase: G (one wallet, private by default), started 2026-09-16; F complete including the validator-mode addendum
 
 ### Smoke command
 ```
@@ -243,6 +243,39 @@ One reviewer (Opus tier) was asked to refute six claims about `crates/peal-links
 - Poisoned state lock no longer takes the validator down (`state::lock`).
 Verification after the fixes: `cargo test -p peal-links-consensus` 4 integration + 3 unit passed; bridge suite on the validators 1 passed (53 s, evidence/phase-f/validators-fixed-bridge-vitest.log); browser flow + edge 6 passed (1.5 min, validators-fixed-browser-playwright.log); SDK e2e 1 passed (validators-fixed-sdk-e2e-vitest.log); `cargo test --workspace --release` 26 suites ok, clippy and typecheck clean, forge 125 passed (workspace-checks-review-fixes.log); all three validators agree after the runs.
 Not fixed, recorded: the block backfill remains a custom protocol in place of `marshal`; `Status.state_root` after a crash between ledger and head writes reports the live ledgers' root until the next block; three validators tolerate no fault; the reviewer's byzantine-leader (equivocation) and divergent-oracle scenarios have no dedicated test beyond the engine's own guarantees.
+
+## Phase G: one wallet, private by default (SPEC-ADDENDUM-one-wallet.md)
+
+Started 2026-09-16 after Gate F. The addendum supersedes SPEC.md section 8 and parts of section 11; decisions 0011 (account-level authorization, local payment intents), 0012 (recovery by wallet capability), 0013 (directory and deposit linkage) record the reconciliations.
+
+### What already-built code changes
+- `crates/peal-bonsai/src/manifest.rs`: manifest version 2 carries `receiver_address`; the wasm `sign_request` takes it.
+- `crates/peal-links-wasm`: sealed backups under a raw 32-byte key (`export_backup_with_key`, `import_backup_with_key`) next to the passphrase form.
+- `packages/links` (SDK): `LinksAccount.create/open/restore(passphrase)` become `setup/unlock/recover` with a device key (non-extractable WebCrypto key in IndexedDB) and a recovery mechanism; `pay` takes a payment target (a request or a directory profile) and a verified local payment intent; `createRequest` signs with the account's key and names the wallet address; client gains directory, backup and profile calls; typed-data helpers for the profile, the intent and the recovery message.
+- `crates/peal-links-node`: directory (append-only profiles, session-bound and rate-limited), backup store (versioned, anti-rollback), manifest v2 acceptance, request archival on revocation.
+- `packages/explorer`: session module drives automatic setup and recovery on connect; the dashboard shows the connected 0x address only, two balances (Wallet, Private), a send form that accepts a 0x address or a link, Incoming versus Available with automatic claiming; the checkout becomes one continuous flow (Approve payment, Adding funds, Preparing payment, Payment sent) with fees shown before authorization; the landing page states that interface abstraction is not cryptographic unlinkability. Removed: passphrase forms, "Create private account", Lock/Unlock, the account id and encryption key display, the backup passphrase dialog.
+- Tests: the flow and edge Playwright specs move to the one-wallet flow; the injected test wallet gains `eth_signTypedData_v4` and a contract-wallet stand-in.
+
+### What is new
+- Directory service and signed receiving profiles (decision 0013).
+- Unified funding-plus-payment checkout with persisted progress.
+- Recovery subsystem: derived-key path for deterministic EOAs, recovery-code path for the rest, node backup store, fresh-browser recovery (decision 0012).
+- Invitation flow for unregistered addresses (no funds moved, no account created).
+- Local payment intents (decision 0011).
+
+### Revised gate criteria (addendum section 10; each evidenced per SPEC section 4)
+- Gate C addendum: (3) receive and claim with no manual Bonsai identifier anywhere in the interface; (5) recover on a fresh browser through the wallet-signature path for an EOA and the recovery-code path for a wallet that cannot derive.
+- Gate E addendum: (2) fund and complete a genuine Bonsai payment through the unified checkout; (6) resume an interrupted checkout without a duplicate payment; (8) pay an unregistered 0x address and get the honest invitation flow with no funds moved.
+- Also demonstrated: (1) create and share a request, (4) return after being offline and see Incoming become Available, (7) withdraw to the authorized EVM destination.
+- Two users, each interacting only through an existing EVM wallet, in one Playwright suite with the privacy assertions kept (no spending secrets, openings, balances or intent signatures on the wire).
+
+### Blockers seen at planning
+- Passkey PRF as a second factor is not built (the recovery code is the second factor; WebAuthn PRF support and its test harness are a separate piece of work).
+- ERC-1271 verification is implemented against the namespace's RPC; no real contract wallet is deployed on the local chains, so the browser suite uses a test-provider stand-in that reports code at its address and signs non-deterministically, which exercises the recovery-code path but not a real ERC-1271 verifier. Recorded as such.
+- Funded invitations are out of scope by the addendum.
+
+### Next step
+Rust and node changes (manifest v2, sealed backups under a raw key, directory, backup store), then the SDK, then the explorer, then the suites.
 
 ## Handoff
 What works: Peal Links end to end on a local two-chain stack. A receiver creates a payment link on the dashboard; a payer opens it, funds a private account from a connected wallet through a real ERC-20 deposit into `PealLinksGateway` on anvil chain A (credited by the node's watcher after two confirmations, proven by the R_dep circuit), pays with a ZK-Pari R_op proof made in a Web Worker, and the receipt reaches the receiver encrypted through the inbox; the receiver claims it with a second proof, acknowledges the request, and withdraws with a burn proof plus a disclosure that the signer fixture certifies (EIP-712, threshold 2 of 3) so chain A's gateway releases the tokens. Replays are refused by the ledger and by both gateways. Backups are encrypted with argon2id and restore on a fresh browser. The ledger replays from its sqlite log with every proof re-verified.
