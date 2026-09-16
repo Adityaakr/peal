@@ -228,11 +228,30 @@ cmd_status() {
   curl -fsS "http://127.0.0.1:$NODE_PORT/links/v1/status" 2>/dev/null | head -c 600 && echo || true
 }
 
+# Give a tester's wallet test funds: the faucet test token (whole units,
+# default 10,000) and, on chains with a gas faucet, gas as well.
+#   NETWORK=tempo scripts/peal-links/testnet.sh fund 0x... 10000
+cmd_fund() {
+  local to="$1" amount="$2" key tok units
+  [ -n "$to" ] || { echo "usage: $0 fund <address> [whole units]" >&2; exit 2; }
+  key=$(cat "$DEPLOYER_KEY_FILE")
+  tok=$(python3 -c "import json;print(json.load(open('$TN/deployments.json'))['token'])")
+  units=$(python3 -c "print(int('$amount') * 10**6)")
+  if [ "$NETWORK" = tempo ]; then
+    cast rpc tempo_fundAddress "$(echo "$to" | tr 'A-Z' 'a-z')" --rpc-url "$RPC" >/dev/null && echo "gas: Tempo funded $to with PathUSD"
+  fi
+  local gas=()
+  [ -n "${CREATE_GAS:-}" ] && gas=(--gas-limit "$CREATE_GAS")
+  cast send "$tok" "faucet(address,uint256)" "$to" "$units" --rpc-url "$RPC" --private-key "$key" ${gas[@]+"${gas[@]}"} >/dev/null
+  echo "tUSD balance of $to: $(cast call "$tok" 'balanceOf(address)(uint256)' "$to" --rpc-url "$RPC") base units"
+}
+
 case "${1:-}" in
   deploy) cmd_deploy ;;
   up) cmd_up ;;
   down) cmd_down ;;
   status) cmd_status ;;
   allow) cmd_allow "${2:-}" "${3:-}" ;;
+  fund) cmd_fund "${2:-}" "${3:-10000}" ;;
   *) echo "usage: NETWORK=sepolia|tempo $0 deploy|up|down|status|allow <token> [cap]" >&2; exit 2 ;;
 esac
