@@ -44,6 +44,7 @@ Development fixture: `PEAL_LINKS_DEV_MINT=1 scripts/peal-links/stack.sh up` moun
 - `GET /healthz` on the node: liveness.
 - `GET /links/v1/status`: version, circuit id, setup (`local-dev` or `ceremony`), ledger mode (`single-node` or `simplex-N-validators`), the validator's consensus view when replicated, signer mode, namespaces with `available`, per-ledger `seq`, `receipt_count`, `state_root`, `receipt_root`.
 - `GET /links/v1/consensus` (validator mode): validator id, validator set, height, head digest, applied state root, genesis, mempool size, and every ledger's summary.
+- `PUT /links/v1/directory`, `GET /links/v1/directory/{ns}/{address}` (session-bound, 60 lookups per minute per session): signed receiving profiles (decision 0013). `PUT /links/v1/backups/{ns}`, `GET /links/v1/backups/{ns}` (session-bound): encrypted backups, last 8 versions per wallet, lower state versions refused.
 - `GET /links/v1/ledger/{ns}`: the recent-root window and minted total.
 - `GET /links/v1/ledger/{ns}/history?from=&limit=`: the public operation log, replayable.
 
@@ -54,8 +55,9 @@ Development fixture: `PEAL_LINKS_DEV_MINT=1 scripts/peal-links/stack.sh up` moun
 | Core crate (Gate A) | `cargo test -p peal-bonsai --release` | nothing |
 | Consensus crate (four simulated validators on the deterministic runtime) | `cargo test -p peal-links-consensus` | nothing |
 | Node unit tests | `cargo test -p peal-links-node --release` | nothing |
-| SDK flow (two wallets, wasm proofs, live node) | `pnpm -C packages/links test` | stack up with `PEAL_LINKS_DEV_MINT=1` |
-| Browser flow (two contexts) | `pnpm -C packages/explorer test:e2e` | stack up with `PEAL_LINKS_DEV_MINT=1` |
+| SDK flows (two EVM wallets: setup, deposit, link, approve and pay, pay an address, recover on a fresh device; bridge) | `pnpm -C packages/links test` | stack up (real deposits; no dev mint) |
+| Browser: the one-wallet acceptance criteria (addendum section 10) | `pnpm -C packages/explorer exec playwright test e2e/links-one-wallet.spec.ts` | stack up; do not edit files under `packages/` while it runs (the vite dev server reloads the page) |
+| Browser: edge cases (terminal states, declining wallet, wrong network, concurrent payer, keyboard) | `pnpm -C packages/explorer exec playwright test e2e/links-edge.spec.ts` | stack up |
 | Screenshots | `pnpm -C packages/explorer shots` | explorer up |
 | Lint and types | `cargo clippy --workspace --all-targets -- -D warnings`, `pnpm -r typecheck` | nothing |
 
@@ -63,7 +65,7 @@ Development fixture: `PEAL_LINKS_DEV_MINT=1 scripts/peal-links/stack.sh up` moun
 
 - Ledger state is one sqlite file per namespace in WAL mode with `synchronous=FULL`; copying the file while the node runs is not a consistent backup. Stop the node or use `sqlite3 .backup`.
 - Wallet state lives in the user's browser (IndexedDB, encrypted under a storage key that is itself wrapped by the passphrase). The node holds no wallet state; the only recovery path is the user's exported backup.
-- Product data (`links.sqlite`) holds sessions, request manifests, inbox ciphertexts and deposit intents. Nothing in it opens a receipt or moves funds.
+- Product data (`links.sqlite`) holds sessions, request manifests, inbox ciphertexts, deposit intents, the directory (which wallet address authorized which private account) and encrypted backups. Nothing in it opens a receipt or moves funds; the directory is the one place the wallet-to-account association is stored in clear (THREAT_MODEL.md observer matrix).
 
 ## Logs and secret redaction
 

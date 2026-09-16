@@ -79,12 +79,40 @@ export function injectedProvider(): Eip1193Like | null {
  * still goes through the wallet's own confirmation. Publishes into the same
  * session state the Privy bridge uses, so pages need not know which one is
  * active. */
-export async function connectInjected(): Promise<Address> {
+const INJECTED_FLAG = 'peal-links:wallet';
+
+/** Reconnect a browser wallet the person connected before, without a
+ * prompt (`eth_accounts` answers only for sites already authorized), so a
+ * reload resumes where it was. */
+export async function resumeInjected(): Promise<Address | null> {
+  try {
+    if (localStorage.getItem(INJECTED_FLAG) !== 'injected') return null;
+  } catch {
+    return null;
+  }
+  if (state.address) return state.address;
+  const provider = injectedProvider();
+  if (!provider) return null;
+  try {
+    const accounts = (await provider.request({ method: 'eth_accounts' })) as string[];
+    if (!accounts[0]) return null;
+    return await connectInjected('eth_accounts');
+  } catch {
+    return null;
+  }
+}
+
+export async function connectInjected(method: 'eth_requestAccounts' | 'eth_accounts' = 'eth_requestAccounts'): Promise<Address> {
   const provider = injectedProvider();
   if (!provider) throw new Error('no browser wallet found');
-  const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[];
+  const accounts = (await provider.request({ method })) as string[];
   const address = accounts[0] as Address | undefined;
   if (!address) throw new Error('the wallet returned no account');
+  try {
+    localStorage.setItem(INJECTED_FLAG, 'injected');
+  } catch {
+    /* storage unavailable */
+  }
   const chainHex = (await provider.request({ method: 'eth_chainId' })) as string;
   publish({
     ready: true,
@@ -92,7 +120,14 @@ export async function connectInjected(): Promise<Address> {
     address,
     provider,
     chainId: Number.parseInt(chainHex, 16),
-    logout: () => publish({ source: null, address: null, provider: null, chainId: null }),
+    logout: () => {
+      try {
+        localStorage.removeItem(INJECTED_FLAG);
+      } catch {
+        /* storage unavailable */
+      }
+      publish({ source: null, address: null, provider: null, chainId: null });
+    },
     switchChain: async (id: number) => {
       await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${id.toString(16)}` }] });
       publish({ chainId: id });

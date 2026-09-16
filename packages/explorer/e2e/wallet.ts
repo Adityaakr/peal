@@ -2,21 +2,29 @@
 // as `window.ethereum`, backed by a viem local account in the test process
 // (anvil's public test keys, never real funds). Signs messages, typed data
 // (EIP-712) and transactions like an extension would; everything else goes
-// to the chain. `nonDeterministic` makes `personal_sign` return a different
-// valid signature each time (ECDSA malleability), standing in for wallets
-// that do not sign deterministically so the recovery-code path is exercised.
+// to the chain. `nonDeterministic` makes `personal_sign` draw a fresh nonce
+// per signature, standing in for wallets that do not sign deterministically
+// so the recovery-code path is exercised.
 import type { BrowserContext, Page } from '@playwright/test';
 import { join } from 'node:path';
-import { createPublicClient, createWalletClient, http, type Hex } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+import { createPublicClient, createWalletClient, http } from 'viem';
+import { privateKeyToAccount, setSignEntropy } from 'viem/accounts';
 import { ERC20_ABI, NodeClient } from 'peal-links';
+
+// Deterministic nonces (RFC 6979 with fixed extra data) for every wallet in
+// this process, from the start, so a deterministic test wallet signs the
+// same bytes before and after a non-deterministic one has been used.
+setSignEntropy(`0x${'00'.repeat(32)}`);
 
 export const NODE = process.env.LINKS_URL ?? 'http://127.0.0.1:8790';
 export const RPC_BY_CHAIN: Record<number, string> = { 31337: 'http://127.0.0.1:8545', 31338: 'http://127.0.0.1:8546' };
+// Wallets the browser suites own (the SDK suites use anvil 0 to 3 and the
+// settlement fixture uses 5 to 7), so a profile published by another suite
+// never changes what a test sees.
 export const KEYS = {
-  bob: '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a', // anvil 2
-  alice: '0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6', // anvil 3
-  carol: '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a', // anvil 4
+  bob: '0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97', // anvil 8
+  alice: '0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6', // anvil 9
+  carol: '0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a', // anvil 4, never activates
 } as const;
 
 export interface WalletOpts {
@@ -24,19 +32,6 @@ export interface WalletOpts {
   rejectSign?: boolean;
   rejectTx?: boolean;
   nonDeterministic?: boolean;
-}
-
-const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
-
-/** The other valid ECDSA signature for the same message: s' = n - s, v flipped. */
-function malleate(sig: Hex): Hex {
-  const raw = sig.slice(2);
-  const r = raw.slice(0, 64);
-  const s = BigInt(`0x${raw.slice(64, 128)}`);
-  const v = parseInt(raw.slice(128, 130), 16);
-  const s2 = (N - s).toString(16).padStart(64, '0');
-  const v2 = v === 27 ? 28 : 27;
-  return `0x${r}${s2}${v2.toString(16).padStart(2, '0')}`;
 }
 
 /** Coerce a JSON-RPC typed-data payload (numbers as strings) into what
@@ -62,13 +57,19 @@ export async function injectWallet(context: BrowserContext, key: `0x${string}`, 
   const rpc = RPC_BY_CHAIN[opts.chainId] ?? 'http://127.0.0.1:8545';
   const chain = { id: opts.chainId, name: 'local', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpc] } } };
   const wallet = createWalletClient({ account, chain, transport: http(rpc) });
-  let flip = false;
   await context.exposeFunction('__pealSign', async (hex: string) => {
     if (opts.rejectSign) throw new Error('User rejected the request.');
-    const sig = await account.signMessage({ message: { raw: Buffer.from(hex.replace(/^0x/, ''), 'hex') } });
-    if (!opts.nonDeterministic) return sig;
-    flip = !flip;
-    return flip ? malleate(sig) : sig;
+    // A non-deterministic signer draws a fresh nonce per signature (viem's
+    // extra entropy): every signature is valid and low-s, and no two are
+    // the same, which is what the recovery-key check must detect.
+    if (opts.nonDeterministic) setSignEntropy(true);
+    try {
+      return await account.signMessage({ message: { raw: Buffer.from(hex.replace(/^0x/, ''), 'hex') } });
+    } finally {
+      // Back to deterministic nonces (RFC 6979 with fixed extra data) for
+      // every other wallet in this process.
+      if (opts.nonDeterministic) setSignEntropy(`0x${'00'.repeat(32)}`);
+    }
   });
   await context.exposeFunction('__pealSignTyped', async (json: string) => {
     if (opts.rejectSign) throw new Error('User rejected the request.');
@@ -104,7 +105,13 @@ export async function injectWallet(context: BrowserContext, key: `0x${string}`, 
             return w.__pealSignTyped(typeof data === 'string' ? data : JSON.stringify(data));
           }
           if (method === 'eth_sendTransaction') return w.__pealSendTx((params as unknown[])[0]);
-          if (method === 'wallet_switchEthereumChain') return null;
+          if (method === 'wallet_switchEthereumChain') {
+            // A wallet that stays where it is: switching to another chain
+            // is refused like a user declining the prompt.
+            const wanted = (params as [{ chainId?: string }])[0]?.chainId;
+            if (wanted && wanted.toLowerCase() !== chainHex.toLowerCase()) throw new Error('User rejected the request.');
+            return null;
+          }
           return w.__pealRpc(method, params ?? []);
         },
         on() {},
@@ -114,6 +121,27 @@ export async function injectWallet(context: BrowserContext, key: `0x${string}`, 
     { address: account.address, chainHex: `0x${opts.chainId.toString(16)}` },
   );
   return account.address;
+}
+
+/** A brand-new wallet for one run: a random key, gas from anvil's account 0
+ * and test tokens from the faucet, so a run never depends on what an
+ * earlier run published for a shared key. */
+export async function freshWallet(tokens = 1_000_000_000n): Promise<`0x${string}`> {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const key = `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}` as `0x${string}`;
+  const client = new NodeClient({ baseUrl: NODE });
+  const ns = (await client.status()).namespaces[0]!;
+  const rpc = RPC_BY_CHAIN[ns.chain_id]!;
+  const chain = { id: ns.chain_id, name: ns.chain_name, nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpc] } } };
+  const funder = privateKeyToAccount('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'); // anvil 0
+  const wc = createWalletClient({ account: funder, chain, transport: http(rpc) });
+  const pc = createPublicClient({ chain, transport: http(rpc) });
+  const to = privateKeyToAccount(key).address;
+  const gas = await wc.sendTransaction({ to, value: 10n ** 18n });
+  await pc.waitForTransactionReceipt({ hash: gas });
+  if (tokens > 0n) await fundFromFaucet(key, tokens);
+  return key;
 }
 
 export async function fundFromFaucet(key: `0x${string}`, amount = 1_000_000_000n): Promise<void> {

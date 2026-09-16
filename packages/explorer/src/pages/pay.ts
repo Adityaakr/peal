@@ -13,7 +13,7 @@
 import type { LinksAccount, PaymentRequest } from 'peal-links';
 import { depositOnChain, LinksApiError, newIntentId, paymentIntentTypedData, providerSigner, publicClientFor, tokenBalance } from 'peal-links';
 import type { Address, EIP1193Provider } from 'viem';
-import { connectInjected, injectedProvider, onAuthChange, session } from '../auth';
+import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
 import { esc } from '../util';
 import { describeError, formatUnits, fmtTime, shortHex } from '../links/format';
 import { acknowledgeRecoveryCode, activate, client, links, loadStatus, onLinksChange, recoverWithCode, resumeSignIn } from '../links/session';
@@ -209,11 +209,14 @@ function html(s: PayState): string {
           <p class="pl-small" style="text-align:center;margin:8px 0 0">${l.hasStoredAccount ? 'Unlocks your private account on this device; no signature needed.' : 'First time: your wallet confirms one Peal Links authorization and one recovery message.'}</p>`;
       }
     } else if (needsFunds && ns) {
+      const unit = 10n ** BigInt(ns.decimals);
+      const topUp = ((shortfall + unit - 1n) / unit) * unit; // whole units, as the flow adds them
       const short = formatUnits(shortfall.toString(), ns.decimals);
-      const fundable = ns.available && s.walletTokenBalance !== null && BigInt(s.walletTokenBalance) >= shortfall;
+      const added = formatUnits(topUp.toString(), ns.decimals);
+      const fundable = ns.available && s.walletTokenBalance !== null && BigInt(s.walletTokenBalance) >= topUp;
       action = fundable
         ? `<button type="button" class="pl-btn pl-btn-primary pl-btn-block" id="pay-now">Approve and pay ${esc(amount)} ${esc(symbol)}</button>
-           <p class="pl-small" style="text-align:center;margin:8px 0 0">Adds ${esc(short)} ${esc(symbol)} from your wallet to your private balance first (two wallet confirmations, public on ${esc(ns.chain_name)}; credited after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}, which can take a few minutes on slower chains), then pays privately.</p>`
+           <p class="pl-small" style="text-align:center;margin:8px 0 0">Adds ${esc(added)} ${esc(symbol)} from your wallet to your private balance first (the ${esc(short)} ${esc(symbol)} missing, rounded up to a whole unit) (two wallet confirmations, public on ${esc(ns.chain_name)}; credited after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}, which can take a few minutes on slower chains), then pays privately.</p>`
         : ns.available
           ? `<div class="pl-notice pl-notice-warn"><strong>Not enough funds.</strong> Your private balance is ${formatUnits(s.balance!, ns.decimals)} ${esc(symbol)} and your wallet holds ${s.walletTokenBalance !== null ? formatUnits(s.walletTokenBalance, ns.decimals) : '—'} ${esc(symbol)} on ${esc(ns.chain_name)}; this request needs ${esc(short)} ${esc(symbol)} more.</div>`
           : `<div class="pl-small" style="text-align:center">Deposits on ${esc(ns.chain_name)} are not available on this node.</div>`;
@@ -457,6 +460,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
   void (async () => {
     await loadStatus();
     await resumeSignIn();
+    await resumeInjected();
     try {
       s.request = await client.getRequest(requestId, s.intentId);
     } catch (e) {

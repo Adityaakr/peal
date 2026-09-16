@@ -1,0 +1,11 @@
+
+Running 5 tests using 1 worker
+
+  ✓  1 [chromium] › e2e/links-one-wallet.spec.ts:64:1 › 1, 3, 4, 7: Bob creates a link, receives while away, sees Incoming become Available, withdraws (53.0s)
+  ✓  2 [chromium] › e2e/links-one-wallet.spec.ts:140:1 › 5: Alice recovers on a fresh browser with her recovery code; a wrong code is refused (3.7s)
+  ✓  3 [chromium] › e2e/links-one-wallet.spec.ts:166:1 › 8: paying an address that never activated private receiving is an invitation, no funds move (28.7s)
+  ✓  4 [chromium] › e2e/links-one-wallet.spec.ts:211:1 › 6: a reload in the middle of the checkout never pays twice (45.9s)
+  ✓  5 [chromium] › e2e/links-one-wallet.spec.ts:262:1 › privacy: nothing the browsers sent carries spending secrets, openings, balances or payment intents (141ms)
+
+  5 passed (2.4m)
+pw exit 0

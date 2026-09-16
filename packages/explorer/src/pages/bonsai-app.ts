@@ -11,7 +11,7 @@ import QRCode from 'qrcode';
 import type { LinksAccount, PaymentRequest, WalletView } from 'peal-links';
 import { depositOnChain, LinksApiError, tokenBalance, withdrawOnChain } from 'peal-links';
 import type { Address, EIP1193Provider } from 'viem';
-import { connectInjected, injectedProvider, onAuthChange, session } from '../auth';
+import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
 import { esc } from '../util';
 import { describeError, formatUnits, fmtTime, parseUnits, shortHex } from '../links/format';
 import {
@@ -905,6 +905,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
   void (async () => {
     await loadStatus();
     await resumeSignIn();
+    await resumeInjected();
     await refresh();
     await refreshWalletBalance();
     paint();

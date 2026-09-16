@@ -1,0 +1,10 @@
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › e2e/links-edge.spec.ts:56:1 › terminal request states are their own honest screens (6.1s)
+  ✓  2 [chromium] › e2e/links-edge.spec.ts:80:1 › a wallet that declines, and a wallet on the wrong network, are told so and can retry (17.1s)
+  ✓  3 [chromium] › e2e/links-edge.spec.ts:117:1 › a concurrent payer on a one-time request is held off while the first one proves (33.2s)
+  ✓  4 [chromium] › e2e/links-edge.spec.ts:150:1 › checkout is reachable by keyboard (6.6s)
+
+  4 passed (1.1m)
+pw exit 0

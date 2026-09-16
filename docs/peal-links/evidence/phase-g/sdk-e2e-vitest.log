@@ -1,0 +1,24 @@
+
+ RUN  v3.2.6 /Users/adityakrx/peal-network/packages/links
+
+stdout | test/e2e.test.ts > peal-links end to end (wasm prover, live node, one wallet) > two wallets: set up, fund, request, approve and pay, pay an address, recover on a fresh device, claim
+timings (ms, single-threaded wasm in Node): {
+  [32m'load params'[39m: [33m785[39m,
+  [32m'alice setup (profile signature, register, backup)'[39m: [33m376[39m,
+  [32m'deposit proof (R_dep)'[39m: [33m345[39m,
+  [32m'watcher credit'[39m: [33m3[39m,
+  [32m'claim (R_op receive)'[39m: [33m7672[39m,
+  [32m'pay (R_op send + deliver)'[39m: [33m7637[39m,
+  [32m'recover (fresh device)'[39m: [33m104[39m,
+  [32m'claim x2 (Bob)'[39m: [33m15076[39m
+}
+
+ ✓ test/e2e.test.ts (1 test) 55575ms
+   ✓ peal-links end to end (wasm prover, live node, one wallet) > two wallets: set up, fund, request, approve and pay, pay an address, recover on a fresh device, claim  54775ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  12:17:45
+   Duration  56.18s (transform 151ms, setup 0ms, collect 432ms, tests 55.57s, environment 0ms, prepare 43ms)
+
+sdk exit 0
