@@ -7,6 +7,7 @@
 #   scripts/peal-links/stack.sh status    what is running and where
 #   scripts/peal-links/stack.sh consensus every validator's height, head and applied state root (validator mode)
 #   scripts/peal-links/stack.sh nodes     rebuild and restart the node processes only (chains and data stay)
+#   scripts/peal-links/stack.sh stop-node <i> | start-node <i>   one validator, for fault probes
 #   scripts/peal-links/stack.sh logs      tail every log
 #
 # PEAL_LINKS_VALIDATORS=3 (default 1) runs the ledger as a Commonware
@@ -306,6 +307,14 @@ cmd_nodes() {
   start_nodes
 }
 
+# One validator at a time, for fault probes: `stop-node 2`, `start-node 2`.
+cmd_stop_node() { stop "node-$1"; }
+cmd_start_node() {
+  local i="$1"
+  start "node-$i" env PEAL_LINKS_LISTEN="127.0.0.1:$((NODE_PORT + i))" "$ROOT/target/release/peal-links-node" --config "$STATE/config-$i.json"
+  wait_http "http://127.0.0.1:$((NODE_PORT + i))/healthz" "node-$i"
+}
+
 cmd_status() {
   local name
   for name in anvil-a anvil-b $(node_names) explorer; do
@@ -316,13 +325,15 @@ cmd_status() {
 
 cmd_consensus() {
   local i
+  local out
   for i in $(seq 0 $((VALIDATORS - 1))); do
-    curl -fsS "http://127.0.0.1:$((NODE_PORT + i))/links/v1/consensus" 2>/dev/null | python3 -c '
+    out=$(curl -fsS "http://127.0.0.1:$((NODE_PORT + i))/links/v1/consensus" 2>/dev/null) || { echo "node-$i: no answer"; continue; }
+    echo "$out" | python3 -c '
 import json, sys
 v = json.load(sys.stdin)
 roots = " ".join(l["state_root"][:16] for l in v["ledgers"])
 print("%s  height %5d  head %s  state %s  ledgers %s  mempool %d" % (v["validator"][:12], v["height"], v["head"][:16], v["state_root"][:16], roots, v["mempool"]))
-' || echo "node-$i: no answer"
+'
   done
 }
 
@@ -335,6 +346,8 @@ case "${1:-}" in
   status) cmd_status ;;
   consensus) cmd_consensus ;;
   nodes) cmd_nodes ;;
+  stop-node) cmd_stop_node "$2" ;;
+  start-node) cmd_start_node "$2" ;;
   logs) cmd_logs ;;
-  *) echo "usage: $0 up|down|reset|status|consensus|nodes|logs" >&2; exit 2 ;;
+  *) echo "usage: $0 up|down|reset|status|consensus|nodes|stop-node <i>|start-node <i>|logs" >&2; exit 2 ;;
 esac

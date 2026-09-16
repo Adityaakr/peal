@@ -61,7 +61,7 @@ Account-based private payments. The validator holds, per account, one 32-byte co
 | Key management (generation, digests, circuit id, distribution) | `params.rs` |
 | Receipt delivery (encrypted inbox), recipient encryption keys, backups, recovery | `envelope.rs` (x25519 + XChaCha20-Poly1305, argon2id backups), node inbox routes, `packages/links/src/account.ts` |
 | Browser proving (single-threaded wasm, Web Worker) | `crates/peal-links-wasm`, `packages/links/src/worker.ts` (decision 0006) |
-| Consensus and multi-node ordering | **not started** (Commonware `simplex` `2026.9.0`; blocker in BUILD_STATUS.md) |
+| Consensus and multi-node ordering | **built locally** (Commonware `simplex` `2026.9.0` in `crates/peal-links-consensus`, decision 0010; exact API surface used in `research/commonware-simplex-api.md`) |
 | Product API, request manifests, checkout, dashboard | `manifest.rs`, node `api.rs`, `packages/explorer/src/pages/{bonsai-landing,bonsai-app,pay}.ts` |
 
 ## Security assumptions and open obligations

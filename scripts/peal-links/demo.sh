@@ -13,7 +13,9 @@
 #      offline; payer funds from a wallet and pays; receiver returns, claims,
 #      acknowledges, withdraws), with a privacy check on every request the
 #      browsers sent.
-# Exit code is non-zero if any step fails. Nothing here moves real money.
+# PEAL_LINKS_VALIDATORS=3 runs the same flows against three local simplex
+# validators. Exit code is non-zero if any step fails. Nothing here moves
+# real money.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
@@ -52,4 +54,8 @@ for n in s["namespaces"]:
 for l in s["ledgers"]:
     print("  ledger", l["namespace"][:12] + "...", "receipts", l["receipt_count"], "seq", l["seq"])
 '
+if [ "${PEAL_LINKS_VALIDATORS:-1}" -gt 1 ]; then
+  echo "validators (height, head, applied state root):"
+  scripts/peal-links/stack.sh consensus
+fi
 echo "explorer: http://localhost:5173/#/bonsai"
