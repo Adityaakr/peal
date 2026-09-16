@@ -72,6 +72,18 @@ Legend: **sees** = learns directly; **link** = can correlate; blank = does not l
 | Owner drains reserves | no sweep function exists; the owner rotates signers, which is the documented committee trust | `test_owner_cannot_move_funds_directly_and_only_owner_administers` |
 | Cross-domain reserve consumption | one ledger, one gateway, one token per namespace; a certificate for chain A fails on chain B | `bridge.test.ts` |
 
+## Threats added in Phase F, validator mode (with the test or probe that exercises them)
+
+| Threat | Enforcement | Exercised by |
+|---|---|---|
+| A leader proposes a block with an invalid proof, a bad signature, a foreign namespace or a wrong circuit | Every validator runs the ledger's stateless checks on every envelope before voting (`State::check_block`); the block gets no quorum | `four_validators_agree_on_the_ledger` (tampered proof refused before the mempool, so it is never proposed); the same checks run on peer-received transactions |
+| A leader proposes a mint for a deposit that did not happen or has not confirmed | The proposer's own oracle must confirm before the mint enters its mempool; every voter's own RPC must confirm before it votes; a chain that cannot be reached makes the voter abstain | `four_validators_agree_on_the_ledger` (unconfirmed mint never finalized, confirmed one is); `ChainOracle` checks tx receipt, log index, gateway, token, amount, receipt commitment and depth |
+| Validators diverge (different ledgers after the same blocks) | Application only at finalization, in block order, through the same ledger code; per-validator state root in `GET /links/v1/consensus` | `stack.sh consensus` after every suite and after restart and fault probes (identical heads and roots); `verify_replay` on one validator reproduces the root |
+| A validator misses blocks (offline, late) | Backfill by digest from peers; ancestors of a finalized block are applied in order | `a_validator_that_missed_blocks_catches_up_by_digest`; fault probe `stop-node 2` / `start-node 2` |
+| A peer floods or sends garbage on the p2p channels | Authenticated p2p (ed25519 handshake, per-channel rate quotas, 1 MiB message cap); decoders reject malformed frames; oversized blocks and transactions refused | junk bytes and an HTTP request to the p2p ports while the chain advanced (Gate F addendum) |
+| A validator's settlement key signs for a withdrawal its ledger does not hold | `sign_for_peer` runs `SignerPolicy::check` against the local replicated ledger, matches the message to the claim and the namespace, reads the epoch from its own RPC, records the attested digest per position | bridge suite on the validator stack (two peer co-signatures logged after checks); first-round refusal and retry observed in the logs |
+| One of three validators is down | Consensus halts (no quorum); API submissions answer with a storage error after their deadline, never a fake success | fault probe evidence |
+
 ## Not protected (stated plainly)
 
 - Which account acts, and when, is visible to the ledger and anyone reading its log.
