@@ -1075,3 +1075,670 @@
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* ---------- the landing (#/bonsai) ----------
+   The network landing's structure and palette (pages/landing.css): cream,
+   ink, the blue accent, olive for the quiet text. The page reuses that
+   file's section, stage, card, handshake, try-row and close styles; what is
+   below is only what is new to this page, prefixed .pl-ld-. Depth in the
+   scenes comes from translateZ under a perspective and from nothing else. */
+
+body.pl-landing-page {
+  background: #f3f4ed;
+}
+
+body.pl-landing-page main {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pl-ld {
+  --text: #1a1a1a;
+  --muted: #6b7063;
+  --accent: #0871e7;
+  --border: rgb(42 54 22 / 12%);
+  background: #f3f4ed;
+  color: #1a1a1a;
+}
+
+.pl-ld .peal-sec-inner {
+  /* Long tables and wide scenes get the measure's full width. */
+  width: 100%;
+}
+
+/* ---- hero ---- */
+
+.pl-ld-hero {
+  padding: 12px 24px 0;
+}
+
+.pl-ld-hero-media {
+  position: relative;
+  min-height: min(76vh, 700px);
+  border-radius: 40px;
+  overflow: hidden;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 64px 24px 28px;
+  border: 1px solid rgb(42 54 22 / 8%);
+  background:
+    radial-gradient(90% 70% at 50% 0%, #e3eefb 0%, rgb(227 238 251 / 0) 70%),
+    radial-gradient(60% 50% at 85% 100%, #eef1e3 0%, rgb(238 241 227 / 0) 70%),
+    #f8f9f4;
+}
+
+.pl-ld-hero-copy {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  max-width: 680px;
+}
+
+.pl-ld-hero-copy .peal-eyebrow {
+  margin-bottom: 16px;
+}
+
+.pl-ld-title {
+  margin: 0 0 16px;
+  font-family: var(--pl-display);
+  font-weight: 500;
+  font-size: clamp(32px, 4.4vw, 50px);
+  line-height: 1.06;
+  letter-spacing: -0.01em;
+  color: #1a1a1a;
+}
+
+.pl-ld-lead {
+  margin: 0 auto 26px;
+  max-width: 540px;
+  font-size: 17px;
+  line-height: 1.6;
+  color: #2f3327;
+}
+
+.pl-ld-cta-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pl-ld-cta-quiet {
+  display: inline-flex;
+  align-items: center;
+  padding: 13px 24px;
+  border-radius: 999px;
+  border: 1px solid rgb(42 54 22 / 22%);
+  background: rgb(255 255 255 / 55%);
+  color: #1a1a1a;
+  font-size: 15.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background 180ms ease,
+    transform 180ms ease;
+}
+
+.pl-ld-cta-quiet:hover {
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.pl-ld-hero-note {
+  position: relative;
+  z-index: 2;
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #6b7063;
+  text-align: center;
+}
+
+/* The link in front, the sealed things behind it, the one public fact
+   nearest the reader. */
+.pl-ld-hero-scene {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 720px;
+  height: 300px;
+  margin-top: 28px;
+  perspective: 1000px;
+  perspective-origin: 50% 30%;
+  transform-style: preserve-3d;
+}
+
+.pl-ld-link {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid rgb(8 113 231 / 45%);
+  box-shadow:
+    0 0 0 4px rgb(8 113 231 / 10%),
+    0 24px 40px -24px rgb(8 113 231 / 45%);
+  white-space: nowrap;
+  transform: translate3d(-50%, -50%, 60px);
+  animation: pl-ld-float 6s ease-in-out infinite;
+}
+
+.pl-ld-link-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #0871e7;
+  flex: none;
+}
+
+.pl-ld-link-url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13.5px;
+  color: #2f3327;
+}
+
+.pl-ld-link-amt {
+  padding-left: 12px;
+  border-left: 1px solid rgb(42 54 22 / 15%);
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-ld-ghost {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 200px;
+  margin-left: -100px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: #eceee2;
+  border: 1px solid rgb(42 54 22 / 16%);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pl-ld-ghost b {
+  font-size: 16px;
+  letter-spacing: 0.12em;
+  color: #1a1a1a;
+  opacity: 0.5;
+}
+
+.pl-ld-ghost i {
+  font-style: normal;
+  font-size: 12px;
+  color: rgb(42 54 22 / 55%);
+}
+
+.pl-ld-ghost-a {
+  transform: translate3d(-250px, -125px, -90px);
+}
+
+.pl-ld-ghost-b {
+  transform: translate3d(110px, -135px, -130px);
+}
+
+.pl-ld-ghost-c {
+  transform: translate3d(-30px, 40px, -30px);
+  background: #fff;
+  border-color: rgb(8 113 231 / 35%);
+}
+
+.pl-ld-ghost-c b {
+  letter-spacing: 0;
+  opacity: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0871e7;
+}
+
+@keyframes pl-ld-float {
+  0%,
+  100% {
+    transform: translate3d(-50%, -50%, 60px);
+  }
+  50% {
+    transform: translate3d(-50%, calc(-50% - 10px), 60px);
+  }
+}
+
+/* ---- scenes ---- */
+
+.pl-ld-cap {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: rgb(42 54 22 / 55%);
+}
+
+/* Cards wait for their scene to be reached, then rise as on the landing. */
+.pl-ld-scene:not(.is-in) .peal-card-open {
+  animation: none;
+  opacity: 0;
+}
+
+/* Four stepped cards reach lower than the landing's stage allows for. */
+.pl-ld-scene-ledger .peal-stage {
+  height: 310px;
+}
+
+.pl-ld-wallet-stage {
+  height: 280px;
+}
+
+.pl-ld-wcard {
+  opacity: 0;
+  transform: translate3d(0, 0, 0);
+  transition:
+    transform 800ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 600ms ease;
+}
+
+.pl-ld-wcard-account,
+.pl-ld-wcard-backup {
+  background: #eceee2;
+  border-color: rgb(42 54 22 / 18%);
+}
+
+.pl-ld-scene.is-in .pl-ld-wcard-backup {
+  opacity: 1;
+  transform: translate3d(70px, -100px, -120px);
+  transition-delay: 240ms;
+}
+
+.pl-ld-scene.is-in .pl-ld-wcard-account {
+  opacity: 1;
+  transform: translate3d(15px, -35px, -50px);
+  transition-delay: 120ms;
+}
+
+.pl-ld-scene.is-in .pl-ld-wcard-wallet {
+  opacity: 1;
+  transform: translate3d(-40px, 35px, 40px);
+}
+
+/* The checkout, with the two observers standing behind it. */
+.pl-ld-flow {
+  margin: 40px 0 10px;
+}
+
+.pl-ld-flow-stage {
+  position: relative;
+  height: 390px;
+  perspective: 1100px;
+  perspective-origin: 50% 40%;
+  transform-style: preserve-3d;
+}
+
+.pl-ld-checkout {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 300px;
+  max-width: 100%;
+  transform: translate3d(-50%, -50%, 40px);
+  padding: 18px 18px 16px;
+  border-radius: 18px;
+  background: #fff;
+  border: 1px solid rgb(42 54 22 / 14%);
+  box-shadow: 0 24px 44px -26px rgb(26 26 26 / 45%);
+}
+
+.pl-ld-tag {
+  position: absolute;
+  top: -11px;
+  right: 14px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eceee2;
+  border: 1px solid rgb(42 54 22 / 16%);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(42 54 22 / 65%);
+}
+
+.pl-ld-co-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.pl-ld-co-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pl-ld-co-wallet {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: rgb(42 54 22 / 55%);
+}
+
+.pl-ld-co-title {
+  margin: 6px 0 10px;
+  font-size: 14px;
+  color: #2f3327;
+}
+
+.pl-ld-co-amount {
+  font-family: var(--pl-display);
+  font-size: 34px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: #1a1a1a;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-ld-co-amount span {
+  margin-left: 8px;
+  font-family: var(--pl-body);
+  font-size: 14px;
+  color: #6b7063;
+}
+
+.pl-ld-co-rows {
+  margin: 12px 0;
+  border-top: 1px solid rgb(42 54 22 / 10%);
+}
+
+.pl-ld-co-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgb(42 54 22 / 10%);
+  font-size: 13px;
+}
+
+.pl-ld-co-row span:first-child {
+  color: rgb(42 54 22 / 55%);
+}
+
+.pl-ld-side {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 200px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #eceee2;
+  border: 1px solid rgb(42 54 22 / 16%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  opacity: 0;
+  transform: translate3d(-50%, -50%, -60px);
+  transition:
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 500ms ease,
+    background 500ms ease,
+    border-color 500ms ease,
+    box-shadow 500ms ease;
+}
+
+.pl-ld-side-tag {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(42 54 22 / 50%);
+}
+
+.pl-ld-side b {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.pl-ld-side i {
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgb(42 54 22 / 55%);
+}
+
+.pl-ld-flow.is-in .pl-ld-side-ledger {
+  opacity: 1;
+  transform: translate3d(calc(-50% - 280px), -70%, -60px);
+}
+
+.pl-ld-flow.is-in .pl-ld-side-receiver {
+  opacity: 1;
+  transform: translate3d(calc(-50% + 280px), -30%, -60px);
+}
+
+.pl-ld-flow.is-accepted .pl-ld-side {
+  background: #fff;
+  border-color: rgb(8 113 231 / 45%);
+  box-shadow: 0 0 0 4px rgb(8 113 231 / 10%);
+}
+
+.pl-ld-flow.is-accepted .pl-ld-side b {
+  color: #0871e7;
+}
+
+.pl-ld-steps {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.pl-ld-step {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgb(42 54 22 / 18%);
+  background: rgb(255 255 255 / 70%);
+  color: #2f3327;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.pl-ld-step[aria-pressed='true'] {
+  background: #0871e7;
+  border-color: #0871e7;
+  color: #fff;
+}
+
+.peal-prose .pl-ld-flow-cap {
+  margin: 0 0 26px;
+  text-align: center;
+  font-size: 13px;
+  color: rgb(42 54 22 / 55%);
+}
+
+/* ---- lists, table, code, questions in the landing palette ---- */
+
+.pl-ld-uses {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 28px;
+}
+
+.pl-ld-uses li {
+  padding-top: 14px;
+  border-top: 1px solid rgb(42 54 22 / 12%);
+}
+
+.pl-ld-uses b {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.pl-ld-uses span {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #5c6154;
+}
+
+.pl-ld .pl-table-wrap {
+  margin: 28px 0 26px;
+  background: rgb(255 255 255 / 70%);
+}
+
+.pl-ld .pl-table th {
+  background: #eceee2;
+  color: rgb(42 54 22 / 65%);
+}
+
+.pl-ld .pl-table td {
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+.pl-ld-code {
+  margin: 28px 0 8px;
+}
+
+.pl-ld-faq {
+  margin-top: 6px;
+}
+
+.pl-ld-faq summary {
+  font-size: 16.5px;
+  color: #1a1a1a;
+}
+
+.pl-ld-faq p {
+  margin: 0 0 14px;
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: #2f3327;
+}
+
+@media (max-width: 720px) {
+  .pl-ld-hero {
+    padding: 8px 14px 0;
+  }
+
+  .pl-ld-hero-media {
+    min-height: 0;
+    border-radius: 28px;
+    padding: 44px 18px 24px;
+  }
+
+  .pl-ld-hero-scene {
+    height: 250px;
+    margin-top: 18px;
+  }
+
+  .pl-ld-link {
+    padding: 12px 16px;
+  }
+
+  .pl-ld-link-url {
+    font-size: 12.5px;
+  }
+
+  .pl-ld-link-amt {
+    display: none;
+  }
+
+  .pl-ld-ghost {
+    width: 160px;
+    margin-left: -80px;
+  }
+
+  .pl-ld-ghost-a {
+    transform: translate3d(-95px, -105px, -90px);
+  }
+
+  .pl-ld-ghost-b {
+    transform: translate3d(80px, -115px, -130px);
+  }
+
+  .pl-ld-ghost-c {
+    transform: translate3d(-10px, 45px, -30px);
+  }
+
+  /* The observers cannot stand beside a card that is already the width of
+     the phone, so they sit under it. */
+  .pl-ld-flow-stage {
+    height: auto;
+    perspective: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .pl-ld-checkout,
+  .pl-ld-side {
+    width: 100%;
+    max-width: 380px;
+    opacity: 1;
+    transform: none !important;
+  }
+
+  .pl-ld-side {
+    position: static;
+  }
+
+  /* The checkout first, then what the two observers see of it. The tag
+     stays on the checkout, so that one keeps a position of its own. */
+  .pl-ld-checkout {
+    position: relative;
+    left: auto;
+    top: auto;
+    order: -1;
+    margin-top: 12px;
+  }
+
+  .pl-ld-x4 {
+    grid-template-columns: 1fr;
+  }
+
+  .pl-ld-uses {
+    grid-template-columns: 1fr;
+  }
+
+  .pl-ld-wallet-stage {
+    height: 320px;
+  }
+
+  .pl-ld-scene.is-in .pl-ld-wcard-backup {
+    transform: translate3d(30px, -100px, -120px);
+  }
+
+  .pl-ld-scene.is-in .pl-ld-wcard-account {
+    transform: translate3d(0, -35px, -50px);
+  }
+
+  .pl-ld-scene.is-in .pl-ld-wcard-wallet {
+    transform: translate3d(-25px, 35px, 40px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-ld-link {
+    animation: none;
+  }
+
+  .pl-ld-scene .peal-card-open,
+  .pl-ld-wcard,
+  .pl-ld-side {
+    transition: none;
+  }
+}
