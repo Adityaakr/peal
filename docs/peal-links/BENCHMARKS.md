@@ -39,8 +39,23 @@ Reading: past a batch of about 8 the sqlite writes dominate (about 0.7 ms per op
 | Browser flow (two contexts: create link, deposit from wallet, pay, claim, acknowledge, withdraw) | 56 s | `pnpm -C packages/explorer test:e2e e2e/links-flow.spec.ts`, 5 proofs in Web Workers |
 | watcher credit latency | 2 to 3 s after inclusion | `confirmations: 2` at 1 block/s, 1.5 s poll interval |
 
+## Validator mode (three local simplex validators, decision 0010)
+
+| what | result | conditions |
+|---|---|---|
+| deterministic 4-validator suite | 5.3 s wall clock | `cargo test -p peal-links-consensus --test consensus`, simulated network with 20 ms links, real proofs, one keygen |
+| idle block rate | about 2.3 blocks/s (23 in 10 s) | three live validators, 400 ms idle-proposal wait, leader timeout 1 s |
+| SDK e2e against the validators | 38 s (27 s single node) | same suite, every write waits for finalization on validator 0 |
+| SDK bridge against the validators | 53 s (52 s single node) | same suite; the certificate gathers two peer signatures over the validator network |
+| browser flow against the validators | 60 s (56 s single node) | same suite |
+| edge suite against the validators | 1.6 min (1.5 min single node) | same suite |
+| recovery after `stack.sh nodes` (all three restarted on their data) | agree again within 8 s | evidence/phase-f/validators-consensus-restart.txt |
+| recovery after one validator returns | all three advance within 10 s | evidence/phase-f/validators-fault-probe.txt |
+
+Reading: a write costs one finalization round on this machine (on the order of 0.3 to 1 s including the idle wait), which is what the 11 s difference on the SDK e2e flow's dozen writes shows. Per-operation consensus latency was not measured in isolation.
+
 ## Not measured, stated plainly
 
 - Latency distributions under a reproducible concurrent workload (the spec asks for cold and warm setup, batch size versus wait, network topology); the actor's window is fixed at 25 ms and was not tuned against load.
 - Inbox delivery under load; archive path serving for receipts beyond the wallet's pruning horizon (no pruning is implemented in the wallet yet).
-- Multi-node consensus latency (consensus not started).
+- Consensus latency per operation in isolation, and the validator set under load or across machines (the three validators share one machine and one loopback network).
