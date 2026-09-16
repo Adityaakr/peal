@@ -101,6 +101,7 @@ function accountPanel(): string {
           ${v.pending ? ` · <span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(v.pending)} pending</span>` : ''}
           <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
             <button type="button" class="pl-btn" id="pl-backup">Export encrypted backup</button>
+            <button type="button" class="pl-btn" id="pl-export-csv" title="a plaintext file of this account's receipts and payments">Export history (CSV)</button>
             <label class="pl-small" style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="pl-autoclaim" ${l.autoClaim ? 'checked' : ''}> claim incoming receipts automatically while unlocked</label>
           </div>
         </div>
@@ -567,6 +568,29 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
         URL.revokeObjectURL(a.href);
         page.notice = 'Backup exported. It contains your spending key and every receipt opening, encrypted: keep it somewhere safe.';
       });
+    } else if (btn.id === 'pl-export-csv') {
+      const ns = l.namespace!;
+      const v = page.view!;
+      const ok = confirm(
+        'This writes a plaintext CSV of your receipts and payments (amounts, counterparty account ids, positions, times) to a file on this device. Anyone who gets the file learns exactly that. Continue?',
+      );
+      if (!ok) return;
+      const q = (x: string) => `"${x.replace(/"/g, '""')}"`;
+      const rows = [
+        ['kind', 'amount', 'asset', 'counterparty', 'position', 'reference', 'status', 'at'].map(q).join(','),
+        ...v.history.map((h) =>
+          [h.kind, `${h.kind === 'send' ? '-' : ''}${formatUnits(h.amount, ns.decimals)}`, ns.token_symbol, h.counterparty, h.position ?? '', h.reference ?? '', 'settled', new Date(h.at * 1000).toISOString()].map((x) => q(String(x))).join(','),
+        ),
+        ...v.receipts
+          .filter((r) => r.status !== 'claimed')
+          .map((r) => ['incoming', formatUnits(r.amount, ns.decimals), ns.token_symbol, r.sender, r.position, r.reference ?? '', r.status, new Date(r.discovered_at * 1000).toISOString()].map((x) => q(String(x))).join(',')),
+      ];
+      const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `peal-links-history-${ns.label.replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
     } else if (btn.dataset.copy) {
       void navigator.clipboard?.writeText(btn.dataset.copy).then(() => {
         const prev = btn.textContent;
