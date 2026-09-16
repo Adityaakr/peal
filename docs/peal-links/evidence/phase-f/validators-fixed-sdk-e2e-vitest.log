@@ -1,0 +1,22 @@
+
+ RUN  v3.2.6 /Users/adityakrx/peal-network/packages/links
+
+stdout | test/e2e.test.ts > peal-links end to end (wasm prover, live node) > two accounts: fund, request, pay, deliver, claim, acknowledge, back up, restore
+timings (ms, single-threaded wasm in Node): {
+  [32m'load params'[39m: [33m631[39m,
+  [32m'deposit proof (R_dep)'[39m: [33m344[39m,
+  [32m'watcher credit'[39m: [33m3[39m,
+  [32m'claim proof (R_op receive)'[39m: [33m6714[39m,
+  [32m'pay (R_op send + deliver)'[39m: [33m6564[39m,
+  [32m'claim proof (Bob)'[39m: [33m6797[39m
+}
+
+ ✓ test/e2e.test.ts (1 test) 36986ms
+   ✓ peal-links end to end (wasm prover, live node) > two accounts: fund, request, pay, deliver, claim, acknowledge, back up, restore  36345ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  11:37:02
+   Duration  37.37s (transform 98ms, setup 0ms, collect 271ms, tests 36.99s, environment 0ms, prepare 28ms)
+
+sdk exit 0

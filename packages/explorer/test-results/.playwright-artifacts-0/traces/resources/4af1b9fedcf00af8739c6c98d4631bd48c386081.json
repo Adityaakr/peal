@@ -1,1 +1,0 @@
-{"event_name":"sdk_initialize","client_id":"9b0e36b2-c9b3-42c1-b314-33ff07028cd9","payload":{"embeddedWallets":{"ethereum":{"createOnLogin":"all-users"},"showWalletUIs":false},"loginMethods":["email"],"supportedChains":[42431],"defaultChain":42431,"clientTimestamp":"2026-09-16T06:05:38.594Z"}}
