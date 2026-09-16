@@ -18,6 +18,7 @@ import {
   acknowledgeRecoveryCode,
   activate,
   client,
+  ensureWalletChain,
   links,
   loadStatus,
   lockAccount,
@@ -693,6 +694,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       const ns = l.namespace!;
       const evm = session();
       void run(`getting test ${ns.token_symbol} for your wallet`, async () => {
+        await ensureWalletChain(ns);
         const how = await claimTestFunds(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address);
         await refreshWalletBalance();
         page.notice = how === 'chain-faucet' ? `${ns.chain_name} funded your wallet with ${ns.token_symbol}.` : `The test token's faucet sent 1,000 ${ns.token_symbol} to your wallet.`;
@@ -868,6 +870,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       }
       form.closest('dialog')?.close();
       void run('adding funds: proving the deposit intent, then confirm the approval and the deposit in your wallet', async () => {
+        await ensureWalletChain(ns);
         const { receipt } = await l.account!.prepareDeposit(amount);
         await ensureGas(ns, evm.address as Address);
         const tx = await depositOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, BigInt(amount), receipt);
@@ -885,6 +888,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       }
       form.closest('dialog')?.close();
       void run('withdrawal: proving on this device (about 7 s), then the committee certificate, then confirm the release in your wallet', async () => {
+        await ensureWalletChain(ns);
         const { certificate } = await l.account!.withdraw(amount, recipient);
         await ensureGas(ns, evm.address as Address);
         const hash = await withdrawOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, certificate);

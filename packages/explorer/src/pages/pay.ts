@@ -16,7 +16,7 @@ import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
 import { esc } from '../util';
 import { describeError, formatUnits, fmtTime, shortHex } from '../links/format';
-import { acknowledgeRecoveryCode, activate, client, links, loadStatus, onLinksChange, recoverWithCode, resumeSignIn } from '../links/session';
+import { acknowledgeRecoveryCode, activate, client, ensureWalletChain, links, loadStatus, onLinksChange, recoverWithCode, resumeSignIn } from '../links/session';
 import '../links.css';
 
 function setMeta(name: string, content: string): () => void {
@@ -371,6 +371,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     const evm = session();
     if (!evm.address || !evm.provider) throw new Error('connect a wallet first');
     await run('confirm the payment in your wallet', 'approve', async () => {
+      await ensureWalletChain(ns);
       const signer = providerSigner(evm.provider!, evm.address!, ns.chain_id);
       const intent = await account.paymentIntentFor({ request: req });
       const signature = await signer.signTypedData(paymentIntentTypedData(intent, ns.chain_id));
@@ -451,6 +452,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
       const ns = nsOf()!;
       const evm = session();
       void run(`getting test ${ns.token_symbol} for your wallet`, null, async () => {
+        await ensureWalletChain(ns);
         await claimTestFunds(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address);
         await refreshWalletBalance();
       });

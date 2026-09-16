@@ -19,6 +19,7 @@ import {
   createRemoteProver,
   deriveBackupKey,
   deterministicSignature,
+  gasSymbol,
   indexedDbDeviceKeys,
   indexedDbStore,
   isContractAddress,
@@ -175,6 +176,41 @@ function opts(ns: NamespaceInfo) {
   };
 }
 
+/** Put the connected wallet on the namespace's chain before anything is
+ * signed or sent: switch, and add the chain to the wallet first when it
+ * does not know it (Tempo, local anvil). Reads the wallet's current chain
+ * from the provider rather than trusting what was recorded at connect. */
+export async function ensureWalletChain(ns: NamespaceInfo): Promise<void> {
+  const evm = evmSession();
+  if (!evm.provider) throw new Error('connect a wallet first');
+  const current = Number.parseInt(String(await evm.provider.request({ method: 'eth_chainId' })), 16);
+  if (current === ns.chain_id) return;
+  const chainId = `0x${ns.chain_id.toString(16)}`;
+  try {
+    await evm.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId }] });
+  } catch (e) {
+    const code = (e as { code?: number }).code;
+    const msg = e instanceof Error ? e.message : String(e);
+    if (code !== 4902 && !/unrecognized|not added|Unknown chain|4902/i.test(msg)) throw e;
+    const symbol = gasSymbol(ns.chain_id);
+    await evm.provider.request({
+      method: 'wallet_addEthereumChain',
+      params: [
+        {
+          chainId,
+          chainName: ns.chain_name,
+          rpcUrls: [ns.rpc_url],
+          nativeCurrency: { name: symbol, symbol, decimals: 18 },
+          blockExplorerUrls: ns.explorer_url ? [ns.explorer_url] : [],
+        },
+      ],
+    });
+    await evm.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId }] });
+  }
+  const after = Number.parseInt(String(await evm.provider.request({ method: 'eth_chainId' })), 16);
+  if (after !== ns.chain_id) throw new Error(`your wallet is still on chain ${after}; switch it to ${ns.chain_name} (id ${ns.chain_id}) and try again`);
+}
+
 function walletSigner(ns: NamespaceInfo): WalletSigner {
   const evm = evmSession();
   if (!evm.address || !evm.provider) throw new Error('connect a wallet first');
@@ -231,6 +267,8 @@ export async function activate(): Promise<LinksAccount | null> {
   const address = evm.address.toLowerCase();
   if (state.account) return state.account;
   try {
+    publish({ setup: 'checking', setupDetail: `switching your wallet to ${namespace.chain_name}` });
+    await ensureWalletChain(namespace);
     if (!state.signedIn || state.signedIn.toLowerCase() !== address) {
       publish({ setup: 'signing-in', setupDetail: 'confirm the sign-in message in your wallet' });
       await signIn();
@@ -341,6 +379,7 @@ export async function restoreFile(backupJson: string, code: string): Promise<Lin
  * here and never transmitted), then prove and pay. */
 export async function payRequest(account: LinksAccount, request: PaymentRequest, intentId: string, onStage?: (s: string) => void): Promise<PayResult> {
   const ns = state.namespace!;
+  await ensureWalletChain(ns);
   const signer = walletSigner(ns);
   const intent = await account.paymentIntentFor({ request });
   onStage?.('approve');
@@ -360,6 +399,7 @@ export async function payAddress(
   const ns = state.namespace!;
   const resolved = await account.resolve(address);
   if (!resolved) return { unregistered: true };
+  await ensureWalletChain(ns);
   const signer = walletSigner(ns);
   const target = { profile: resolved.profile, profileHash: resolved.hash, amount, reference };
   const intent = await account.paymentIntentFor(target);
