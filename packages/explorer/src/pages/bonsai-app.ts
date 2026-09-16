@@ -7,6 +7,12 @@
 // from the node and from the wallet inside the proving worker; nothing is
 // fixture data. Money is base units as decimal strings until the moment it
 // is formatted for a human.
+//
+// Shape: a product shell. A sidebar with the sections (overview, payment
+// links, incoming, activity, settings) and the wallet at the bottom; a main
+// column with a page head and cards. Money actions open as full pages with
+// a form on them rather than as dialogs, and the page never repaints under
+// a form the person has started filling in.
 import QRCode from 'qrcode';
 import type { LinksAccount, NamespaceInfo, PaymentRequest, WalletView } from 'peal-links';
 import { claimTestFunds, depositOnChain, ensureGas, LinksApiError, testFundsSource, tokenBalance, withdrawOnChain } from 'peal-links';
@@ -39,7 +45,36 @@ type Cleanup = () => void;
 
 // ---- page-local state ---------------------------------------------------
 
+/** The sections in the sidebar, and the pages that open from them. */
+type Tab = 'overview' | 'links' | 'incoming' | 'activity' | 'settings' | 'new-link' | 'link-created' | 'send' | 'fund' | 'withdraw' | 'mint' | 'rename' | 'restore';
+
+const SECTIONS: Array<{ tab: Tab; label: string; icon: string }> = [
+  { tab: 'overview', label: 'Overview', icon: 'home' },
+  { tab: 'links', label: 'Payment links', icon: 'link' },
+  { tab: 'incoming', label: 'Incoming', icon: 'inbox' },
+  { tab: 'activity', label: 'Activity', icon: 'activity' },
+  { tab: 'settings', label: 'Settings', icon: 'settings' },
+];
+
+/** Which section a page belongs to, for the sidebar highlight and the back button. */
+const PARENT: Record<Tab, Tab> = {
+  overview: 'overview',
+  links: 'links',
+  incoming: 'incoming',
+  activity: 'activity',
+  settings: 'settings',
+  'new-link': 'links',
+  'link-created': 'links',
+  send: 'overview',
+  fund: 'overview',
+  withdraw: 'overview',
+  mint: 'overview',
+  rename: 'settings',
+  restore: 'settings',
+};
+
 interface PageState {
+  tab: Tab;
   view: WalletView | null;
   labels: Record<string, string>;
   displayName: string | null;
@@ -55,7 +90,8 @@ interface PageState {
   withdrawals: Array<{ position: number; amount: string; recipient: string; status: string; tx_hash: string | null }>;
 }
 
-let page: PageState = {
+const initial = (): PageState => ({
+  tab: 'overview',
   view: null,
   labels: {},
   displayName: null,
@@ -68,7 +104,9 @@ let page: PageState = {
   invite: null,
   walletTokenBalance: null,
   withdrawals: [],
-};
+});
+
+let page: PageState = initial();
 
 function requestUrl(id: string): string {
   return `${location.origin}/pay/${id}`;
@@ -78,14 +116,27 @@ function inviteUrl(address: string): string {
   return `${location.origin}/#/bonsai?invite=${address.toLowerCase()}`;
 }
 
-// ---- rendering helpers ------------------------------------------------------
+// ---- small pieces -----------------------------------------------------------
 
-function unreachable(err: string): string {
-  return `
-    <div class="pl-notice pl-notice-warn">
-      <strong>Services are not running.</strong> ${esc(err)}. Start the local stack and reload:
-      <pre class="pl-code">scripts/peal-links/stack.sh up</pre>
-    </div>`;
+const ICONS: Record<string, string> = {
+  home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-7A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1z"/>',
+  activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  back: '<path d="m15 18-6-6 6-6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+  down: '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+  up: '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>',
+  wallet: '<path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 7V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v2"/><path d="M18 13h-2a1 1 0 0 0 0 2h2a1 1 0 0 0 0-2z"/>',
+  copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
+};
+
+function icon(name: string): string {
+  return `<svg class="pla-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] ?? ''}</svg>`;
 }
 
 function statusChip(status: string): string {
@@ -100,48 +151,126 @@ function receiptStatus(status: string): string {
   return `<span class="pl-status ${tone}"><span class="pl-status-dot"></span>${label}</span>`;
 }
 
-function setupNotice(): string {
-  const s = links().status!;
-  const ns = links().namespace!;
-  return s.setup === 'local-dev'
-    ? `<div class="pl-notice"><strong>Local development setup.</strong> Proving keys generated locally (no ceremony), ledger in ${esc(s.ledger_mode)} mode, balances in ${esc(ns.environment)} funds. This is the demo's trust model, stated plainly.</div>`
-    : '';
+function unreachable(err: string): string {
+  return `
+    <div class="pl-notice pl-notice-warn">
+      <strong>Services are not running.</strong> ${esc(err)}. Start the local stack and reload:
+      <pre class="pl-code">scripts/peal-links/stack.sh up</pre>
+    </div>`;
 }
 
+/** A form field: label, help line, control. */
+function field(label: string, control: string, help = '', extra = ''): string {
+  return `<label class="pla-field${extra}"><span class="pla-label">${label}</span>${help ? `<span class="pla-help">${help}</span>` : ''}${control}</label>`;
+}
 
-/** The wallet panel: connect, continue, recover, or the active account. */
-function walletPanel(): string {
+function input(attrs: string, suffix = ''): string {
+  return suffix
+    ? `<span class="pla-input-wrap"><input class="pla-input" ${attrs}><span class="pla-input-suffix">${suffix}</span></span>`
+    : `<input class="pla-input" ${attrs}>`;
+}
+
+/** Radio cards, as the reference design draws a choice between a few options. */
+function choices(name: string, options: Array<{ value: string; title: string; hint: string; checked?: boolean }>): string {
+  return `<div class="pla-choices" role="radiogroup">${options
+    .map(
+      (o) =>
+        `<label class="pla-choice"><input type="radio" name="${name}" value="${esc(o.value)}" ${o.checked ? 'checked' : ''}><span class="pla-choice-dot"></span><span class="pla-choice-text"><b>${esc(o.title)}</b><i>${esc(o.hint)}</i></span></label>`,
+    )
+    .join('')}</div>`;
+}
+
+// ---- the shell --------------------------------------------------------------
+
+function sidebar(): string {
+  const l = links();
+  const evm = session();
+  const active = PARENT[page.tab];
+  const nsSelect =
+    l.status && l.status.namespaces.length > 1
+      ? `<label class="pla-ns"><span class="pla-ns-label">network</span><select class="pla-select" id="pl-ns">${l.status.namespaces.map((n) => `<option value="${esc(n.id)}" ${n.id === l.namespace!.id ? 'selected' : ''}>${esc(n.label)}</option>`).join('')}</select></label>`
+      : l.namespace
+        ? `<div class="pla-ns"><span class="pla-ns-label">network</span><span class="pla-ns-one">${esc(l.namespace.label)}</span></div>`
+        : '';
+  const wallet = !evm.address
+    ? `<div class="pla-wallet pla-wallet-off"><span class="pla-wallet-line">${icon('wallet')} no wallet connected</span></div>`
+    : `<div class="pla-wallet">
+        <span class="pla-wallet-line">${connectorLine()}</span>
+        ${l.account ? `<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>private payments on</span>` : `<span class="pl-status"><span class="pl-status-dot"></span>account locked</span>`}
+        <div class="pla-wallet-actions">
+          ${l.account ? `<button type="button" class="pla-btn pla-btn-sm" id="pl-lock" title="lock the private account on this device">${icon('lock')} Lock</button>` : ''}
+          <button type="button" class="pla-btn pla-btn-sm" id="pl-disconnect" title="${evm.source === 'privy' ? 'log out of Privy and lock the account on this device' : 'forget this browser wallet and lock the account on this device'}">${icon('out')} Disconnect</button>
+        </div>
+      </div>`;
+  return `
+    <aside class="pla-side">
+      <a class="pla-brand" href="#/bonsai"><span class="pla-brand-dot"></span><span>Peal Links</span></a>
+      ${nsSelect}
+      <nav class="pla-nav" aria-label="sections">
+        ${SECTIONS.map((s) => `<button type="button" class="pla-nav-item${active === s.tab ? ' is-active' : ''}" data-tab="${s.tab}" ${active === s.tab ? 'aria-current="page"' : ''}>${icon(s.icon)}<span>${s.label}</span></button>`).join('')}
+      </nav>
+      ${wallet}
+      <a class="pla-home" href="#/">${icon('back')} Peal Network</a>
+    </aside>`;
+}
+
+function head(title: string, sub: string, actions = '', back: Tab | null = null): string {
+  return `
+    <div class="pla-head">
+      <div class="pla-head-l">
+        ${back ? `<button type="button" class="pla-back" data-tab="${back}" aria-label="back">${icon('back')}</button>` : ''}
+        <div><h1 class="pla-title">${title}</h1><p class="pla-sub">${sub}</p></div>
+      </div>
+      ${actions ? `<div class="pla-head-r">${actions}</div>` : ''}
+    </div>`;
+}
+
+function notices(): string {
+  const l = links();
+  return `
+    ${page.error ? `<div class="pl-notice pl-notice-bad" role="alert">${esc(page.error)}</div>` : ''}
+    ${page.notice ? `<div class="pl-notice" role="status">${esc(page.notice)}</div>` : ''}
+    ${page.busy ? `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(page.busy)}</span></div>` : ''}
+    ${l.paramsProgress ? `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(l.paramsProgress)}</span></div>` : ''}
+    ${recoveryCodeBanner()}
+    ${invitePanel()}`;
+}
+
+function recoveryCodeBanner(): string {
+  const code = links().newRecoveryCode;
+  if (!code) return '';
+  return `
+    <div class="pl-notice pl-notice-warn" role="alert">
+      <strong>Save your recovery code now.</strong> Your wallet cannot derive a recovery key, so this code protects the backup of your private account. It is shown once and Peal never stores it; without it, a new browser cannot recover your balance.
+      <div class="pl-share-link" style="margin-top:10px"><input class="pl-input pl-mono" readonly value="${esc(code)}" id="pl-code"><button type="button" class="pla-btn" data-copy="${esc(code)}">Copy</button></div>
+      <div class="pl-actions" style="margin:10px 0 0"><button type="button" class="pla-btn pla-btn-dark" id="pl-code-saved">I saved it</button></div>
+    </div>`;
+}
+
+function invitePanel(): string {
+  if (!page.invite) return '';
+  const url = inviteUrl(page.invite);
+  return `
+    <div class="pl-notice pl-notice-warn" role="status" id="pl-invite">
+      <strong>${esc(shortHex(page.invite, 6, 4))} has not activated private receiving on Peal Links yet.</strong> No funds were moved. Send them this invitation; once they connect their wallet and continue, you can pay them privately.
+      <div class="pl-share-link" style="margin-top:10px"><input class="pl-input" readonly value="${esc(url)}" id="pl-invite-url"><button type="button" class="pla-btn" data-copy="${esc(url)}">Copy invitation</button></div>
+      <div class="pl-actions" style="margin:10px 0 0"><button type="button" class="pla-btn" id="pl-invite-close">Close</button></div>
+    </div>`;
+}
+
+// ---- onboarding: connect, continue, recover ---------------------------------
+
+function onboarding(): string {
   const l = links();
   const evm = session();
   if (!evm.address) {
     return `
-      <div class="pl-panel">
-        <div class="pl-panel-head"><h2 class="pl-panel-title">your wallet</h2></div>
-        <div style="padding:14px 18px">
-          <p class="pl-p">Your existing wallet is your payment identity here. Peal keeps a private account behind it: nothing to install, no second address to manage. Payments between Peal users hide the amount and the parties; deposits and withdrawals are public on the chain.</p>
+      ${head('Welcome to Peal Links', 'Your existing wallet is your payment identity here. Peal keeps a private account behind it.')}
+      ${notices()}
+      <div class="pla-card pla-card-narrow">
+        <div class="pla-card-body">
+          <p class="pla-p">Payments between Peal users hide the amount and the parties. Deposits and withdrawals are public on the chain, like any token transfer. Nothing to install, no second address to manage.</p>
           ${connectorChoices('pl')}
-        </div>
-      </div>`;
-  }
-  const who = `<span class="pl-small">${connectorLine()}</span>`;
-  const leave = `<button type="button" class="pl-btn" id="pl-disconnect" title="${evm.source === 'privy' ? 'log out of Privy and lock the account on this device' : 'forget this browser wallet and lock the account on this device'}">Disconnect</button>`;
-  if (l.account && page.view) {
-    const v = page.view;
-    return `
-      <div class="pl-panel">
-        <div class="pl-panel-head">
-          <h2 class="pl-panel-title">${esc(page.displayName ?? shortHex(evm.address, 6, 4))}</h2>
-          <div class="pl-actions" style="margin:0">${who}<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>private payments on</span><button type="button" class="pl-btn" id="pl-lock">Lock</button>${leave}</div>
-        </div>
-        <div style="padding:14px 18px" class="pl-small">
-          recovery: ${page.recovery === 'wallet-signature' ? 'your wallet signature opens your backup on any device' : 'your recovery code opens your backup on any device'}
-          ${v.pending ? ` · <span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(v.pending)} pending</span>` : ''}
-          <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-            <button type="button" class="pl-btn" id="pl-rename">Change display name</button>
-            <button type="button" class="pl-btn" id="pl-backup">Export backup file</button>
-            <button type="button" class="pl-btn" id="pl-export-csv" title="a plaintext file of this account's receipts and payments">Export history (CSV)</button>
-            <label class="pl-small" style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="pl-autoclaim" ${l.autoClaim ? 'checked' : ''}> claim incoming payments automatically while this page is open</label>
-          </div>
         </div>
       </div>`;
   }
@@ -155,55 +284,33 @@ function walletPanel(): string {
       break;
     case 'needs-recovery-code':
       body = `
-        <p class="pl-p">This wallet already has private payments on Peal Links. Its backup is protected by the recovery code you saved when you set it up.</p>
-        <form id="pl-recovery-code">
-          <label class="pl-field"><span class="pl-label">recovery code</span><input class="pl-input pl-mono" name="code" required autocomplete="off" placeholder="PEAL-XXXXX-XXXXX-XXXXX-XXXXX"></label>
-          <div class="pl-actions" style="margin:0"><button type="submit" class="pl-btn pl-btn-primary">Open my account</button><button type="button" class="pl-btn" id="pl-show-restore">Import a backup file instead</button></div>
+        <p class="pla-p">This wallet already has private payments on Peal Links. Its backup is protected by the recovery code you saved when you set it up.</p>
+        <form id="pl-recovery-code" class="pla-form">
+          ${field('Recovery code', input('name="code" required autocomplete="off" placeholder="PEAL-XXXXX-XXXXX-XXXXX-XXXXX"'))}
+          <div class="pla-form-actions"><button type="submit" class="pla-btn pla-btn-dark pla-btn-block">Open my account</button><button type="button" class="pla-btn pla-btn-block" data-tab="restore">Import a backup file instead</button></div>
         </form>`;
       break;
     case 'no-backup':
       body = `
         <div class="pl-notice pl-notice-warn">${esc(l.setupDetail ?? 'no backup is stored for this wallet')}</div>
-        <div class="pl-actions" style="margin:0"><button type="button" class="pl-btn" id="pl-show-restore">Import a backup file</button></div>`;
+        <div class="pla-form-actions"><button type="button" class="pla-btn pla-btn-block" data-tab="restore">Import a backup file</button></div>`;
       break;
     default:
       body = `
-        <p class="pl-p">${l.hasStoredAccount ? 'Your private account is on this device. Continue to unlock it; no signature is needed.' : 'First time here: your wallet will confirm one Peal Links message that authorizes a private account for it, and one recovery message so the account can be recovered from any device.'}</p>
+        <p class="pla-p">${l.hasStoredAccount ? 'Your private account is on this device. Continue to unlock it; no signature is needed.' : 'First time here: your wallet will confirm one Peal Links message that authorizes a private account for it, and one recovery message so the account can be recovered from any device.'}</p>
         ${l.setupDetail ? `<div class="pl-notice pl-notice-warn">${esc(l.setupDetail)}</div>` : ''}
-        <div class="pl-actions" style="margin:0"><button type="button" class="pl-btn pl-btn-primary" id="pl-activate">Continue with this wallet</button><button type="button" class="pl-btn" id="pl-show-restore">Import a backup file</button></div>`;
+        <div class="pla-form-actions"><button type="button" class="pla-btn pla-btn-dark pla-btn-block" id="pl-activate">Continue with this wallet</button><button type="button" class="pla-btn pla-btn-block" data-tab="restore">Import a backup file</button></div>`;
   }
+  if (page.tab === 'restore') return restorePage();
   return `
-    <div class="pl-panel">
-      <div class="pl-panel-head"><h2 class="pl-panel-title">private payments</h2><div class="pl-actions" style="margin:0">${who}${leave}</div></div>
-      <div style="padding:14px 18px">${body}</div>
-    </div>`;
+    ${head('Private payments', `Wallet ${esc(shortHex(evm.address, 6, 4))} is connected. One step to open its private account.`)}
+    ${notices()}
+    <div class="pla-card pla-card-narrow"><div class="pla-card-body">${body}</div></div>`;
 }
 
-function recoveryCodeBanner(): string {
-  const code = links().newRecoveryCode;
-  if (!code) return '';
-  return `
-    <div class="pl-notice pl-notice-warn" role="alert">
-      <strong>Save your recovery code now.</strong> Your wallet cannot derive a recovery key, so this code protects the backup of your private account. It is shown once and Peal never stores it; without it, a new browser cannot recover your balance.
-      <div class="pl-share-link" style="margin-top:10px"><input class="pl-input pl-mono" readonly value="${esc(code)}" id="pl-code"><button type="button" class="pl-btn" data-copy="${esc(code)}">Copy</button></div>
-      <div class="pl-actions" style="margin:10px 0 0"><button type="button" class="pl-btn pl-btn-primary" id="pl-code-saved">I saved it</button></div>
-    </div>`;
-}
+// ---- overview -------------------------------------------------------------
 
-function restoreDialog(): string {
-  return `
-    <dialog class="pl-dialog" id="pl-restore-dialog">
-      <form class="pl-dialog-body" id="pl-restore" method="dialog">
-        <h3 class="pl-dialog-title">import a backup file</h3>
-        <p class="pl-small">A backup file exported from Peal Links, protected by the recovery code you chose when exporting it. After importing, the account is checked against the ledger; a backup older than your last operation is reported as stale rather than used.</p>
-        <label class="pl-field"><span class="pl-label">backup file</span><input class="pl-input" type="file" name="file" accept="application/json,.json" required></label>
-        <label class="pl-field"><span class="pl-label">recovery code</span><input class="pl-input pl-mono" name="code" required autocomplete="off"></label>
-        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Import</button></div>
-      </form>
-    </dialog>`;
-}
-
-function balances(): string {
+function stats(): string {
   const ns = links().namespace!;
   const v = page.view;
   const demo = ns.environment !== 'mainnet';
@@ -211,21 +318,21 @@ function balances(): string {
   const incoming = formatUnits(v?.unclaimed ?? '0', ns.decimals);
   const wallet = page.walletTokenBalance !== null ? formatUnits(page.walletTokenBalance, ns.decimals) : null;
   return `
-    <div class="pl-balances">
-      <div class="pl-balance">
-        <div class="pl-balance-label"><span>wallet balance · public on ${esc(ns.chain_name)}</span>${demo ? `<span class="pl-badge pl-badge-demo">${esc(ns.environment)} funds</span>` : ''}</div>
-        <div class="pl-balance-amount">${wallet ?? '—'}<span class="pl-amount-unit">${esc(ns.token_symbol)}</span></div>
-        <div class="pl-balance-sub">${wallet !== null ? 'in your wallet; anyone can see it' : 'connect a wallet to see it'}${testFundsLink(ns)}</div>
+    <div class="pla-stats pl-balances">
+      <div class="pla-stat pl-balance pla-stat-primary">
+        <span class="pla-stat-label">private balance</span>
+        <span class="pla-stat-amount pl-balance-amount">${avail}<span class="pl-amount-unit">${esc(ns.token_symbol)}</span></span>
+        <span class="pla-stat-sub">spendable now · only you can see it</span>
       </div>
-      <div class="pl-balance">
-        <div class="pl-balance-label"><span>private balance · ${esc(ns.token_symbol)}</span></div>
-        <div class="pl-balance-amount">${avail}<span class="pl-amount-unit">${esc(ns.token_symbol)}</span></div>
-        <div class="pl-balance-sub">${v ? 'available: spendable now' : 'continue with your wallet to see it'}</div>
+      <div class="pla-stat pl-balance">
+        <span class="pla-stat-label">incoming</span>
+        <span class="pla-stat-amount pl-balance-amount">${incoming}<span class="pl-amount-unit">${esc(ns.token_symbol)}</span></span>
+        <span class="pla-stat-sub">verified, not yet claimed${v && v.unclaimed !== '0' ? ` · <button type="button" class="pla-link" data-tab="incoming">claim</button>` : ''}</span>
       </div>
-      <div class="pl-balance">
-        <div class="pl-balance-label"><span>incoming · verified, not yet claimed</span></div>
-        <div class="pl-balance-amount">${incoming}<span class="pl-amount-unit">${esc(ns.token_symbol)}</span></div>
-        <div class="pl-balance-sub">claiming adds it to available</div>
+      <div class="pla-stat pl-balance">
+        <span class="pla-stat-label">wallet balance${demo ? ` <span class="pla-badge">${esc(ns.environment)} funds</span>` : ''}</span>
+        <span class="pla-stat-amount pl-balance-amount">${wallet ?? '—'}<span class="pl-amount-unit">${esc(ns.token_symbol)}</span></span>
+        <span class="pla-stat-sub">public on ${esc(ns.chain_name)}${testFundsLink(ns)}</span>
       </div>
     </div>`;
 }
@@ -235,302 +342,391 @@ function balances(): string {
 function testFundsLink(ns: NamespaceInfo): string {
   const src = testFundsSource(ns);
   if (!src || !session().address) return '';
-  if (src.kind === 'external') return ` · <a class="pl-linkbtn" href="${esc(src.url)}" target="_blank" rel="noreferrer">get testnet ${esc(ns.token_symbol)}</a>`;
-  return ` · <button type="button" class="pl-linkbtn" id="pl-test-funds">get test ${esc(ns.token_symbol)}</button>`;
+  if (src.kind === 'external') return ` · <a class="pla-link" href="${esc(src.url)}" target="_blank" rel="noreferrer">get testnet ${esc(ns.token_symbol)}</a>`;
+  return ` · <button type="button" class="pla-link" id="pl-test-funds">get test ${esc(ns.token_symbol)}</button>`;
 }
 
-function actions(): string {
+function quickActions(): string {
   const l = links();
-  const active = !!l.account;
   const devMint = !!l.status?.dev_mint;
   const nsAvail = !!l.namespace?.available;
   const hasWallet = !!session().address;
+  const canSettle = nsAvail && l.status?.signer_mode !== 'none';
   return `
-    <div class="pl-actions">
-      <button type="button" class="pl-btn pl-btn-primary" id="pl-new-request" ${active ? '' : 'disabled'} title="${active ? '' : 'continue with your wallet first'}">New payment link</button>
-      <button type="button" class="pl-btn" id="pl-send" ${active ? '' : 'disabled'} title="${active ? '' : 'continue with your wallet first'}">Send to an address</button>
+    <div class="pla-quick">
+      <button type="button" class="pla-quick-item" data-tab="new-link">${icon('plus')}<b>New payment link</b><i>a fixed amount anyone can pay you privately</i></button>
+      <button type="button" class="pla-quick-item" data-tab="send">${icon('send')}<b>Send to an address</b><i>pay a wallet that uses Peal Links</i></button>
       ${
         nsAvail
-          ? `<button type="button" class="pl-btn" id="pl-add-funds" ${active && hasWallet ? '' : 'disabled'}>Add funds</button>`
+          ? `<button type="button" class="pla-quick-item" data-tab="fund" ${hasWallet ? '' : 'disabled'}>${icon('down')}<b>Add funds</b><i>deposit from your wallet, public on ${esc(l.namespace!.chain_name)}</i></button>`
           : devMint
-            ? `<button type="button" class="pl-btn" id="pl-dev-mint" ${active ? '' : 'disabled'} title="development fixture: credits test funds without a chain deposit">Add test funds (dev mint)</button>`
-            : `<button type="button" class="pl-btn" disabled title="deposits are not available on this namespace">Add funds</button>`
+            ? `<button type="button" class="pla-quick-item" data-tab="mint">${icon('down')}<b>Add test funds</b><i>development fixture, no chain deposit</i></button>`
+            : `<button type="button" class="pla-quick-item" disabled>${icon('down')}<b>Add funds</b><i>deposits are not available on this network</i></button>`
       }
       ${
-        nsAvail && l.status?.signer_mode !== 'none'
-          ? `<button type="button" class="pl-btn" id="pl-withdraw" ${active && hasWallet ? '' : 'disabled'}>Withdraw</button>`
-          : `<button type="button" class="pl-btn" disabled title="withdrawals are not available on this namespace">Withdraw</button>`
+        canSettle
+          ? `<button type="button" class="pla-quick-item" data-tab="withdraw" ${hasWallet ? '' : 'disabled'}>${icon('up')}<b>Withdraw</b><i>to a wallet on ${esc(l.namespace!.chain_name)}</i></button>`
+          : `<button type="button" class="pla-quick-item" disabled>${icon('up')}<b>Withdraw</b><i>withdrawals are not available on this network</i></button>`
       }
     </div>`;
 }
 
-function invitePanel(): string {
-  if (!page.invite) return '';
-  const url = inviteUrl(page.invite);
+function overview(): string {
+  const ns = links().namespace!;
+  const v = page.view;
+  const name = page.displayName ?? shortHex(session().address ?? '', 6, 4);
+  const recentIn = (v?.receipts ?? []).slice(-4).reverse();
+  const recentAct = (v?.history ?? []).slice(-5).reverse();
   return `
-    <div class="pl-notice pl-notice-warn" role="status" id="pl-invite">
-      <strong>${esc(shortHex(page.invite, 6, 4))} has not activated private receiving on Peal Links yet.</strong> No funds were moved. Send them this invitation; once they connect their wallet and continue, you can pay them privately.
-      <div class="pl-share-link" style="margin-top:10px"><input class="pl-input" readonly value="${esc(url)}" id="pl-invite-url"><button type="button" class="pl-btn" data-copy="${esc(url)}">Copy invitation</button></div>
-      <div class="pl-actions" style="margin:10px 0 0"><button type="button" class="pl-btn" id="pl-invite-close">Close</button></div>
-    </div>`;
+    ${head('Overview', `${esc(name)} · your private balance and what happened lately, on ${esc(ns.label)}.`)}
+    ${notices()}
+    ${stats()}
+    ${quickActions()}
+    <div class="pla-two">
+      <div class="pla-card">
+        <div class="pla-card-head"><h2 class="pla-card-title">incoming</h2><button type="button" class="pla-link" data-tab="incoming">view all</button></div>
+        ${recentIn.length ? `<ul class="pla-list">${recentIn.map((r) => receiptRow(r, v!.receipts.indexOf(r))).join('')}</ul>` : `<div class="pla-empty">Payments addressed to you appear here as soon as they reach you.</div>`}
+      </div>
+      <div class="pla-card">
+        <div class="pla-card-head"><h2 class="pla-card-title">activity</h2><button type="button" class="pla-link" data-tab="activity">view all</button></div>
+        ${recentAct.length ? `<ul class="pla-list">${recentAct.map(historyRow).join('')}</ul>` : `<div class="pla-empty">Deposits, payments sent and received, and withdrawals appear here.</div>`}
+      </div>
+    </div>
+    ${ledgerLine()}`;
 }
 
-function requestsPanel(): string {
-  const l = links();
-  const ns = l.namespace!;
+function ledgerLine(): string {
+  const s = links().status!;
+  const ns = links().namespace!;
+  const led = s.ledgers.find((l) => l.namespace === ns.id);
+  return `<p class="pla-foot">${s.setup === 'local-dev' ? `<strong>Local development setup.</strong> proving keys generated locally (no ceremony), balances in ${esc(ns.environment)} funds · ` : ''}ledger ${esc(s.ledger_mode)}${s.consensus ? ` · height ${s.consensus.height}` : ''}${led ? ` · ${led.receipt_count} receipts · state <span class="pl-mono">${esc(led.state_root.slice(0, 12))}…</span>` : ''} · circuit <span class="pl-mono">${esc(s.circuit_id.slice(0, 12))}…</span></p>`;
+}
+
+// ---- lists ---------------------------------------------------------------------
+
+function receiptRow(r: WalletView['receipts'][number], idx: number): string {
+  const ns = links().namespace!;
+  const what = r.sender === MINT_SENDER ? 'deposit from your wallet' : 'private payment';
+  const ref = r.reference && /^[a-z2-7]{24}$/.test(r.reference) ? `for link ${esc(r.reference.slice(0, 8))}…` : r.reference ? esc(r.reference) : '';
+  return `<li class="pla-row">
+    <span class="pla-row-ic pla-row-ic-in">${icon('down')}</span>
+    <span class="pla-row-main"><b>${what}</b><i>${receiptStatus(r.status)} · ${esc(fmtTime(r.discovered_at))}${ref ? ` · ${ref}` : ''}</i></span>
+    <span class="pla-row-side"><b>+${formatUnits(r.amount, ns.decimals)} ${esc(ns.token_symbol)}</b>${r.status === 'unclaimed' ? `<button type="button" class="pla-btn pla-btn-sm" data-claim="${idx}">claim now</button>` : ''}</span>
+  </li>`;
+}
+
+function historyRow(h: WalletView['history'][number]): string {
+  const ns = links().namespace!;
+  const to = h.position !== null ? page.labels[String(h.position)] : undefined;
+  const main =
+    h.kind === 'send'
+      ? h.reference?.startsWith('withdraw:')
+        ? `withdrew to ${esc(shortHex(h.reference.slice('withdraw:'.length), 6, 4))}`
+        : to
+          ? `sent to ${esc(shortHex(to, 6, 4))}`
+          : h.reference && /^[a-z2-7]{24}$/.test(h.reference)
+            ? `paid link ${esc(h.reference.slice(0, 8))}…`
+            : 'sent privately'
+      : h.counterparty === MINT_SENDER
+        ? 'deposit claimed'
+        : 'received privately';
+  const out = h.kind === 'send';
+  return `<li class="pla-row">
+    <span class="pla-row-ic ${out ? 'pla-row-ic-out' : 'pla-row-ic-in'}">${icon(out ? 'up' : 'down')}</span>
+    <span class="pla-row-main"><b>${main}</b><i>${esc(fmtTime(h.at))}</i></span>
+    <span class="pla-row-side"><b class="${out ? 'pla-neg' : ''}">${out ? '−' : '+'}${formatUnits(h.amount, ns.decimals)} ${esc(ns.token_symbol)}</b></span>
+  </li>`;
+}
+
+function linksPage(): string {
+  const ns = links().namespace!;
   const rows = page.requests
     .map((r) => {
       const m = r.manifest;
-      return `<li>
-        <span class="pl-list-main">${esc(m.title)}</span>
-        <span class="pl-list-sub">${statusChip(r.status)} · ${esc(fmtTime(m.created_at))}${m.reference ? ` · ${esc(m.reference)}` : ''} · <button type="button" class="pl-linkbtn" data-copy="${esc(requestUrl(m.request_id))}">copy link</button> · <a class="pl-linkbtn" href="#/pay/${esc(m.request_id)}">open</a>${r.status === 'active' ? ` · <button type="button" class="pl-linkbtn" data-archive="${esc(m.request_id)}">archive</button>` : ''}</span>
-        <span class="pl-list-side">${formatUnits(m.amount, ns.decimals)} ${esc(ns.token_symbol)}</span>
+      return `<li class="pla-row">
+        <span class="pla-row-ic">${icon('link')}</span>
+        <span class="pla-row-main"><b>${esc(m.title)}</b><i>${statusChip(r.status)} · ${esc(fmtTime(m.created_at))}${m.reference ? ` · ${esc(m.reference)}` : ''}</i></span>
+        <span class="pla-row-side"><b>${formatUnits(m.amount, ns.decimals)} ${esc(ns.token_symbol)}</b><span class="pla-row-tools"><button type="button" class="pla-link" data-copy="${esc(requestUrl(m.request_id))}">copy link</button><a class="pla-link" href="#/pay/${esc(m.request_id)}">open</a>${r.status === 'active' ? `<button type="button" class="pla-link" data-archive="${esc(m.request_id)}">archive</button>` : ''}</span></span>
       </li>`;
     })
     .join('');
-  const empty = l.account
-    ? 'No payment links yet. A link is a fixed amount in one asset that anyone can pay you privately.'
-    : 'Continue with your wallet to see and create your payment links.';
   return `
-    <div class="pl-panel">
-      <div class="pl-panel-head"><h2 class="pl-panel-title">payment links</h2><span class="pl-small">${page.requests.length}</span></div>
-      ${rows ? `<ul class="pl-list">${rows}</ul>` : `<div class="pl-empty">${empty}</div>`}
+    ${head('Payment links', 'A link is a fixed amount in one asset that anyone can pay you privately, once.', `<button type="button" class="pla-btn pla-btn-dark" data-tab="new-link">${icon('plus')} New payment link</button>`)}
+    ${notices()}
+    <div class="pla-card">
+      ${rows ? `<ul class="pla-list">${rows}</ul>` : `<div class="pla-empty pla-empty-tall"><b>No payment links yet.</b><span>Create one, share it, and the payment arrives in your private balance.</span></div>`}
     </div>`;
 }
 
-function receiptsPanel(): string {
-  const ns = links().namespace!;
-  const v = page.view;
-  if (!v) return '';
+function incomingPage(): string {
+  const v = page.view!;
   const rows = v.receipts
     .slice()
     .reverse()
-    .map(
-      (r, i) => `<li>
-        <span class="pl-list-main">${r.sender === MINT_SENDER ? 'deposit from your wallet' : 'private payment'}${r.reference && /^[a-z2-7]{24}$/.test(r.reference) ? ` · for link ${esc(r.reference.slice(0, 8))}…` : r.reference ? ` · ${esc(r.reference)}` : ''}</span>
-        <span class="pl-list-sub">${receiptStatus(r.status)} · ${esc(fmtTime(r.discovered_at))}${r.status === 'unclaimed' ? ` · <button type="button" class="pl-linkbtn" data-claim="${v.receipts.length - 1 - i}">claim now</button>` : ''}</span>
-        <span class="pl-list-side">${formatUnits(r.amount, ns.decimals)} ${esc(ns.token_symbol)}</span>
-      </li>`,
-    )
+    .map((r) => receiptRow(r, v.receipts.indexOf(r)))
     .join('');
+  const l = links();
   return `
-    <div class="pl-panel">
-      <div class="pl-panel-head"><h2 class="pl-panel-title">incoming</h2><span class="pl-small">${v.receipts.length}</span></div>
-      ${rows ? `<ul class="pl-list">${rows}</ul>` : `<div class="pl-empty">Payments addressed to you appear here as soon as they reach you, and become available once claimed (automatically while this page is open).</div>`}
+    ${head('Incoming', 'Payments addressed to you. Claiming adds them to your private balance.', `<label class="pla-switch"><input type="checkbox" id="pl-autoclaim" ${l.autoClaim ? 'checked' : ''}><span class="pla-switch-track"></span><span>claim automatically while this page is open</span></label>`)}
+    ${notices()}
+    <div class="pla-card">
+      ${rows ? `<ul class="pla-list">${rows}</ul>` : `<div class="pla-empty pla-empty-tall"><b>Nothing incoming.</b><span>Payments appear here as soon as they reach you, even if you were offline when they were made.</span></div>`}
     </div>`;
 }
 
-function activityPanel(): string {
+function activityPage(): string {
   const ns = links().namespace!;
-  const v = page.view;
-  if (!v) return '';
-  const rows = v.history
-    .slice()
-    .reverse()
-    .map((h) => {
-      const to = h.position !== null ? page.labels[String(h.position)] : undefined;
-      const main =
-        h.kind === 'send'
-          ? h.reference?.startsWith('withdraw:')
-            ? `withdrew to ${esc(shortHex(h.reference.slice('withdraw:'.length), 6, 4))}`
-            : to
-              ? `sent to ${esc(shortHex(to, 6, 4))}`
-              : h.reference && /^[a-z2-7]{24}$/.test(h.reference)
-                ? `paid link ${esc(h.reference.slice(0, 8))}…`
-                : 'sent privately'
-          : h.counterparty === MINT_SENDER
-            ? 'deposit claimed'
-            : 'received privately';
-      return `<li>
-        <span class="pl-list-main">${main}</span>
-        <span class="pl-list-sub">${esc(fmtTime(h.at))}</span>
-        <span class="pl-list-side">${h.kind === 'send' ? '−' : '+'}${formatUnits(h.amount, ns.decimals)} ${esc(ns.token_symbol)}</span>
-      </li>`;
-    })
-    .join('');
+  const v = page.view!;
+  const rows = v.history.slice().reverse().map(historyRow).join('');
+  const wd = page.withdrawals.length
+    ? `<div class="pla-card">
+        <div class="pla-card-head"><h2 class="pla-card-title">withdrawals</h2></div>
+        <ul class="pla-list">${page.withdrawals
+          .map(
+            (w) => `<li class="pla-row"><span class="pla-row-ic pla-row-ic-out">${icon('up')}</span><span class="pla-row-main"><b>to ${esc(shortHex(w.recipient, 6, 4))}</b><i>${w.status === 'confirmed' ? `<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>confirmed on chain</span>` : `<span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(w.status.replace('_', ' '))}</span>`}${w.tx_hash ? ` · tx <span class="pl-mono">${esc(shortHex(w.tx_hash, 8, 6))}</span>` : ''}</i></span><span class="pla-row-side"><b>${formatUnits(w.amount, ns.decimals)} ${esc(ns.token_symbol)}</b></span></li>`,
+          )
+          .join('')}</ul>
+      </div>`
+    : '';
   return `
-    <div class="pl-panel">
-      <div class="pl-panel-head"><h2 class="pl-panel-title">activity</h2><span class="pl-small">decrypted on this device</span></div>
-      ${rows ? `<ul class="pl-list">${rows}</ul>` : `<div class="pl-empty">Deposits, payments sent and received, and withdrawals appear here.</div>`}
-    </div>`;
+    ${head('Activity', 'Everything this account did, decrypted on this device. The chain never gets this list.', `<button type="button" class="pla-btn" id="pl-export-csv" title="a plaintext file of this account's receipts and payments">Export CSV</button>`)}
+    ${notices()}
+    <div class="pla-card">
+      ${rows ? `<ul class="pla-list">${rows}</ul>` : `<div class="pla-empty pla-empty-tall"><b>No activity yet.</b><span>Deposits, payments sent and received, and withdrawals appear here.</span></div>`}
+    </div>
+    ${wd}`;
 }
 
-function ledgerPanel(): string {
-  const s = links().status!;
-  return `
-    <div class="pl-panel">
-      <div class="pl-panel-head"><h2 class="pl-panel-title">ledger</h2><span class="pl-small">${esc(s.ledger_mode)}${s.consensus ? ` · height ${s.consensus.height} · state <span class="pl-mono">${esc(s.consensus.state_root.slice(0, 12))}…</span>` : ''} · circuit <span class="pl-mono">${esc(s.circuit_id.slice(0, 12))}…</span></span></div>
-      <ul class="pl-list">
-        ${s.ledgers
-          .map((l) => {
-            const ns = s.namespaces.find((n) => n.id === l.namespace);
-            return `<li><span class="pl-list-main">${esc(ns?.label ?? l.namespace.slice(0, 12))}</span><span class="pl-list-sub">state root <span class="pl-mono">${esc(l.state_root.slice(0, 16))}…</span></span><span class="pl-list-side">${l.receipt_count} receipts · seq ${l.seq}</span></li>`;
-          })
-          .join('')}
-      </ul>
-    </div>`;
-}
-
-function newRequestDialog(): string {
-  const ns = links().namespace!;
-  return `
-    <dialog class="pl-dialog" id="pl-request-dialog">
-      <form class="pl-dialog-body" id="pl-request-form" method="dialog">
-        <h3 class="pl-dialog-title">new payment link</h3>
-        <label class="pl-field"><span class="pl-label">what is it for</span><input class="pl-input" name="title" maxlength="140" required placeholder="Logo files, final"></label>
-        <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)} on ${esc(ns.chain_name)})</span><div class="pl-amount-input"><input class="pl-input" name="amount" inputmode="decimal" required placeholder="0.00"></div><div class="pl-hint">exact amount; the link can be paid once</div></label>
-        <label class="pl-field"><span class="pl-label">reference (optional)</span><input class="pl-input" name="reference" maxlength="64" placeholder="INV-0417"></label>
-        <label class="pl-field"><span class="pl-label">expires (optional)</span><input class="pl-input" name="expires" type="datetime-local"></label>
-        <p class="pl-small">The title, amount, your display name and your wallet address are visible to anyone holding the link. Keep sensitive details out of them.</p>
-        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Create link</button></div>
-      </form>
-    </dialog>`;
-}
-
-function sendDialog(): string {
-  const ns = links().namespace!;
-  return `
-    <dialog class="pl-dialog" id="pl-send-dialog">
-      <form class="pl-dialog-body" id="pl-send-form" method="dialog">
-        <h3 class="pl-dialog-title">send to an address</h3>
-        <p class="pl-small">Enter a wallet address that uses Peal Links. Their receiving details are looked up and verified against their wallet's signature on this device; the payment itself hides the amount and the parties. Your wallet confirms the payment; nothing else leaves your browser but the proof and an encrypted receipt.</p>
-        <label class="pl-field"><span class="pl-label">recipient wallet address on ${esc(ns.chain_name)}</span><input class="pl-input pl-mono" name="to" required pattern="0x[0-9a-fA-F]{40}" placeholder="0x…"></label>
-        <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)}${page.view ? `, available ${formatUnits(page.view.balance, ns.decimals)}` : ''})</span><input class="pl-input" name="amount" inputmode="decimal" required placeholder="0.00"></label>
-        <label class="pl-field"><span class="pl-label">note for the recipient (optional)</span><input class="pl-input" name="reference" maxlength="64" placeholder="thanks for lunch"></label>
-        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Continue</button></div>
-      </form>
-    </dialog>`;
-}
-
-function renameDialog(): string {
-  return `
-    <dialog class="pl-dialog" id="pl-rename-dialog">
-      <form class="pl-dialog-body" id="pl-rename-form" method="dialog">
-        <h3 class="pl-dialog-title">display name</h3>
-        <p class="pl-small">Shown next to your wallet address on your payment links. It is a name you chose, not an identity check; your wallet confirms the change.</p>
-        <label class="pl-field"><span class="pl-label">display name</span><input class="pl-input" name="display" maxlength="60" required value="${esc(page.displayName ?? '')}"></label>
-        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Save</button></div>
-      </form>
-    </dialog>`;
-}
-
-function linkDialog(): string {
-  const l = page.lastLink;
-  if (!l) return '';
-  const ns = links().namespace!;
-  return `
-    <dialog class="pl-dialog" id="pl-link-dialog">
-      <div class="pl-dialog-body">
-        <h3 class="pl-dialog-title">your payment link</h3>
-        <p class="pl-small">${esc(l.request.manifest.title)} · ${formatUnits(l.request.manifest.amount, ns.decimals)} ${esc(ns.token_symbol)}</p>
-        <div class="pl-qr" aria-label="QR code of the payment link">${l.qr}</div>
-        <div class="pl-share-link" style="margin-top:12px"><input class="pl-input" readonly value="${esc(l.url)}" id="pl-link-url"><button type="button" class="pl-btn" data-copy="${esc(l.url)}">Copy</button></div>
-        <div class="pl-dialog-actions"><button type="button" class="pl-btn pl-btn-primary" data-close>Done</button></div>
-      </div>
-    </dialog>`;
-}
-
-function fundDialog(): string {
-  const ns = links().namespace!;
+function settingsPage(): string {
+  const l = links();
+  const s = l.status!;
   const evm = session();
   return `
-    <dialog class="pl-dialog" id="pl-fund-dialog">
-      <form class="pl-dialog-body" id="pl-fund-form" method="dialog">
-        <h3 class="pl-dialog-title">add funds</h3>
-        <p class="pl-small">A public deposit of ${esc(ns.token_symbol)} from your wallet <span class="pl-mono">${esc(shortHex(evm.address ?? '', 6, 4))}</span> into the gateway on ${esc(ns.chain_name)}${page.walletTokenBalance !== null ? ` (wallet holds ${formatUnits(page.walletTokenBalance, ns.decimals)} ${esc(ns.token_symbol)})` : ''}. Two wallet confirmations: approve, then deposit. Credited to your private balance after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}; the amount and your address are visible on the chain, what happens inside Peal afterwards is not.</p>
-        <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)})</span><input class="pl-input" name="amount" inputmode="decimal" required placeholder="0.00"></label>
-        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Deposit from wallet</button></div>
-      </form>
-    </dialog>`;
+    ${head('Settings', 'Your name on links, recovery, backups and this device.')}
+    ${notices()}
+    <div class="pla-card">
+      <div class="pla-card-head"><h2 class="pla-card-title">profile</h2></div>
+      <div class="pla-setting"><div><b>Display name</b><i>${esc(page.displayName ?? shortHex(evm.address ?? '', 6, 4))} · shown next to your wallet address on your links; a name you chose, not an identity check</i></div><button type="button" class="pla-btn" data-tab="rename">Change display name</button></div>
+      <div class="pla-setting"><div><b>Wallet</b><i>${connectorLine()} · the only identity anyone sees</i></div></div>
+    </div>
+    <div class="pla-card">
+      <div class="pla-card-head"><h2 class="pla-card-title">recovery and backups</h2></div>
+      <div class="pla-setting"><div><b>Recovery</b><i>${page.recovery === 'wallet-signature' ? 'your wallet signature opens your backup on any device' : 'your recovery code opens your backup on any device'}; the backup is kept encrypted by the node and Peal cannot open it</i></div></div>
+      <div class="pla-setting"><div><b>Backup file</b><i>an encrypted copy of your private account, for a device that cannot reach the node's backup</i></div><div class="pla-setting-actions"><button type="button" class="pla-btn" id="pl-backup">Export backup file</button><button type="button" class="pla-btn" data-tab="restore">Import a backup file</button></div></div>
+      <div class="pla-setting"><div><b>History export</b><i>a plaintext CSV of your payments; anyone with the file learns exactly that</i></div><button type="button" class="pla-btn" id="pl-export-csv">Export CSV</button></div>
+    </div>
+    <div class="pla-card">
+      <div class="pla-card-head"><h2 class="pla-card-title">this device</h2></div>
+      <div class="pla-setting"><div><b>Claim incoming automatically</b><i>while this page is open, incoming payments are proved and claimed by themselves</i></div><label class="pla-switch"><input type="checkbox" id="pl-autoclaim" ${l.autoClaim ? 'checked' : ''}><span class="pla-switch-track"></span></label></div>
+      <div class="pla-setting"><div><b>Lock</b><i>closes the private account on this device; reconnecting the same wallet unlocks it with no signature</i></div><button type="button" class="pla-btn" id="pl-lock">Lock</button></div>
+      <div class="pla-setting"><div><b>Disconnect</b><i>${evm.source === 'privy' ? 'logs out of Privy and locks the account on this device' : 'forgets this browser wallet and locks the account on this device'}</i></div><button type="button" class="pla-btn" id="pl-disconnect">Disconnect</button></div>
+    </div>
+    <div class="pla-card">
+      <div class="pla-card-head"><h2 class="pla-card-title">network</h2></div>
+      ${s.setup === 'local-dev' ? `<div class="pla-setting"><div><b>Local development setup</b><i>proving keys generated locally (no ceremony), ledger in ${esc(s.ledger_mode)} mode, balances in ${esc(l.namespace!.environment)} funds. This is the demo's trust model, stated plainly.</i></div></div>` : ''}
+      ${s.ledgers
+        .map((led) => {
+          const ns = s.namespaces.find((n) => n.id === led.namespace);
+          return `<div class="pla-setting"><div><b>${esc(ns?.label ?? led.namespace.slice(0, 12))}</b><i>${led.receipt_count} receipts · seq ${led.seq} · state root <span class="pl-mono">${esc(led.state_root.slice(0, 16))}…</span></i></div></div>`;
+        })
+        .join('')}
+      <div class="pla-setting"><div><b>Ledger</b><i>${esc(s.ledger_mode)}${s.consensus ? ` · height ${s.consensus.height} · state <span class="pl-mono">${esc(s.consensus.state_root.slice(0, 12))}…</span>` : ''} · circuit <span class="pl-mono">${esc(s.circuit_id.slice(0, 12))}…</span></i></div></div>
+    </div>`;
 }
 
-function withdrawDialog(): string {
+// ---- form pages --------------------------------------------------------------
+
+function newLinkPage(): string {
+  const ns = links().namespace!;
+  return `
+    ${head('New payment link', 'A fixed amount in one asset. Anyone with the link can pay it, once.', '', 'links')}
+    ${notices()}
+    <form id="pl-request-form" class="pla-form pla-card pla-card-narrow">
+      <div class="pla-card-head"><h2 class="pla-card-title">request details</h2></div>
+      <div class="pla-card-body">
+        ${field('What is it for', input('name="title" maxlength="140" required placeholder="Logo files, final"'), 'Shown to the payer on the link.')}
+        ${field('Amount', input(`name="amount" inputmode="decimal" required placeholder="0.00"`, esc(ns.token_symbol)), `${esc(ns.token_symbol)} on ${esc(ns.chain_name)}. The exact amount; the link can be paid once.`)}
+        ${field('Reference', input('name="reference" maxlength="64" placeholder="INV-0417"'), 'Optional. An invoice number or a note, shown on the link.')}
+      </div>
+      <div class="pla-card-head"><h2 class="pla-card-title">expiry</h2></div>
+      <div class="pla-card-body">
+        ${choices('expiry', [
+          { value: '', title: 'No expiry', hint: 'stays payable until you archive it', checked: true },
+          { value: '86400', title: '24 hours', hint: 'expires this time tomorrow' },
+          { value: '604800', title: '7 days', hint: 'a week from now' },
+          { value: '2592000', title: '30 days', hint: 'a month from now' },
+        ])}
+        <p class="pla-note">The title, amount, your display name and your wallet address are visible to anyone holding the link. Keep sensitive details out of them.</p>
+      </div>
+      <div class="pla-form-foot"><button type="button" class="pla-btn" data-tab="links">Cancel</button><button type="submit" class="pla-btn pla-btn-dark">Create link</button></div>
+    </form>`;
+}
+
+function linkCreatedPage(): string {
+  const l = page.lastLink;
+  if (!l) return linksPage();
+  const ns = links().namespace!;
+  return `
+    ${head('Your payment link', `${esc(l.request.manifest.title)} · ${formatUnits(l.request.manifest.amount, ns.decimals)} ${esc(ns.token_symbol)}`, '', 'links')}
+    ${notices()}
+    <div class="pla-card pla-card-narrow">
+      <div class="pla-card-body pla-center">
+        <div class="pl-qr" aria-label="QR code of the payment link">${l.qr}</div>
+        <div class="pl-share-link" style="margin-top:14px"><input class="pla-input" readonly value="${esc(l.url)}" id="pl-link-url"><button type="button" class="pla-btn" data-copy="${esc(l.url)}">${icon('copy')} Copy</button></div>
+        <p class="pla-note">Send it any way you like. The payer needs nothing but a wallet; you can close this page and come back later.</p>
+        <button type="button" class="pla-btn pla-btn-dark pla-btn-block" data-tab="links" data-done>Done</button>
+      </div>
+    </div>`;
+}
+
+function sendPage(): string {
+  const ns = links().namespace!;
+  return `
+    ${head('Send to an address', 'Pay a wallet that uses Peal Links. The amount and the parties stay private.', '', 'overview')}
+    ${notices()}
+    <form id="pl-send-form" class="pla-form pla-card pla-card-narrow">
+      <div class="pla-card-body">
+        ${field('Recipient wallet address', input('name="to" required pattern="0x[0-9a-fA-F]{40}" placeholder="0x…" spellcheck="false" autocomplete="off"', ''), `On ${esc(ns.chain_name)}. Their receiving details are looked up and checked against their wallet's signature on this device.`, ' pla-field-mono')}
+        ${field('Amount', input('name="amount" inputmode="decimal" required placeholder="0.00"', esc(ns.token_symbol)), page.view ? `Available: ${formatUnits(page.view.balance, ns.decimals)} ${esc(ns.token_symbol)}.` : '')}
+        ${field('Note for the recipient', input('name="reference" maxlength="64" placeholder="thanks for lunch"'), 'Optional. Travels inside the encrypted receipt; the chain never sees it.')}
+        <p class="pla-note">Your wallet confirms the payment; nothing else leaves your browser but the proof and an encrypted receipt.</p>
+      </div>
+      <div class="pla-form-foot"><button type="button" class="pla-btn" data-tab="overview">Cancel</button><button type="submit" class="pla-btn pla-btn-dark">Continue</button></div>
+    </form>`;
+}
+
+function fundPage(): string {
+  const ns = links().namespace!;
+  const evm = session();
+  const wallet = page.walletTokenBalance !== null ? formatUnits(page.walletTokenBalance, ns.decimals) : null;
+  return `
+    ${head('Add funds', `A deposit of ${esc(ns.token_symbol)} from your wallet into the gateway on ${esc(ns.chain_name)}.`, '', 'overview')}
+    ${notices()}
+    <form id="pl-fund-form" class="pla-form pla-card pla-card-narrow">
+      <div class="pla-card-body">
+        ${field('Amount', input('name="amount" inputmode="decimal" required placeholder="0.00"', esc(ns.token_symbol)), `From wallet <span class="pl-mono">${esc(shortHex(evm.address ?? '', 6, 4))}</span>${wallet !== null ? `, which holds ${esc(wallet)} ${esc(ns.token_symbol)}` : ''}.`)}
+        <div class="pla-steps">
+          <div class="pla-step"><b>1</b><span>Your wallet approves the amount</span></div>
+          <div class="pla-step"><b>2</b><span>Your wallet sends the deposit</span></div>
+          <div class="pla-step"><b>3</b><span>Credited after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}, then claimed into your private balance</span></div>
+        </div>
+        <p class="pla-note">The amount and your address are visible on ${esc(ns.chain_name)}, like any token transfer. What happens inside Peal afterwards is not.</p>
+      </div>
+      <div class="pla-form-foot"><button type="button" class="pla-btn" data-tab="overview">Cancel</button><button type="submit" class="pla-btn pla-btn-dark">Deposit from wallet</button></div>
+    </form>`;
+}
+
+function withdrawPage(): string {
   const ns = links().namespace!;
   const s = links().status!;
   const v = page.view;
   return `
-    <dialog class="pl-dialog" id="pl-withdraw-dialog">
-      <form class="pl-dialog-body" id="pl-withdraw-form" method="dialog">
-        <h3 class="pl-dialog-title">withdraw to ${esc(ns.chain_name)}</h3>
-        <p class="pl-small">The amount leaves your private balance with a proof, then ${s.signer_threshold} of ${s.signers.length} settlement signers attest to its release and the gateway pays the recipient. This is a committee-attested bridge${s.signer_mode === 'single-process-fixture' ? ' and, on this node, the signers are a single-process fixture' : s.signer_mode === 'one-key-per-validator' ? ' and, on this stack, each local validator process holds one signer key' : ''}: a compromised committee could release funds wrongly. The withdrawal, its amount and the recipient are public on the chain.</p>
-        <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)}${v ? `, available ${formatUnits(v.balance, ns.decimals)}` : ''})</span><input class="pl-input" name="amount" inputmode="decimal" required placeholder="0.00"></label>
-        <label class="pl-field"><span class="pl-label">to wallet address on ${esc(ns.chain_name)}</span><input class="pl-input pl-mono" name="recipient" required pattern="0x[0-9a-fA-F]{40}" value="${esc(session().address ?? '')}"><div class="pl-hint">your connected wallet by default; it confirms the release</div></label>
-        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Withdraw</button></div>
-      </form>
-    </dialog>`;
+    ${head('Withdraw', `Move funds from your private balance to a wallet on ${esc(ns.chain_name)}.`, '', 'overview')}
+    ${notices()}
+    <form id="pl-withdraw-form" class="pla-form pla-card pla-card-narrow">
+      <div class="pla-card-body">
+        ${field('Amount', input('name="amount" inputmode="decimal" required placeholder="0.00"', esc(ns.token_symbol)), v ? `Available: ${formatUnits(v.balance, ns.decimals)} ${esc(ns.token_symbol)}.` : '')}
+        ${field('To wallet address', input(`name="recipient" required pattern="0x[0-9a-fA-F]{40}" value="${esc(session().address ?? '')}" spellcheck="false" autocomplete="off"`), 'Your connected wallet by default; it confirms the release.', ' pla-field-mono')}
+        <div class="pla-steps">
+          <div class="pla-step"><b>1</b><span>The amount leaves your private balance with a proof</span></div>
+          <div class="pla-step"><b>2</b><span>${s.signer_threshold} of ${s.signers.length} settlement signers attest to the release</span></div>
+          <div class="pla-step"><b>3</b><span>Your wallet confirms, and the gateway pays the recipient</span></div>
+        </div>
+        <p class="pla-note">This is a committee-attested bridge${s.signer_mode === 'single-process-fixture' ? ' and, on this node, the signers are a single-process fixture' : s.signer_mode === 'one-key-per-validator' ? ' and, on this stack, each local validator process holds one signer key' : ''}: a compromised committee could release funds wrongly. The withdrawal, its amount and the recipient are public on the chain.</p>
+      </div>
+      <div class="pla-form-foot"><button type="button" class="pla-btn" data-tab="overview">Cancel</button><button type="submit" class="pla-btn pla-btn-dark">Withdraw</button></div>
+    </form>`;
 }
 
-function withdrawalsPanel(): string {
+function mintPage(): string {
   const ns = links().namespace!;
-  if (!page.withdrawals.length) return '';
   return `
-    <div class="pl-panel">
-      <div class="pl-panel-head"><h2 class="pl-panel-title">withdrawals</h2></div>
-      <ul class="pl-list">
-        ${page.withdrawals
-          .map(
-            (w) => `<li><span class="pl-list-main">to ${esc(shortHex(w.recipient, 6, 4))}</span><span class="pl-list-sub">${w.status === 'confirmed' ? `<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>confirmed on chain</span>` : `<span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(w.status.replace('_', ' '))}</span>`}${w.tx_hash ? ` · tx <span class="pl-mono">${esc(shortHex(w.tx_hash, 8, 6))}</span>` : ''}</span><span class="pl-list-side">${formatUnits(w.amount, ns.decimals)} ${esc(ns.token_symbol)}</span></li>`,
-          )
-          .join('')}
-      </ul>
-    </div>`;
+    ${head('Add test funds', 'A development fixture: credits a deposit without a chain deposit.', '', 'overview')}
+    ${notices()}
+    <form id="pl-mint-form" class="pla-form pla-card pla-card-narrow">
+      <div class="pla-card-body">
+        <p class="pla-note">This node runs with the labelled dev-mint endpoint. The intent, its proof and the claim are real; only the on-chain leg is stood in for. It does not exist on any deployment with real funds.</p>
+        ${field('Amount', input('name="amount" inputmode="decimal" required value="100"', esc(ns.token_symbol)))}
+      </div>
+      <div class="pla-form-foot"><button type="button" class="pla-btn" data-tab="overview">Cancel</button><button type="submit" class="pla-btn pla-btn-dark">Credit test funds</button></div>
+    </form>`;
 }
 
-function devMintDialog(): string {
-  const ns = links().namespace!;
+function renamePage(): string {
   return `
-    <dialog class="pl-dialog" id="pl-mint-dialog">
-      <form class="pl-dialog-body" id="pl-mint-form" method="dialog">
-        <h3 class="pl-dialog-title">add test funds</h3>
-        <p class="pl-small"><strong>Development fixture.</strong> This node runs with the labelled dev-mint endpoint, which credits a deposit intent without a chain deposit. The intent, its proof and the claim are real; only the on-chain leg is stood in for. It does not exist on any deployment with real funds.</p>
-        <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)})</span><input class="pl-input" name="amount" inputmode="decimal" required value="100"></label>
-        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Credit test funds</button></div>
-      </form>
-    </dialog>`;
+    ${head('Display name', 'Shown next to your wallet address on your payment links.', '', 'settings')}
+    ${notices()}
+    <form id="pl-rename-form" class="pla-form pla-card pla-card-narrow">
+      <div class="pla-card-body">
+        ${field('Display name', input(`name="display" maxlength="60" required value="${esc(page.displayName ?? '')}"`), 'A name you chose, not an identity check. Your wallet confirms the change.')}
+      </div>
+      <div class="pla-form-foot"><button type="button" class="pla-btn" data-tab="settings">Cancel</button><button type="submit" class="pla-btn pla-btn-dark">Save</button></div>
+    </form>`;
 }
+
+function restorePage(): string {
+  const back: Tab = links().account ? 'settings' : 'overview';
+  return `
+    ${head('Import a backup file', 'A file exported from Peal Links, protected by the recovery code chosen when exporting it.', '', back)}
+    ${notices()}
+    <form id="pl-restore" class="pla-form pla-card pla-card-narrow">
+      <div class="pla-card-body">
+        ${field('Backup file', input('type="file" name="file" accept="application/json,.json" required'))}
+        ${field('Recovery code', input('name="code" required autocomplete="off"'), 'The code you chose when the file was exported.', ' pla-field-mono')}
+        <p class="pla-note">After importing, the account is checked against the ledger; a backup older than your last operation is reported as stale rather than used.</p>
+      </div>
+      <div class="pla-form-foot"><button type="button" class="pla-btn" data-tab="${back}">Cancel</button><button type="submit" class="pla-btn pla-btn-dark">Import</button></div>
+    </form>`;
+}
+
+// ---- the page ------------------------------------------------------------------
 
 const MINT_SENDER_KEY = 'peal-links:mint-sender';
 let MINT_SENDER = '';
 
+function main(): string {
+  const l = links();
+  if (!l.account || !page.view) return onboarding();
+  switch (page.tab) {
+    case 'links':
+      return linksPage();
+    case 'incoming':
+      return incomingPage();
+    case 'activity':
+      return activityPage();
+    case 'settings':
+      return settingsPage();
+    case 'new-link':
+      return newLinkPage();
+    case 'link-created':
+      return linkCreatedPage();
+    case 'send':
+      return sendPage();
+    case 'fund':
+      return fundPage();
+    case 'withdraw':
+      return withdrawPage();
+    case 'mint':
+      return mintPage();
+    case 'rename':
+      return renamePage();
+    case 'restore':
+      return restorePage();
+    default:
+      return overview();
+  }
+}
+
 function html(): string {
   const l = links();
   if (l.statusError || !l.status || !l.namespace) {
-    return `<div class="pl"><div class="pl-wrap pl-app"><span class="pl-product-label">Peal Links</span><h1 class="pl-app-title">payments</h1>${l.statusError ? unreachable(l.statusError) : `<div class="skeleton-row"><span class="skeleton" style="width:240px"></span></div>`}</div></div>`;
+    return `<div class="pl pla"><div class="pla-shell"><div class="pla-main">${head('Peal Links', 'payments')}${l.statusError ? unreachable(l.statusError) : `<div class="skeleton-row"><span class="skeleton" style="width:240px"></span></div>`}</div></div></div>`;
   }
-  const nsSelect =
-    l.status.namespaces.length > 1
-      ? `<select class="pl-select" id="pl-ns" style="width:auto;min-height:36px;font-size:13px">${l.status.namespaces.map((n) => `<option value="${esc(n.id)}" ${n.id === l.namespace!.id ? 'selected' : ''}>${esc(n.label)}</option>`).join('')}</select>`
-      : `<span class="pl-small">${esc(l.namespace.label)}</span>`;
   return `
-    <div class="pl">
-      <div class="pl-wrap pl-app">
-        <div class="pl-app-head">
-          <div><span class="pl-product-label">Peal Links</span><h1 class="pl-app-title">payments</h1></div>
-          <div>${nsSelect}</div>
-        </div>
-        ${setupNotice()}
-        ${page.error ? `<div class="pl-notice pl-notice-bad" role="alert">${esc(page.error)}</div>` : ''}
-        ${page.notice ? `<div class="pl-notice" role="status">${esc(page.notice)}</div>` : ''}
-        ${page.busy ? `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(page.busy)}</span></div>` : ''}
-        ${l.paramsProgress ? `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(l.paramsProgress)}</span></div>` : ''}
-        ${recoveryCodeBanner()}
-        ${walletPanel()}
-        ${balances()}
-        ${actions()}
-        ${invitePanel()}
-        ${requestsPanel()}
-        ${receiptsPanel()}
-        ${withdrawalsPanel()}
-        ${activityPanel()}
-        ${ledgerPanel()}
-        ${restoreDialog()}
-        ${newRequestDialog()}
-        ${sendDialog()}
-        ${renameDialog()}
-        ${fundDialog()}
-        ${withdrawDialog()}
-        ${devMintDialog()}
-        ${linkDialog()}
+    <div class="pl pla">
+      <div class="pla-shell">
+        ${sidebar()}
+        <div class="pla-main" data-view="${page.tab}">${main()}</div>
       </div>
     </div>`;
 }
@@ -540,37 +736,45 @@ function html(): string {
 export function renderBonsaiApp(root: HTMLElement): Cleanup {
   const previousTitle = document.title;
   document.title = 'Peal Links. payments';
+  document.body.classList.add('pla-page');
   let stale = false;
   let syncTimer = 0;
   let claiming = false;
-  page = { view: null, labels: {}, displayName: null, recovery: null, requests: [], busy: null, error: null, notice: null, lastLink: null, invite: null, walletTokenBalance: null, withdrawals: [] };
+  page = initial();
   MINT_SENDER = localStorage.getItem(MINT_SENDER_KEY) ?? '';
   // An invitation link (#/bonsai?invite=0x…) lands here: say what it is.
   const invited = /[?&]invite=(0x[0-9a-fA-F]{40})/.exec(location.hash);
   if (invited) page.notice = `Someone wants to pay you privately on Peal Links. Connect the wallet ${shortHex(invited[1]!, 6, 4)} and continue; they can pay you once your wallet has private receiving.`;
 
-  let deferredPaint = false;
-  const paint = () => {
+  /** Repaint. A form the person has started filling in is never replaced
+   * under them (a picked file cannot be restored); the paint waits until
+   * they leave it, unless `force` says the paint is the answer to what
+   * they just did. */
+  const paint = (force = false) => {
     if (stale) return;
-    // Never replace the DOM under an open dialog (a file the person picked
-    // cannot be restored); repaint once it closes.
-    if (root.querySelector('dialog[open]') && !page.lastLink) {
-      deferredPaint = true;
-      return;
-    }
-    deferredPaint = false;
+    if (!force && root.querySelector('form[data-dirty]')) return;
     const active = document.activeElement as HTMLInputElement | null;
     const activeName = active?.name;
     const activeValue = active?.value;
+    const y = window.scrollY;
     root.innerHTML = html();
-    if (page.lastLink) root.querySelector<HTMLDialogElement>('#pl-link-dialog')?.showModal();
     if (activeName) {
       const again = root.querySelector<HTMLInputElement>(`input[name="${activeName}"]`);
-      if (again && activeValue !== undefined) {
+      if (again && activeValue !== undefined && again.type !== 'file' && again.type !== 'radio') {
         again.value = activeValue;
         again.focus();
       }
     }
+    window.scrollTo({ top: y });
+  };
+
+  const go = (tab: Tab) => {
+    page.tab = tab;
+    page.error = null;
+    paint(true);
+    // The new view slides in once; routine repaints do not replay it.
+    root.querySelector('.pla-main')?.classList.add('pla-enter');
+    window.scrollTo({ top: 0 });
   };
 
   const refreshWalletBalance = async () => {
@@ -624,7 +828,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
   const run = async (label: string, f: () => Promise<void>) => {
     page.busy = label;
     page.error = null;
-    paint();
+    paint(true);
     try {
       await f();
     } catch (e) {
@@ -681,12 +885,21 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       }
     });
 
+  // A form becomes "dirty" on the first keystroke or choice; the paint
+  // guard above reads it.
+  root.addEventListener('input', (ev) => {
+    (ev.target as HTMLElement).closest('form')?.setAttribute('data-dirty', '');
+  });
+
   root.addEventListener('click', (ev) => {
     const t = ev.target as HTMLElement;
     const btn = t.closest<HTMLElement>('button, a');
     if (!btn) return;
     const l = links();
-    if (btn.id === 'pl-login') session().login();
+    if (btn.dataset.tab) {
+      if (btn.hasAttribute('data-done')) page.lastLink = null;
+      go(btn.dataset.tab as Tab);
+    } else if (btn.id === 'pl-login') session().login();
     else if (btn.id === 'pl-login-injected') void run('connecting browser wallet', async () => void (await connectInjected()));
     else if (btn.id === 'pl-activate') void doActivate();
     else if (btn.id === 'pl-test-funds') {
@@ -698,30 +911,24 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
         await refreshWalletBalance();
         page.notice = how === 'chain-faucet' ? `${ns.chain_name} funded your wallet with ${ns.token_symbol}.` : `The test token's faucet sent 1,000 ${ns.token_symbol} to your wallet.`;
       });
-    }
-    else if (btn.id === 'pl-code-saved') {
+    } else if (btn.id === 'pl-code-saved') {
       acknowledgeRecoveryCode();
-      paint();
+      paint(true);
     } else if (btn.id === 'pl-lock') {
       lockAccount();
       page.view = null;
-      paint();
+      page.tab = 'overview';
+      paint(true);
     } else if (btn.id === 'pl-disconnect') {
       disconnect();
       page.view = null;
       page.requests = [];
       page.walletTokenBalance = null;
-      paint();
-    } else if (btn.id === 'pl-show-restore') root.querySelector<HTMLDialogElement>('#pl-restore-dialog')?.showModal();
-    else if (btn.id === 'pl-new-request') root.querySelector<HTMLDialogElement>('#pl-request-dialog')?.showModal();
-    else if (btn.id === 'pl-send') root.querySelector<HTMLDialogElement>('#pl-send-dialog')?.showModal();
-    else if (btn.id === 'pl-rename') root.querySelector<HTMLDialogElement>('#pl-rename-dialog')?.showModal();
-    else if (btn.id === 'pl-dev-mint') root.querySelector<HTMLDialogElement>('#pl-mint-dialog')?.showModal();
-    else if (btn.id === 'pl-add-funds') root.querySelector<HTMLDialogElement>('#pl-fund-dialog')?.showModal();
-    else if (btn.id === 'pl-withdraw') root.querySelector<HTMLDialogElement>('#pl-withdraw-dialog')?.showModal();
-    else if (btn.id === 'pl-invite-close') {
+      page.tab = 'overview';
+      paint(true);
+    } else if (btn.id === 'pl-invite-close') {
       page.invite = null;
-      paint();
+      paint(true);
     } else if (btn.id === 'pl-backup') {
       const code = prompt('Choose a recovery code for this file (at least 10 characters). You will need it to import the file.');
       if (!code || code.length < 10) return;
@@ -760,9 +967,9 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       URL.revokeObjectURL(a.href);
     } else if (btn.dataset.copy) {
       void navigator.clipboard?.writeText(btn.dataset.copy).then(() => {
-        const prev = btn.textContent;
+        const prev = btn.innerHTML;
         btn.textContent = 'copied';
-        window.setTimeout(() => (btn.textContent = prev), 1200);
+        window.setTimeout(() => (btn.innerHTML = prev), 1200);
       });
     } else if (btn.dataset.claim !== undefined) {
       const idx = Number(btn.dataset.claim);
@@ -775,10 +982,6 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     } else if (btn.dataset.archive) {
       const id = btn.dataset.archive;
       void run('archiving', async () => void (await client.archiveRequest(id)));
-    } else if (btn.hasAttribute('data-close')) {
-      btn.closest('dialog')?.close();
-      if (btn.closest('#pl-link-dialog')) page.lastLink = null;
-      if (deferredPaint || btn.closest('#pl-link-dialog')) paint();
     }
   });
 
@@ -789,9 +992,16 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       if ((t as HTMLInputElement).checked) void syncOnce();
     } else if (t.id === 'pl-ns') {
       const ns = links().status?.namespaces.find((n) => n.id === t.value);
-      if (ns) void selectNamespace(ns).then(refresh).then(paint);
+      if (ns) void selectNamespace(ns).then(refresh).then(() => paint(true));
+    } else {
+      (t as HTMLElement).closest('form')?.setAttribute('data-dirty', '');
     }
   });
+
+  const invalid = (msg: string) => {
+    page.error = msg;
+    paint(true);
+  };
 
   root.addEventListener('submit', (ev) => {
     const form = ev.target as HTMLFormElement;
@@ -806,7 +1016,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     } else if (form.id === 'pl-restore') {
       const file = data.get('file') as File | null;
       if (!file) return;
-      form.closest('dialog')?.close();
+      page.tab = l.account ? 'settings' : 'overview';
       void run('importing and checking against the ledger', async () => {
         const json = await file.text();
         const account = await restoreFile(json, String(data.get('code') ?? ''));
@@ -816,14 +1026,10 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     } else if (form.id === 'pl-request-form') {
       const ns = l.namespace!;
       const amount = parseUnits(String(data.get('amount') ?? ''), ns.decimals);
-      if (!amount || amount === '0') {
-        page.error = `enter an amount with at most ${ns.decimals} decimals`;
-        paint();
-        return;
-      }
-      const expiresRaw = String(data.get('expires') ?? '');
-      const expiresAt = expiresRaw ? Math.floor(new Date(expiresRaw).getTime() / 1000) : null;
-      form.closest('dialog')?.close();
+      if (!amount || amount === '0') return invalid(`enter an amount with at most ${ns.decimals} decimals`);
+      const expiryIn = Number(String(data.get('expiry') ?? '')) || 0;
+      const expiresAt = expiryIn > 0 ? Math.floor(Date.now() / 1000) + expiryIn : null;
+      page.tab = 'links';
       void run('signing and publishing the link', async () => {
         const request = await l.account!.createRequest({
           amount,
@@ -834,18 +1040,15 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
         const url = requestUrl(request.manifest.request_id);
         const qr = await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
         page.lastLink = { request, url, qr };
+        page.tab = 'link-created';
       });
     } else if (form.id === 'pl-send-form') {
       const ns = l.namespace!;
       const to = String(data.get('to') ?? '').trim();
       const amount = parseUnits(String(data.get('amount') ?? ''), ns.decimals);
-      if (!amount || amount === '0' || !/^0x[0-9a-fA-F]{40}$/.test(to)) {
-        page.error = 'enter a wallet address and an amount';
-        paint();
-        return;
-      }
-      form.closest('dialog')?.close();
+      if (!amount || amount === '0' || !/^0x[0-9a-fA-F]{40}$/.test(to)) return invalid('enter a wallet address and an amount');
       page.invite = null;
+      page.tab = 'overview';
       void run('looking the recipient up and verifying their receiving profile', async () => {
         const r = await payAddress(l.account!, to, amount, String(data.get('reference') ?? '').trim() || null, (stage) => {
           page.busy = stage === 'approve' ? 'confirm the payment in your wallet' : 'preparing the payment: proving on this device (about 7 s)';
@@ -860,7 +1063,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     } else if (form.id === 'pl-rename-form') {
       const name = String(data.get('display') ?? '').trim();
       if (!name) return;
-      form.closest('dialog')?.close();
+      page.tab = 'settings';
       void run('confirm the new display name in your wallet', async () => {
         await rename(l.account!, name);
       });
@@ -868,12 +1071,8 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       const ns = l.namespace!;
       const evm = session();
       const amount = parseUnits(String(data.get('amount') ?? ''), ns.decimals);
-      if (!amount || amount === '0' || !evm.address || !evm.provider) {
-        page.error = 'enter an amount and connect a wallet';
-        paint();
-        return;
-      }
-      form.closest('dialog')?.close();
+      if (!amount || amount === '0' || !evm.address || !evm.provider) return invalid('enter an amount and connect a wallet');
+      page.tab = 'overview';
       void run('adding funds: proving the deposit intent, then confirm the approval and the deposit in your wallet', async () => {
         await ensureWalletChain(ns);
         const { receipt } = await l.account!.prepareDeposit(amount);
@@ -886,12 +1085,8 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       const evm = session();
       const amount = parseUnits(String(data.get('amount') ?? ''), ns.decimals);
       const recipient = String(data.get('recipient') ?? '').trim();
-      if (!amount || amount === '0' || !/^0x[0-9a-fA-F]{40}$/.test(recipient) || !evm.address || !evm.provider) {
-        page.error = 'enter an amount, a recipient address, and connect a wallet';
-        paint();
-        return;
-      }
-      form.closest('dialog')?.close();
+      if (!amount || amount === '0' || !/^0x[0-9a-fA-F]{40}$/.test(recipient) || !evm.address || !evm.provider) return invalid('enter an amount, a recipient address, and connect a wallet');
+      page.tab = 'overview';
       void run('withdrawal: proving on this device (about 7 s), then the committee certificate, then confirm the release in your wallet', async () => {
         await ensureWalletChain(ns);
         const { certificate } = await l.account!.withdraw(amount, recipient);
@@ -902,12 +1097,8 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     } else if (form.id === 'pl-mint-form') {
       const ns = l.namespace!;
       const amount = parseUnits(String(data.get('amount') ?? ''), ns.decimals);
-      if (!amount || amount === '0') {
-        page.error = 'enter an amount';
-        paint();
-        return;
-      }
-      form.closest('dialog')?.close();
+      if (!amount || amount === '0') return invalid('enter an amount');
+      page.tab = 'overview';
       void run('proving the deposit intent and crediting test funds', async () => {
         const { receipt } = await l.account!.prepareDeposit(amount, 'test funds (dev mint)');
         await client.devMint(ns.id, receipt);
@@ -924,10 +1115,10 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
   });
 
   const unsubAuth = onAuthChange(() => {
-    void refreshWalletBalance().then(paint);
+    void refreshWalletBalance().then(() => paint());
   });
   const unsubLinks = onLinksChange(() => {
-    void refresh().then(paint);
+    void refresh().then(() => paint());
   });
 
   paint();
@@ -951,6 +1142,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     window.clearInterval(syncTimer);
     unsubAuth();
     unsubLinks();
+    document.body.classList.remove('pla-page');
     document.title = previousTitle;
   };
 }

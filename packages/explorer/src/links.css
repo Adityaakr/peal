@@ -1583,3 +1583,1113 @@
     transition: none;
   }
 }
+
+/* ---------- the app (#/bonsai/app): a product shell ----------
+   A sidebar with the sections and the wallet, a main column with a page
+   head and white cards, forms as pages. Light, quiet, the explorer's own
+   tokens; motion only where a state changes. Prefix .pla-. */
+
+/* The app takes the whole window: no site header, no clamped main, the
+   shell edge to edge with the sidebar the full height of the viewport. */
+body.pla-page {
+  background: #fff;
+}
+
+body.pla-page .site-header {
+  display: none;
+}
+
+body.pla-page main {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pla {
+  --pla-radius: 14px;
+  --pla-dark: #111827;
+  --pla-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  color: var(--text);
+}
+
+.pla-shell {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 100vh;
+  background: #fff;
+}
+
+/* ---- sidebar ---- */
+
+.pla-side {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 22px 16px 16px;
+  border-right: 1px solid var(--border);
+  background: #fbfcfd;
+  overflow-y: auto;
+}
+
+.pla-home {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.pla-home:hover {
+  background: #f3f4f6;
+  color: var(--text);
+}
+
+.pla-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 18px;
+  font-family: var(--pl-display);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.pla-brand-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+  box-shadow: inset 0 -3px 6px rgb(255 255 255 / 35%);
+}
+
+.pla-ns {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.pla-ns-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pla-ns-one {
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.pla-select {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pla-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pla-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.pla-nav-item:hover {
+  background: #f3f4f6;
+  color: var(--text);
+}
+
+.pla-nav-item.is-active {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.pla-ic {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.pla-wallet {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.pla-wallet-off {
+  color: var(--muted);
+}
+
+.pla-wallet-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.pla-wallet-line .pl-mono {
+  display: block;
+  width: 100%;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.pla-wallet-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ---- main column ---- */
+
+.pla-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 30px 40px 48px;
+  min-width: 0;
+  max-width: 1240px;
+}
+
+.pla-enter > * {
+  animation: pla-in 280ms var(--pla-ease) both;
+}
+
+.pla-enter > *:nth-child(2) {
+  animation-delay: 30ms;
+}
+
+.pla-enter > *:nth-child(3) {
+  animation-delay: 60ms;
+}
+
+.pla-enter > *:nth-child(4) {
+  animation-delay: 90ms;
+}
+
+@keyframes pla-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pla-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.pla-head-l {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pla-head-r {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pla-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.pla-back:hover {
+  background: #f3f4f6;
+}
+
+.pla-title {
+  margin: 0;
+  font-family: var(--pl-body);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.pla-sub {
+  margin: 2px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.pla-p {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.pla-note {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.pla-foot {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.pla-link {
+  font: inherit;
+  font-size: inherit;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pla-link:hover {
+  text-decoration: underline;
+}
+
+/* ---- buttons ---- */
+
+.pla-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 100ms ease,
+    box-shadow 140ms ease;
+}
+
+.pla-btn:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+.pla-btn:active {
+  transform: translateY(1px);
+}
+
+.pla-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pla-btn-dark {
+  background: var(--pla-dark);
+  border-color: var(--pla-dark);
+  color: #fff;
+}
+
+.pla-btn-dark:hover {
+  background: #1f2937;
+  border-color: #1f2937;
+  box-shadow: 0 8px 20px -12px rgb(17 24 39 / 60%);
+}
+
+.pla-btn-sm {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  border-radius: 9px;
+}
+
+.pla-btn-sm .pla-ic {
+  width: 14px;
+  height: 14px;
+}
+
+.pla-btn-block {
+  width: 100%;
+}
+
+/* ---- cards ---- */
+
+.pla-card {
+  border: 1px solid var(--border);
+  border-radius: var(--pla-radius);
+  background: #fff;
+}
+
+.pla-card-narrow {
+  max-width: 640px;
+}
+
+.pla-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pla-card-title {
+  margin: 0;
+  font-family: var(--pl-body);
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.pla-card-body {
+  padding: 20px;
+}
+
+.pla-card-body + .pla-card-head {
+  border-top: 1px solid var(--border);
+}
+
+.pla-center {
+  text-align: center;
+}
+
+.pla-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.pla-empty {
+  padding: 22px 20px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted);
+  text-align: center;
+}
+
+.pla-empty-tall {
+  padding: 48px 20px;
+}
+
+.pla-empty b {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ---- stats ---- */
+
+.pla-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pla-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--pla-radius);
+  background: #fff;
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.pla-stat:hover {
+  box-shadow: 0 10px 24px -20px rgb(15 35 70 / 40%);
+  transform: translateY(-1px);
+}
+
+.pla-stat-primary {
+  background: linear-gradient(160deg, #eff6ff, #fff 60%);
+  border-color: var(--accent-border);
+}
+
+.pla-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.pla-stat-amount {
+  font-family: var(--pl-display);
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.pla-stat-amount .pl-amount-unit {
+  margin-left: 8px;
+  font-family: var(--pl-body);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.pla-stat-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.pla-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+/* ---- quick actions ---- */
+
+.pla-quick {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pla-quick-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--pla-radius);
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.pla-quick-item:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  box-shadow: 0 12px 28px -22px rgb(37 99 235 / 45%);
+  transform: translateY(-1px);
+}
+
+.pla-quick-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pla-quick-item .pla-ic {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+}
+
+.pla-quick-item b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pla-quick-item i {
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* ---- lists ---- */
+
+.pla-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pla-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.pla-list .pla-row:first-child {
+  border-top: 0;
+}
+
+.pla-row-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.pla-row-ic-in {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.pla-row-ic-out {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.pla-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pla-row-main b {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pla-row-main i {
+  font-style: normal;
+  font-size: 12.5px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pla-row-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+
+.pla-row-side b {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pla-neg {
+  color: #4b5563;
+}
+
+.pla-row-tools {
+  display: flex;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+/* ---- forms ---- */
+
+.pla-form {
+  display: block;
+}
+
+.pla-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.pla-field:last-child {
+  margin-bottom: 0;
+}
+
+.pla-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pla-help {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.pla-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 11px;
+  background: #fff;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text);
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.pla-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 12%);
+}
+
+.pla-input[type='file'] {
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.pla-field-mono .pla-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+}
+
+.pla-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.pla-input-wrap .pla-input {
+  padding-right: 76px;
+}
+
+.pla-input-suffix {
+  position: absolute;
+  right: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.pla-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pla-choice {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.pla-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pla-choice-dot {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 1.5px solid #d1d5db;
+  background: #fff;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.pla-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pla-choice-text b {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.pla-choice-text i {
+  font-style: normal;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.pla-choice:hover {
+  border-color: #d1d5db;
+}
+
+.pla-choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.pla-choice:has(input:checked) .pla-choice-dot {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 5px var(--accent);
+}
+
+.pla-choice:has(input:focus-visible) {
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 12%);
+}
+
+.pla-form-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: #fbfcfd;
+  border-radius: 0 0 var(--pla-radius) var(--pla-radius);
+}
+
+.pla-form-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.pla-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fbfcfd;
+}
+
+.pla-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+  color: #374151;
+}
+
+.pla-step b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ---- settings rows ---- */
+
+.pla-setting {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.pla-card-head + .pla-setting {
+  border-top: 0;
+}
+
+.pla-setting > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pla-setting b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pla-setting i {
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.pla-setting-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ---- switch ---- */
+
+.pla-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.pla-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pla-switch-track {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex: none;
+  border-radius: 999px;
+  background: #d1d5db;
+  transition: background 160ms ease;
+}
+
+.pla-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
+  transition: transform 180ms var(--pla-ease);
+}
+
+.pla-switch input:checked + .pla-switch-track {
+  background: var(--accent);
+}
+
+.pla-switch input:checked + .pla-switch-track::after {
+  transform: translateX(18px);
+}
+
+.pla-switch input:focus-visible + .pla-switch-track {
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 15%);
+}
+
+/* ---- notices sit in the main column's rhythm ---- */
+
+.pla-main .pl-notice {
+  margin: 0;
+}
+
+.pla .pl-share-link .pla-input {
+  min-height: 42px;
+}
+
+/* ---- narrow ---- */
+
+@media (max-width: 960px) {
+  .pla-quick {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pla-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .pla-two {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .pla-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pla-side {
+    position: static;
+    height: auto;
+    overflow: visible;
+  }
+
+  .pla-home {
+    margin-top: 0;
+  }
+
+  .pla-wallet-line .pl-mono {
+    width: auto;
+  }
+
+  .pla-side {
+    padding: 14px 12px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+
+  .pla-brand {
+    padding: 0 6px 8px;
+  }
+
+  .pla-nav {
+    flex-direction: row;
+    gap: 4px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .pla-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pla-nav-item {
+    flex: none;
+    padding: 8px 12px;
+  }
+
+  .pla-ns {
+    margin-bottom: 0;
+  }
+
+  .pla-wallet {
+    margin-top: 0;
+  }
+
+  .pla-main {
+    padding: 18px 16px 28px;
+  }
+
+  .pla-choices {
+    grid-template-columns: 1fr;
+  }
+
+  .pla-row {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .pla-row-side {
+    grid-column: 2;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .pla-setting {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pla-form-foot {
+    flex-direction: column-reverse;
+  }
+
+  .pla-form-foot .pla-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .pla-quick {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pla-enter > * {
+    animation: none;
+  }
+}

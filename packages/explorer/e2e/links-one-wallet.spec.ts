@@ -130,7 +130,7 @@ test('1, 3, 4, 7: Bob creates a link, receives while away, sees Incoming become 
   await shot(bob2, OUT, '07-bob-incoming');
   await expect(bob2.locator('.pl-balance', { hasText: 'private balance' }).locator('.pl-balance-amount')).toContainText('12.50', { timeout: 120_000 });
   await expect(bob2.locator('.pl-balance', { hasText: 'incoming' }).locator('.pl-balance-amount')).toContainText('0.00');
-  await expect(bob2.locator('.pl-list', { hasText: 'received privately' })).toBeVisible();
+  await expect(bob2.locator('.pla-list', { hasText: 'received privately' })).toBeVisible();
   await expectNoBonsaiIdentifiers(bob2);
   await shot(bob2, OUT, '08-bob-available');
 
@@ -163,7 +163,7 @@ test('5: Alice recovers on a fresh browser with her recovery code; a wrong code 
   // Her balance is back: the checkout added exactly the shortfall rounded
   // up to a whole unit (13.00) and paid 12.50.
   await expect(page.locator('.pl-balance', { hasText: 'private balance' }).locator('.pl-balance-amount')).toContainText('0.50');
-  await expect(page.locator('.pl-list', { hasText: 'paid link' })).toBeVisible();
+  await expect(page.locator('.pla-list', { hasText: 'paid link' })).toBeVisible();
   await expectNoBonsaiIdentifiers(page);
   await shot(page, OUT, '10-alice-recovered-fresh-browser');
   await ctx.close();
@@ -209,7 +209,7 @@ test('8: paying an address that never activated private receiving is an invitati
   await page.locator('#pl-send-form input[name="reference"]').fill('lunch');
   await page.locator('#pl-send-form').getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByText(/Sent 2\.00 tUSD to/)).toBeVisible({ timeout: 120_000 });
-  await expect(page.locator('.pl-list', { hasText: `sent to ${bobAddress.slice(0, 6).toLowerCase()}` })).toBeVisible();
+  await expect(page.locator('.pla-list', { hasText: `sent to ${bobAddress.slice(0, 6).toLowerCase()}` })).toBeVisible();
   await shot(page, OUT, '12-alice-sent-to-address');
   await ctx.close();
 });
