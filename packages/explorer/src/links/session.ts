@@ -187,7 +187,9 @@ export async function ensureWalletChain(ns: NamespaceInfo): Promise<void> {
   if (current === ns.chain_id) return;
   const chainId = `0x${ns.chain_id.toString(16)}`;
   try {
-    await evm.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId }] });
+    // The session's own switch knows the connector (Privy's embedded wallet
+    // switches through its SDK; an injected wallet through EIP-3326).
+    await evm.switchChain(ns.chain_id);
   } catch (e) {
     const code = (e as { code?: number }).code;
     const msg = e instanceof Error ? e.message : String(e);

@@ -13,6 +13,7 @@ import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ACTIVE, CHAIN_FOR, TEMPO } from 'peal-auctionkit';
+import { sepolia } from 'viem/chains';
 import type { Address } from 'viem';
 
 /** Just the method the pages use.
@@ -234,7 +235,9 @@ export function mountAuth(): void {
         // the app between chains cannot leave new wallets provisioned on the
         // old one. Both stay supported, so a link to an auction on the other
         // chain still works.
-        supportedChains: [CHAIN_FOR[TEMPO.chainId]!],
+        // Peal Links also runs on Ethereum Sepolia (testnet USDC), so an
+        // embedded wallet must be able to switch there.
+        supportedChains: [CHAIN_FOR[TEMPO.chainId]!, sepolia],
         defaultChain: CHAIN_FOR[ACTIVE.chainId]!,
         appearance: { theme: 'light', accentColor: '#2563eb' },
       }}
