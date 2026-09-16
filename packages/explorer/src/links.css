@@ -1938,6 +1938,17 @@ body.pla-page main {
   width: 100%;
 }
 
+/* One-form pages: the head and the card share a centred measure instead
+   of hugging the left edge of a wide column. */
+.pla-main-narrow {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.pla-main-narrow .pla-card-narrow {
+  max-width: none;
+}
+
 .pla-enter > * {
   animation: pla-in 320ms var(--pla-ease) both;
 }

@@ -52,6 +52,9 @@ export const BRAND = 'Peal Private Links';
 /** The sections in the sidebar, and the pages that open from them. */
 type Tab = 'overview' | 'links' | 'incoming' | 'activity' | 'settings' | 'new-link' | 'link-created' | 'send' | 'fund' | 'withdraw' | 'mint' | 'rename' | 'restore';
 
+/** Pages that are one form: they sit centred in a narrower measure. */
+const FORM_TABS: Tab[] = ['new-link', 'link-created', 'send', 'fund', 'withdraw', 'mint', 'rename', 'restore'];
+
 const TABS: Tab[] = ['overview', 'links', 'incoming', 'activity', 'settings', 'new-link', 'link-created', 'send', 'fund', 'withdraw', 'mint', 'rename', 'restore'];
 
 const SECTIONS: Array<{ tab: Tab; label: string; icon: string }> = [
@@ -982,7 +985,7 @@ function html(): string {
         ${sidebar()}
         <div class="pla-col">
           ${topbar()}
-          <div class="pla-main" data-view="${page.tab}">${main()}</div>
+          <div class="pla-main${FORM_TABS.includes(page.tab) ? ' pla-main-narrow' : ''}" data-view="${page.tab}">${main()}</div>
         </div>
         ${drawerFor(page.drawer)}
       </div>
