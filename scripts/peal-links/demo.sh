@@ -41,8 +41,8 @@ scripts/peal-links/stack.sh reset
 step "SDK bridge flow (real deposit, private payment, certified withdrawal)"
 pnpm -C packages/links exec vitest run test/bridge.test.ts
 
-step "browser flow (two contexts, real proofs in Web Workers)"
-pnpm -C packages/explorer exec playwright test e2e/links-flow.spec.ts
+step "browser flow (two wallets, one-wallet acceptance criteria, real proofs in Web Workers)"
+pnpm -C packages/explorer exec playwright test e2e/links-one-wallet.spec.ts
 
 step "done"
 curl -s http://127.0.0.1:8790/links/v1/status | python3 -c '
