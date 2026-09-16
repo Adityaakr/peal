@@ -20,6 +20,8 @@ export interface NamespaceInfo {
   confirmations: number;
   environment: 'local' | 'testnet' | 'mainnet';
   explorer_url: string;
+  /** The chain's public RPC, as configured on the node. */
+  rpc_url: string;
 }
 
 export interface LedgerInfo {

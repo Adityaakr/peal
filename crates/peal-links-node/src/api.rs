@@ -119,6 +119,9 @@ struct NamespaceOut {
     confirmations: u64,
     environment: String,
     explorer_url: String,
+    /// The chain's public RPC, so a client can read the chain (and, on
+    /// chains that offer one, call the gas faucet) without a wallet.
+    rpc_url: String,
 }
 
 fn namespace_out(app: &AppState, ns: &NamespaceConfig) -> NamespaceOut {
@@ -135,6 +138,7 @@ fn namespace_out(app: &AppState, ns: &NamespaceConfig) -> NamespaceOut {
         confirmations: ns.confirmations,
         environment: ns.environment.clone(),
         explorer_url: ns.explorer_url.clone(),
+        rpc_url: ns.rpc_url.clone(),
     }
 }
 

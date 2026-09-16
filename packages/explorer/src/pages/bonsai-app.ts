@@ -9,7 +9,7 @@
 // is formatted for a human.
 import QRCode from 'qrcode';
 import type { LinksAccount, PaymentRequest, WalletView } from 'peal-links';
-import { depositOnChain, LinksApiError, tokenBalance, withdrawOnChain } from 'peal-links';
+import { depositOnChain, ensureGas, LinksApiError, tokenBalance, withdrawOnChain } from 'peal-links';
 import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
 import { esc } from '../util';
@@ -851,6 +851,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       form.closest('dialog')?.close();
       void run('adding funds: proving the deposit intent, then confirm the approval and the deposit in your wallet', async () => {
         const { receipt } = await l.account!.prepareDeposit(amount);
+        await ensureGas(ns, evm.address as Address);
         const tx = await depositOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, BigInt(amount), receipt);
         page.notice = `Deposit confirmed on ${ns.chain_name} (tx ${shortHex(tx.depositHash, 8, 6)}). It shows under incoming after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'} and becomes available once claimed.`;
       });
@@ -867,6 +868,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       form.closest('dialog')?.close();
       void run('withdrawal: proving on this device (about 7 s), then the committee certificate, then confirm the release in your wallet', async () => {
         const { certificate } = await l.account!.withdraw(amount, recipient);
+        await ensureGas(ns, evm.address as Address);
         const hash = await withdrawOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, certificate);
         page.notice = `Withdrawal released on ${ns.chain_name} (tx ${shortHex(hash, 8, 6)}) to ${shortHex(recipient, 6, 4)}.`;
       });

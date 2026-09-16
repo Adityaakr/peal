@@ -9,7 +9,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { join } from 'node:path';
 import { createPublicClient, createWalletClient, http } from 'viem';
 import { privateKeyToAccount, setSignEntropy } from 'viem/accounts';
-import { ERC20_ABI, NodeClient } from 'peal-links';
+import { ensureGas, ERC20_ABI, NodeClient, TX_GAS } from 'peal-links';
 
 // Deterministic nonces (RFC 6979 with fixed extra data) for every wallet in
 // this process, from the start, so a deterministic test wallet signs the
@@ -21,6 +21,7 @@ export const RPC_BY_CHAIN: Record<number, string> = {
   31337: 'http://127.0.0.1:8545',
   31338: 'http://127.0.0.1:8546',
   11155111: process.env.SEPOLIA_RPC ?? 'https://ethereum-sepolia-rpc.publicnode.com',
+  42431: process.env.TEMPO_RPC ?? 'https://rpc.moderato.tempo.xyz',
 };
 /** Pays gas for fresh test wallets: anvil's account 0 locally, or the key in
  * `FUNDER_KEY` on a public testnet (a testnet deployer, never real funds). */
@@ -86,7 +87,7 @@ export async function injectWallet(context: BrowserContext, key: `0x${string}`, 
   });
   await context.exposeFunction('__pealSendTx', async (tx: { to?: string; data?: string; value?: string; gas?: string }) => {
     if (opts.rejectTx) throw new Error('User rejected the request.');
-    return wallet.sendTransaction({ to: tx.to as `0x${string}`, data: tx.data as `0x${string}`, value: tx.value ? BigInt(tx.value) : undefined, gas: tx.gas ? BigInt(tx.gas) : undefined });
+    return wallet.sendTransaction({ to: tx.to as `0x${string}`, data: tx.data as `0x${string}`, value: tx.value ? BigInt(tx.value) : undefined, gas: tx.gas ? BigInt(tx.gas) : TX_GAS[opts.chainId] });
   });
   await context.exposeFunction('__pealRpc', async (method: string, params: unknown[]) => {
     const res = await fetch(rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
@@ -146,8 +147,11 @@ export async function freshWallet(tokens = 1_000_000_000n): Promise<`0x${string}
   const wc = createWalletClient({ account: funder, chain, transport: http(rpc) });
   const pc = createPublicClient({ chain, transport: http(rpc) });
   const to = privateKeyToAccount(key).address;
-  const gas = await wc.sendTransaction({ to, value: GAS_GRANT });
-  await pc.waitForTransactionReceipt({ hash: gas });
+  // Chains with a gas faucet hand gas out themselves; the rest get a grant.
+  if (!(await ensureGas(ns, to))) {
+    const gas = await wc.sendTransaction({ to, value: GAS_GRANT });
+    await pc.waitForTransactionReceipt({ hash: gas });
+  }
   if (tokens > 0n) await fundFromFaucet(key, tokens);
   return key;
 }
@@ -160,7 +164,7 @@ export async function fundFromFaucet(key: `0x${string}`, amount = 1_000_000_000n
   const chain = { id: ns.chain_id, name: ns.chain_name, nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpc] } } };
   const wc = createWalletClient({ account, chain, transport: http(rpc) });
   const pc = createPublicClient({ chain, transport: http(rpc) });
-  const hash = await wc.writeContract({ address: ns.token_address as `0x${string}`, abi: ERC20_ABI, functionName: 'faucet', args: [account.address, amount] });
+  const hash = await wc.writeContract({ address: ns.token_address as `0x${string}`, abi: ERC20_ABI, functionName: 'faucet', args: [account.address, amount], gas: TX_GAS[ns.chain_id] });
   await pc.waitForTransactionReceipt({ hash });
 }
 

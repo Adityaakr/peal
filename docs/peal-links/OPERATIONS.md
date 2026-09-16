@@ -33,9 +33,14 @@ Validator mode (decision 0010): `PEAL_LINKS_VALIDATORS=3 scripts/peal-links/stac
 
 Development fixture: `PEAL_LINKS_DEV_MINT=1 scripts/peal-links/stack.sh up` mounts `POST /links/v1/dev/mint`, which credits a registered deposit intent without a chain event. It is labelled in the node log, in `GET /links/v1/status` (`dev_mint: true`) and in the app ("Add test funds (dev mint)"), refuses to start with a mainnet namespace configured, and is replaced by the watcher in Phase D.
 
-## Public testnet (Ethereum Sepolia)
+## Public testnets (Ethereum Sepolia, Tempo Moderato)
 
-`scripts/peal-links/testnet.sh deploy|up|down|status` runs the same node against Sepolia: `deploy` puts the gateway and the faucet test token on chain from a deployer key in `.dev-state/peal-links/sepolia-deployer.key` (never in git; fund it from a faucet), generates the testnet settlement fixture and writes `.dev-state/peal-links/sepolia/config.json` from `config/peal-links.sepolia.json`; `up` starts a single-node instance on :8795 and an explorer on :5174 next to the local stack. Testers need Sepolia ETH for gas; the app calls the token's public faucet for them. Blocks are 12 s apart, so a funding leg at checkout takes about 30 to 40 s. The browser suite runs against it with `LINKS_URL=http://127.0.0.1:8795 EXPLORER_URL=http://localhost:5174 FUNDER_KEY=<deployer key>`.
+`NETWORK=sepolia|tempo scripts/peal-links/testnet.sh deploy|up|down|status` runs the same node against a public testnet, one network per invocation: `deploy` puts the gateway and the faucet test token on chain from the deployer key in `.dev-state/peal-links/sepolia-deployer.key` (one key, the same address on every chain; never in git), generates that network's settlement fixture and writes `.dev-state/peal-links/<network>/config.json` from `config/peal-links.<network>.json`; `up` starts a single-node instance and an explorer next to the local stack (Sepolia: node :8795, explorer :5174; Tempo: node :8796, explorer :5175). The browser suite runs against either with `LINKS_URL`, `EXPLORER_URL` and `FUNDER_KEY=<deployer key>`.
+
+- Sepolia: testers need Sepolia ETH for gas; blocks are 12 s apart, so a funding leg at checkout takes about 30 to 40 s (`confirmations: 2`).
+- Tempo Moderato (chain 42431): gas is the PathUSD token and the chain funds any address through the `tempo_fundAddress` RPC method, which the app calls for a wallet that holds none (`ensureGas` in the SDK); its gas estimator is an order of magnitude low and it rejects transactions above 30M gas, so every write on it carries an explicit 29M limit (`TX_GAS`), and deployment uses `forge create` with the same limit; blocks are about half a second apart (`confirmations: 10`, about 5 s).
+
+The status document carries each namespace's `rpc_url` so a client can read the chain and call a gas faucet without a wallet.
 
 ## Compose and the edge (prepared, not exercised here)
 

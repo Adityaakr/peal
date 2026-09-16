@@ -11,7 +11,7 @@
 // a reload resumes without paying twice. Every terminal state is its own
 // honest screen.
 import type { LinksAccount, PaymentRequest } from 'peal-links';
-import { depositOnChain, LinksApiError, newIntentId, paymentIntentTypedData, providerSigner, publicClientFor, tokenBalance } from 'peal-links';
+import { depositOnChain, ensureGas, gasSymbol, LinksApiError, newIntentId, paymentIntentTypedData, providerSigner, publicClientFor, tokenBalance } from 'peal-links';
 import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
 import { esc } from '../util';
@@ -227,7 +227,7 @@ function html(s: PayState): string {
   }
 
   const feeRow = needsFunds && ns
-    ? `<div class="pl-row"><span class="pl-row-label">fees</span><span class="pl-row-value">none on the private ledger · funding leg ≈ ${s.feeWei ? `${esc(fmtEth(s.feeWei))} ETH` : 'estimating…'} network fee on ${esc(ns.chain_name)} (approve + deposit)</span></div>`
+    ? `<div class="pl-row"><span class="pl-row-label">fees</span><span class="pl-row-value">none on the private ledger · funding leg ≈ ${s.feeWei ? `${esc(fmtEth(s.feeWei))} ${esc(gasSymbol(ns.chain_id))}` : 'estimating…'} network fee on ${esc(ns.chain_name)} (approve + deposit)</span></div>`
     : `<div class="pl-row"><span class="pl-row-label">fees</span><span class="pl-row-value">none on the private ledger</span></div>`;
 
   const codeBanner = l.newRecoveryCode
@@ -320,7 +320,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
       const gasPrice = await pc.getGasPrice();
       // approve (about 50k gas) plus deposit (about 90k): an estimate shown
       // before any authorization, labelled as such.
-      s.feeWei = (gasPrice * 150_000n).toString();
+      s.feeWei = (gasPrice * (ns.chain_id === 42431 ? 400_000n : 150_000n)).toString();
     } catch {
       s.walletTokenBalance = null;
     }
@@ -386,6 +386,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
           setFundingMarker(requestId, receipt);
           s.busy = 'adding funds: confirm the approval and the deposit in your wallet';
           paint();
+          await ensureGas(ns, evm.address as Address);
           await depositOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, topUp, receipt);
         }
         s.busy = `adding funds: waiting for ${ns.confirmations} confirmation${ns.confirmations === 1 ? '' : 's'} on ${ns.chain_name} and the ledger credit (this can take minutes on slower chains)`;
