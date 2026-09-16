@@ -239,6 +239,10 @@ cmd_fund() {
   units=$(python3 -c "print(int('$amount') * 10**6)")
   if [ "$NETWORK" = tempo ]; then
     cast rpc tempo_fundAddress "$(echo "$to" | tr 'A-Z' 'a-z')" --rpc-url "$RPC" >/dev/null && echo "gas: Tempo funded $to with PathUSD"
+  else
+    # A small gas grant from the deployer (testnet ETH), enough for a few
+    # approvals, deposits and withdrawals.
+    cast send "$to" --value "${GAS_GRANT_WEI:-5000000000000000}" --rpc-url "$RPC" --private-key "$key" >/dev/null && echo "gas: sent $(python3 -c "print(int('${GAS_GRANT_WEI:-5000000000000000}')/1e18)") ETH to $to"
   fi
   local gas=()
   [ -n "${CREATE_GAS:-}" ] && gas=(--gas-limit "$CREATE_GAS")
