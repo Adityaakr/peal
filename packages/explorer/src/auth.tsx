@@ -30,6 +30,9 @@ const APP_ID = (import.meta.env.VITE_PRIVY_APP_ID as string) || 'cmtbxp6kx00840d
 
 export interface Session {
   ready: boolean;
+  /** Which connector produced `address`: Privy's embedded wallet or an
+   * injected browser wallet. Privy's bridge only ever clears its own. */
+  source: 'privy' | 'injected' | null;
   address: Address | null;
   provider: Eip1193Like | null;
   /** Which chain the wallet is actually on. An embedded wallet starts on
@@ -49,6 +52,7 @@ export interface Session {
 
 let state: Session = {
   ready: false,
+  source: null,
   address: null,
   provider: null,
   chainId: null,
@@ -61,6 +65,40 @@ const listeners = new Set<() => void>();
 
 export function session(): Session {
   return state;
+}
+
+/** An EIP-1193 provider injected by a browser wallet extension, if any. */
+export function injectedProvider(): Eip1193Like | null {
+  const eth = (window as unknown as { ethereum?: Eip1193Like }).ethereum;
+  return eth && typeof eth.request === 'function' ? eth : null;
+}
+
+/** Connect an injected browser wallet (MetaMask and friends) instead of
+ * Privy. Peal Links offers this because a payer who already has a wallet
+ * with funds should not have to create an embedded one; every signature
+ * still goes through the wallet's own confirmation. Publishes into the same
+ * session state the Privy bridge uses, so pages need not know which one is
+ * active. */
+export async function connectInjected(): Promise<Address> {
+  const provider = injectedProvider();
+  if (!provider) throw new Error('no browser wallet found');
+  const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[];
+  const address = accounts[0] as Address | undefined;
+  if (!address) throw new Error('the wallet returned no account');
+  const chainHex = (await provider.request({ method: 'eth_chainId' })) as string;
+  publish({
+    ready: true,
+    source: 'injected',
+    address,
+    provider,
+    chainId: Number.parseInt(chainHex, 16),
+    logout: () => publish({ source: null, address: null, provider: null, chainId: null }),
+    switchChain: async (id: number) => {
+      await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${id.toString(16)}` }] });
+      publish({ chainId: id });
+    },
+  });
+  return address;
 }
 
 /** Subscribe to sign-in changes. Returns an unsubscribe. */
@@ -85,7 +123,9 @@ function Bridge(): null {
 
   useEffect(() => {
     if (!authenticated) {
-      publish({ address: null, provider: null });
+      // Privy signing out (or never signed in) must not disconnect a wallet
+      // the person connected through the browser instead.
+      if (state.source === 'privy') publish({ source: null, address: null, provider: null });
       return;
     }
     // Prefer the embedded wallet. A user who also has an extension connected
@@ -107,6 +147,7 @@ function Bridge(): null {
     void wallet.getEthereumProvider().then((provider) => {
       if (cancelled) return;
       publish({
+        source: 'privy',
         address: wallet.address as Address,
         provider: provider as Eip1193Like,
         chainId: currentChain(),

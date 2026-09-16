@@ -2115,6 +2115,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "sha3",
  "tempfile",
  "thiserror",
  "x25519-dalek",

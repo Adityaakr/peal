@@ -2,7 +2,7 @@
 
 Living log. Read this first every session. Spec: `SPEC.md`.
 
-## Current phase: C (wallet and private ledger)
+## Current phase: D (funding and withdrawals)
 
 ### Smoke command
 ```
@@ -30,7 +30,7 @@ Expected: 7 passed, 0 failed (encoding 2, gate_a 3, parity 2), about 12 s includ
 |---|---|---|---|
 | A | PASSED | 06703bf | evidence/gate-a-tests.log, evidence/phase-a-upstream-zkpari-tests.log |
 | B | PASSED | (see record) | evidence/phase-b/*.png |
-| C | OPEN | | |
+| C | PASSED | (see record) | evidence/phase-c/ |
 | D | OPEN | | |
 | E | OPEN | | |
 | F | OPEN | | |
@@ -103,5 +103,44 @@ Residual risks: the app and checkout pages only show their populated states with
 6. Gate C: two browser contexts, recipient creates a link, payer (funded via a labelled local mint endpoint that is removed in Phase D when real deposits exist) pays, receiver offline during the send claims later; Playwright test.
 7. Commonware simplex multi-node ordering: scheduled after Gate E; recorded as a blocker until then.
 
+### Gate C: wallet and private ledger  [PASSED, with consensus deferred]
+Commit: see the commit that adds this record (peal-links(phase-c): gate C)
+Commands:
+- `cargo test -p peal-bonsai --release` -> exit 0 (11 passed: lib 6, gate_a 3, parity 2)
+- `cargo test -p peal-links-node --release` -> exit 0 (2 passed)
+- `cargo clippy -p peal-bonsai -p peal-links-node --all-targets -- -D warnings` -> exit 0
+- `pnpm -C packages/links test` (vitest, live node with PEAL_LINKS_DEV_MINT=1) -> exit 0 (1 passed; evidence/phase-c/sdk-e2e-vitest.log)
+- `pnpm -C packages/explorer test:e2e e2e/links-flow.spec.ts` (Playwright, two contexts) -> exit 0 (1 passed in 30.5 s; evidence/phase-c/links-flow-playwright.log)
+- `pnpm -C packages/links typecheck`, `pnpm -C packages/explorer exec tsc --noEmit` -> exit 0
+Tests: peal-bonsai 11/0/0; peal-links-node 2/0/0; peal-links (vitest) 1/0/0; explorer Playwright flow 1/0/0
+Artifacts: evidence/phase-c/01..09-*.png (inspected: account creation, link with QR, checkout at 390 px, funds needed, funded, proving, accepted, receiver unclaimed, receiver claimed), evidence/phase-c/*.log
+What the gate proves: two separate browser contexts drive the real stack. The receiver creates a private account (keys in the browser, encrypted under a passphrase, registered on the ledger with a signed envelope), signs in with an EVM wallet (EIP-4361 message, EIP-191 recovery on the node), publishes a signed request manifest, and goes offline. The payer opens the link, the manifest signature is verified in wasm before the amount is trusted, a private account is created, test funds are credited through the labelled dev-mint fixture (R_dep proof, intent, mint, claim proof), the payment is proved in a Web Worker (R_op send, ~7 s), accepted by the ledger STF, and the receipt opening is encrypted to the receiver's x25519 key and posted to the inbox. A reload after paying keeps the payer's reservation and shows "paid from this device" instead of offering to pay again. The receiver returns in a new tab, unlocks, the inbox is decrypted locally, the receipt is verified against a served path and root, claimed with a receive proof, the balance updates, and the receiver's signed acknowledgement marks the request fulfilled. The SDK test additionally covers backup export and restore on a fresh store, a stale-device conflict, and crash reconcile.
+Measured: single-threaded wasm R_op proof 6.4 to 6.7 s in Node (V8), faster in Chromium (three proofs plus everything else in 30 s); R_dep 0.3 s; proving-key load 0.7 s (30 MB uncompressed, digest-checked, cached in IndexedDB).
+Residual risks: single-node ledger (Commonware simplex integration deferred, see blocker); the on-chain funding leg is the dev-mint fixture until Phase D; the inbox is public-write (spam is bounded by size and rate, not identity); one-time requests are a soft lock, not ledger admission (documented weaker behaviour, decision 0004/SPEC section 8); no Playwright coverage yet of wrong-network, wallet rejection or quote expiry (Phase E).
+
+### Blocker: multi-node consensus
+Blocked: decentralised ordering of ledger operations.
+Reason: the Commonware `simplex` integration (2026.9.0) was reordered after the end-to-end product flow so that every later phase could be verified against a real ledger first; it has not been started.
+Done instead: a single-node ledger actor with deterministic ordering, batched verification and a replayable, hash-chained state root, labelled `single-node` in the status document and the app.
+Isolation: `ledger_mode` is reported as `single-node`; no code claims otherwise.
+Unblock requirement: implement the `Automaton`/`Relay`/`Reporter` application over `commonware_consensus::simplex` with the ledger STF as the block executor, run three or more local validators under `stack.sh`, and re-run Gates C to E against it.
+
+### Blocker: development mint fixture
+Blocked: real on-chain funding of a private balance.
+Reason: the gateway contract exists and is tested (contracts/src/links, 9 Foundry tests) but the watcher and the deposit UI are Phase D work in progress.
+Done instead: `POST /links/v1/dev/mint` behind `PEAL_LINKS_DEV_MINT=1`, labelled everywhere it appears (decision 0008).
+Isolation: default-off config flag; refuses to start with a mainnet namespace.
+Unblock requirement: Phase D watcher credits intents from finalized `Deposit` events on both local chains; the flag is dropped from the stack script and the tests.
+
+### Phase D plan
+1. `crates/peal-links-node/src/evm.rs`: JSON-RPC client (chain id, block number, block hash, logs, code, call).
+2. `watcher.rs`: per enabled namespace, verify chain id and gateway code, poll `Deposit` logs from a persisted cursor, credit intents at `confirmations` depth with `deposit_id = chain:tx:logIndex`, detect reorgs by block hash and rewind; mark namespaces `available` only after verification.
+3. `settlement.rs`: EIP-712 digest matching `PealLinksGateway.withdrawalDigest` (cross-checked by a Foundry test with `deployCodeTo`), consumed-position table, certificate assembly from configured signer keys (local fixture: three keys in one process, labelled), `Withdrawn` observation.
+4. `withdrawal.rs` (core) done: burn identifier, signed disclosure, wallet `prepare_withdrawal` and `withdrawal_claim`.
+5. Stack: deploy gateway + demo token on both anvil chains, write `.dev-state/peal-links/config.json` with addresses and `enabled: true`, mint demo tokens to anvil accounts; drop `PEAL_LINKS_DEV_MINT`.
+6. SDK and explorer: `approve` + `deposit` through the connected wallet (viem over EIP-1193), deposit status polling, withdraw dialog (amount, recipient), certificate polling and `withdraw` submission, chain-specific status lines.
+7. Tests: watcher unit tests (dedup, restart, reorg) with an RPC trait double in narrow unit tests only; SDK flow with real anvil deposits and withdrawals on both chains and cross-domain isolation; Foundry digest cross-check; Playwright flow extended with a real deposit and a withdrawal.
+Gate D evidence: token balances on anvil before and after, ledger minted/withdrawn totals reconciled against gateway reserves.
+
 ### Next step
-Create `crates/peal-links-node` (config, sqlite stores, ledger API, status) and run it under `scripts/peal-links/stack.sh up`.
+Write `crates/peal-links-node/src/evm.rs`, `watcher.rs`, `settlement.rs`; deploy contracts from `stack.sh`.

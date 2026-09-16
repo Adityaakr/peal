@@ -145,6 +145,11 @@ pub struct Wallet {
     /// the on-chain transfer is signed, so a lost response never costs a
     /// second deposit.
     pub pending_deposits: Vec<PendingDeposit>,
+    /// Openings of receipts this wallet sent, by position: needed to
+    /// disclose a withdrawal, and to re-deliver a receipt whose envelope was
+    /// lost. Never leave the wallet unencrypted.
+    #[serde(default)]
+    pub sent_openings: Vec<(u64, ReceiptOpening)>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -189,6 +194,7 @@ impl Wallet {
             seq: 0,
             known_roots: Vec::new(),
             pending_deposits: Vec::new(),
+            sent_openings: Vec::new(),
         }
     }
 
@@ -510,9 +516,10 @@ impl Wallet {
                 amount,
                 to,
                 reference,
-                ..
+                opening,
             } => {
                 self.balance -= amount;
+                self.sent_openings.push((position, opening));
                 self.history.push(HistoryEntry {
                     seq: self.seq,
                     kind: "send".into(),
@@ -594,6 +601,55 @@ impl Wallet {
         } else {
             Ok(Reconciled::Conflict)
         }
+    }
+
+    /// Prepare a withdrawal of `amount`: a send to the burn identifier with
+    /// the EVM recipient recorded as the reference. After the ledger
+    /// accepts it, [`Wallet::withdrawal_claim`] produces the disclosure.
+    pub fn prepare_withdrawal<R: ark_std::rand::CryptoRng + ark_std::rand::RngCore>(
+        &mut self,
+        inst: &Instance,
+        amount: u64,
+        root: Fr,
+        recipient: &str,
+        now: u64,
+        rng: &mut R,
+    ) -> Result<OpCircuit> {
+        if !crate::withdrawal::is_evm_address(recipient) {
+            return Err(Error::Wallet("recipient is not an EVM address".into()));
+        }
+        self.prepare_send(
+            inst,
+            amount,
+            crate::withdrawal::withdraw_receiver(),
+            root,
+            Some(format!("withdraw:{}", recipient.to_lowercase())),
+            now,
+            rng,
+        )
+    }
+
+    /// The signed disclosure for the withdrawal that was committed at
+    /// `position` (looked up in history), directing tokens to `recipient`.
+    pub fn withdrawal_claim(&self, position: u64) -> Result<crate::withdrawal::WithdrawalClaim> {
+        let entry = self
+            .history
+            .iter()
+            .find(|h| h.kind == "send" && h.position == Some(position))
+            .ok_or_else(|| Error::Wallet("no send at that position".into()))?;
+        let recipient = entry
+            .reference
+            .as_deref()
+            .and_then(|r| r.strip_prefix("withdraw:"))
+            .ok_or_else(|| Error::Wallet("that send was not a withdrawal".into()))?
+            .to_string();
+        let opening = self
+            .sent_openings
+            .iter()
+            .find(|(p, _)| *p == position)
+            .map(|(_, o)| o.clone())
+            .ok_or_else(|| Error::Wallet("opening for that send is not held".into()))?;
+        Ok(crate::withdrawal::WithdrawalClaim::sign(&self.spend_key(), self.namespace, position, opening, recipient))
     }
 
     /// Build a deposit intent for `amount` into this account: a fresh mint

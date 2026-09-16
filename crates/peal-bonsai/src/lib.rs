@@ -32,6 +32,7 @@ pub mod manifest;
 pub mod params;
 pub mod trees;
 pub mod wallet;
+pub mod withdrawal;
 
 #[cfg(feature = "ledger")]
 pub mod ledger;

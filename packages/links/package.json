@@ -10,7 +10,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./local": "./src/local.ts"
   },
   "scripts": {
     "build:wasm": "node scripts/build-wasm.mjs",

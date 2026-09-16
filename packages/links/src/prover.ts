@@ -6,7 +6,6 @@
 // moves it between the prover, storage and the node.
 
 import type { Prover } from './generated/peal_links_wasm.js';
-import { ensureWasm } from './wasm.js';
 
 export interface KeyInfo {
   circuit_id: string;
@@ -193,14 +192,3 @@ export function callProver(prover: Prover, name: keyof typeof PROVER_METHODS, ar
   return normalise(fn.apply(prover, coerceArgs(name, args)));
 }
 
-/** An in-thread prover: loads the wasm and answers every call directly.
- * Use in Node, in tests, and inside the worker. */
-export async function createLocalProver(): Promise<AsyncProver> {
-  const ProverClass = await ensureWasm();
-  const prover = new ProverClass();
-  const out: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
-  for (const name of Object.keys(PROVER_METHODS) as Array<keyof typeof PROVER_METHODS>) {
-    out[name] = async (...args: unknown[]) => callProver(prover, name, args);
-  }
-  return out as unknown as AsyncProver;
-}

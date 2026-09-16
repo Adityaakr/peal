@@ -3,9 +3,9 @@
 // Layers, from the wire up:
 // - `NodeClient`: the node's HTTP API (status, params, ledger, auth,
 //   requests, inbox, deposits).
-// - `AsyncProver`: the wasm wallet (proving, envelopes, backups), in-thread
-//   (`createLocalProver`) or in a worker (`createRemoteProver`, from
-//   'peal-links/worker').
+// - `AsyncProver`: the wasm wallet (proving, envelopes, backups), in a
+//   worker (`createRemoteProver`) or in-thread (`createLocalProver` from
+//   'peal-links/local', Node and tests).
 // - `LinksAccount`: one private account with crash-safe flows.
 //
 // Privacy consequences worth knowing before use: the node sees which account
@@ -15,6 +15,7 @@
 
 export * from './client.js';
 export * from './prover.js';
+export * from './remote.js';
 export * from './account.js';
 export * from './storage.js';
 

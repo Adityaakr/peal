@@ -78,11 +78,11 @@ let prover: AsyncProver | null = null;
 let paramsPromise: Promise<void> | null = null;
 
 export function getProver(): AsyncProver {
-  if (!prover) {
-    const worker = new Worker(new URL('./prover.worker.ts', import.meta.url), { type: 'module' });
-    prover = createRemoteProver(worker);
-  }
-  return prover;
+  if (prover) return prover;
+  const worker = new Worker(new URL('./prover.worker.ts', import.meta.url), { type: 'module' });
+  const created = createRemoteProver(worker);
+  prover = created;
+  return created;
 }
 
 /** Fetch the node status once and pick the first namespace. */
@@ -157,6 +157,16 @@ export function lockAccount(): void {
   publish({ account: null, autoClaim: false });
 }
 
+export function signOut(): void {
+  client.token = null;
+  try {
+    localStorage.removeItem('peal-links:session');
+  } catch {
+    /* storage unavailable */
+  }
+  publish({ signedIn: null });
+}
+
 export function setAutoClaim(on: boolean): void {
   publish({ autoClaim: on });
 }
@@ -176,7 +186,7 @@ export async function signIn(): Promise<string> {
   const signature = (await personalSign(evm.provider, evm.address, message)) as string;
   const s = await client.session(message, signature);
   try {
-    sessionStorage.setItem('peal-links:session', JSON.stringify(s));
+    localStorage.setItem('peal-links:session', JSON.stringify(s));
   } catch {
     /* storage unavailable */
   }
@@ -184,10 +194,12 @@ export async function signIn(): Promise<string> {
   return s.address;
 }
 
-/** Resume a product session from this tab's storage, if still valid. */
+/** Resume a product session from this browser's storage, if still valid.
+ * The token authorizes request metadata only, never value; it lives in
+ * localStorage so a new tab does not need a fresh signature. */
 export async function resumeSignIn(): Promise<void> {
   try {
-    const raw = sessionStorage.getItem('peal-links:session');
+    const raw = localStorage.getItem('peal-links:session');
     if (!raw) return;
     const s = JSON.parse(raw) as { token: string; address: string; expires_at: number };
     if (s.expires_at * 1000 < Date.now()) return;

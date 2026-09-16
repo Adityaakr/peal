@@ -8,8 +8,8 @@
 
 import { describe, expect, it, beforeAll } from 'vitest';
 import { privateKeyToAccount } from 'viem/accounts';
+import { createLocalProver } from '../src/local.js';
 import {
-  createLocalProver,
   LinksAccount,
   loadParams,
   MemoryStore,
