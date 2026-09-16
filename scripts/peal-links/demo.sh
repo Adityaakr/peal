@@ -27,6 +27,9 @@ for tool in cargo pnpm forge anvil cast node; do
 done
 [ -f contracts/lib/forge-std/src/Test.sol ] || git submodule update --init --recursive
 [ -d node_modules ] || pnpm install --frozen-lockfile
+# The explorer imports bte-sdk (Peal's existing SDK), whose dist/ is built
+# from crates/bte-wasm and is not committed.
+[ -f packages/sdk/dist/index.js ] || pnpm -C packages/sdk build
 [ -d packages/links/src/generated ] || node packages/links/scripts/build-wasm.mjs
 [ -d "$HOME/Library/Caches/ms-playwright" ] || [ -d "$HOME/.cache/ms-playwright" ] || pnpm -C packages/explorer exec playwright install chromium
 
