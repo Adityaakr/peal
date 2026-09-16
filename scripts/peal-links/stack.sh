@@ -125,6 +125,10 @@ put_gateway() {
 }
 
 place_contracts() {
+  # Fresh chains mean fresh reserves: ledger and product state from an
+  # earlier run would be liabilities with nothing behind them, so they go.
+  rm -rf "$DATA"
+  mkdir -p "$DATA"
   if ! command -v forge >/dev/null 2>&1; then
     echo "forge not found; gateways not placed, namespaces stay unavailable" >&2
     cp "$CONFIG" "$STATE/config.json"

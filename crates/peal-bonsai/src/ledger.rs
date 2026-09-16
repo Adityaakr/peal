@@ -123,6 +123,11 @@ pub struct Ledger {
     vk: VerifyingKeys,
     cfg: LedgerConfig,
     tree: ReceiptTree,
+    /// The last `root_window` receipt roots, oldest first. Membership here
+    /// is the recent-root policy, checked at the moment an operation is
+    /// applied (never once per batch), so batched and replayed application
+    /// accept exactly the same operations.
+    recent: std::collections::VecDeque<Fr>,
     seq: u64,
     state_root: [u8; 32],
 }
@@ -200,6 +205,7 @@ impl Ledger {
             out
         };
         let tree = ReceiptTree::from_leaves(&inst.hash, inst.receipt_depth, &leaves)?;
+        let recent = recent_from_tree(&tree, cfg.root_window);
         let (seq, state_root): (u64, [u8; 32]) = storage(
             conn.query_row(
                 "SELECT seq, state_root FROM ops ORDER BY seq DESC LIMIT 1",
@@ -243,6 +249,7 @@ impl Ledger {
             vk,
             cfg,
             tree,
+            recent,
             seq,
             state_root,
         })
@@ -294,16 +301,11 @@ impl Ledger {
 
     /// The roots a receive may currently reveal, most recent last.
     pub fn recent_roots(&self) -> Vec<Fr> {
-        let size = self.tree.size();
-        let w = self.cfg.root_window.max(1) as u64;
-        let from = size.saturating_sub(w - 1);
-        (from..=size)
-            .map(|s| self.tree.root_at(s).expect("size within the log"))
-            .collect()
+        self.recent.iter().copied().collect()
     }
 
     fn root_is_recent(&self, root: &Fr) -> bool {
-        self.recent_roots().contains(root)
+        self.recent.contains(root)
     }
 
     /// `Com_acct(0, root_empty; r)`: the only commitment a fresh account may
@@ -462,6 +464,12 @@ impl Ledger {
         if latest.com != current.com {
             return Err(Error::StaleCommitment);
         }
+        // The window is judged against the state at application time, so
+        // an operation late in a batch sees the appends made by the earlier
+        // ones, exactly as a replay would.
+        if !self.root_is_recent(&env.root) {
+            return Err(Error::RootNotRecent);
+        }
         let seq = self.seq + 1;
         let tx = storage(self.conn.unchecked_transaction())?;
         // Append to the in-memory tree last so a storage failure cannot leave
@@ -472,6 +480,7 @@ impl Ledger {
             return Err(Error::ReceiptLogFull);
         }
         self.tree.append(env.receipt)?;
+        push_recent(&mut self.recent, self.tree.root(), self.cfg.root_window);
         let receipt_root = self.tree.root();
         let state_root = chain_root(
             &self.state_root,
@@ -555,6 +564,7 @@ impl Ledger {
         }
         let tx = storage(self.conn.unchecked_transaction())?;
         self.tree.append(intent.receipt)?;
+        push_recent(&mut self.recent, self.tree.root(), self.cfg.root_window);
         let receipt_root = self.tree.root();
         let mint_account = crate::deposit::mint_sender();
         let state_root = chain_root(
@@ -628,6 +638,7 @@ impl Ledger {
         }
         drop(stmt);
         self.tree = ReceiptTree::from_leaves(&self.inst.hash, self.inst.receipt_depth, &leaves)?;
+        self.recent = recent_from_tree(&self.tree, self.cfg.root_window);
         Ok(())
     }
 
@@ -693,6 +704,27 @@ impl Ledger {
         }
         Ok(fresh.state_root())
     }
+}
+
+/// Record `root` as the newest recent root, dropping the oldest beyond
+/// `window`. A free function so it borrows only the fields it touches
+/// while a storage transaction holds the connection.
+fn push_recent(recent: &mut std::collections::VecDeque<Fr>, root: Fr, window: usize) {
+    recent.push_back(root);
+    while recent.len() > window.max(1) {
+        recent.pop_front();
+    }
+}
+
+/// The last `window` roots of `tree` (including the empty root when the
+/// log is short), oldest first.
+fn recent_from_tree(tree: &ReceiptTree, window: usize) -> std::collections::VecDeque<Fr> {
+    let size = tree.size();
+    let w = window.max(1) as u64;
+    let from = size.saturating_sub(w - 1);
+    (from..=size)
+        .map(|s| tree.root_at(s).expect("size within the log"))
+        .collect()
 }
 
 fn genesis_root(cfg: &LedgerConfig) -> [u8; 32] {

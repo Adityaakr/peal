@@ -97,14 +97,23 @@ async function shot(page: Page, name: string): Promise<void> {
 
 test.beforeAll(() => mkdirSync(OUT, { recursive: true }));
 
+/** Every request body and URL a context sends, for the privacy assertion. */
+function captureTraffic(context: BrowserContext, sink: Array<{ url: string; body: string }>): void {
+  context.on('request', (r) => {
+    if (r.url().includes('/links/v1/')) sink.push({ url: r.url(), body: r.postData() ?? '' });
+  });
+}
+
 test('receiver creates a link, payer pays with a real proof, receiver claims later', async ({ browser }) => {
   test.setTimeout(420_000);
+  const traffic: Array<{ url: string; body: string }> = [];
   const status = await (await fetch(`${NODE}/links/v1/status`)).json();
   expect(status.namespaces[0].available, 'chain A gateway must be verified by the node').toBe(true);
   const chainId = status.namespaces[0].chain_id as number;
 
   // ---- Bob (receiver) creates a private account and a payment link.
   const bobCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  captureTraffic(bobCtx, traffic);
   await injectWallet(bobCtx, KEYS.bob, chainId);
   const bob = await bobCtx.newPage();
   const errors: string[] = [];
@@ -135,6 +144,7 @@ test('receiver creates a link, payer pays with a real proof, receiver claims lat
 
   // ---- Alice (payer) opens the link in a separate context.
   const aliceCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true });
+  captureTraffic(aliceCtx, traffic);
   await injectWallet(aliceCtx, KEYS.alice, chainId);
   const alice = await aliceCtx.newPage();
   alice.on('pageerror', (e) => errors.push(`alice: ${e}`));
@@ -211,6 +221,27 @@ test('receiver creates a link, payer pays with a real proof, receiver claims lat
   await expect(bob2.locator('.pl-balance-amount').first()).toContainText('7.50');
   await expect(bob2.getByText('confirmed on chain')).toBeVisible({ timeout: 60_000 });
   expect(errors).toEqual([]);
+
+  // ---- Privacy: nothing private left either browser. Wallet JSON carries
+  // `spend_seed`, `enc_seed`, `balance`, `claimed` and `randomness`; the
+  // passphrase never travels; and the only bodies that may carry a receipt
+  // opening are the inbox posts, which are ciphertext.
+  expect(traffic.length).toBeGreaterThan(20);
+  for (const { url, body } of traffic) {
+    for (const marker of ['spend_seed', 'enc_seed', '"claimed"', '"balance"', PASS, 'pending_deposits', 'sent_openings']) {
+      expect(body, `${marker} in a request to ${url}`).not.toContain(marker);
+    }
+    expect(url, 'no secrets in URLs').not.toMatch(/seed|pass|opening/);
+    if (url.includes('/inbox/') && body) {
+      const parsed = JSON.parse(body) as { envelope?: { ciphertext?: string } };
+      expect(parsed.envelope?.ciphertext, 'inbox posts carry ciphertext only').toBeTruthy();
+      expect(body).not.toContain('"amount"');
+    }
+    if (url.endsWith('/ops') && body) {
+      const keys = Object.keys(JSON.parse(body) as Record<string, unknown>).sort();
+      expect(keys).toEqual(['account', 'circuit_id', 'com', 'com_new', 'namespace', 'proof', 'pubkey', 'receipt', 'root', 'signature']);
+    }
+  }
   await bobCtx.close();
   await aliceCtx.close();
 });

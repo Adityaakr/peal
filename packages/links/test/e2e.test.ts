@@ -8,8 +8,11 @@
 
 import { describe, expect, it, beforeAll } from 'vitest';
 import { privateKeyToAccount } from 'viem/accounts';
+import { createPublicClient, createWalletClient, http, type Address, type Hex } from 'viem';
 import { createLocalProver } from '../src/local.js';
 import {
+  ERC20_ABI,
+  GATEWAY_ABI,
   LinksAccount,
   loadParams,
   MemoryStore,
@@ -21,6 +24,7 @@ import {
 } from '../src/index.js';
 
 const URL_ = process.env.LINKS_URL ?? 'http://127.0.0.1:8790';
+const RPC_A = process.env.ANVIL_A ?? 'http://127.0.0.1:8545';
 const PASS = 'correct horse battery staple';
 // anvil's well-known account 0; never holds real funds.
 const EVM_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
@@ -66,9 +70,10 @@ describe('peal-links end to end (wasm prover, live node)', () => {
       console.warn('no Peal Links node at', URL_, '- skipping (run scripts/peal-links/stack.sh up)');
       return;
     }
-    expect(status.dev_mint, 'the node must run with PEAL_LINKS_DEV_MINT=1 for this test').toBe(true);
-    const ns = status.namespaces[0]!.id;
-    const decimals = status.namespaces[0]!.decimals;
+    const nsInfo = status.namespaces[0]!;
+    expect(nsInfo.available, 'chain A gateway must be verified by the node').toBe(true);
+    const ns = nsInfo.id;
+    const decimals = nsInfo.decimals;
     const unit = 10n ** BigInt(decimals);
 
     // Alice (payer) and Bob (receiver), each on their own device (store).
@@ -83,14 +88,28 @@ describe('peal-links end to end (wasm prover, live node)', () => {
     expect(aliceView.registered).toBe(true);
     expect((await client.account(ns, aliceView.account))?.com).toBe(aliceView.commitment);
 
-    // Alice funds 100.00 units: R_dep proof, intent, then (Phase C fixture)
-    // the development mint stands in for the chain event.
+    // Alice funds 100.00 units: R_dep proof, intent, then a real deposit on
+    // chain A from anvil account 0, credited by the watcher.
     const amount = (100n * unit).toString();
     const { receipt } = await timed('deposit proof (R_dep)', () => alice.prepareDeposit(amount));
     expect((await alice.syncDeposits()).length).toBe(0); // not minted yet
-    await client.devMint(ns, receipt);
-    await expect(client.devMint(ns, receipt)).rejects.toMatchObject({ code: 'already_minted' });
-    expect((await alice.syncDeposits()).length).toBe(1);
+    {
+      const evm = privateKeyToAccount(EVM_KEY);
+      const chain = { id: nsInfo.chain_id, name: nsInfo.chain_name, nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [RPC_A] } } };
+      const pc = createPublicClient({ chain, transport: http(RPC_A) });
+      const wc = createWalletClient({ account: evm, chain, transport: http(RPC_A) });
+      const approve = await wc.writeContract({ address: nsInfo.token_address as Address, abi: ERC20_ABI, functionName: 'approve', args: [nsInfo.gateway as Address, BigInt(amount)] });
+      await pc.waitForTransactionReceipt({ hash: approve });
+      const dep = await wc.writeContract({ address: nsInfo.gateway as Address, abi: GATEWAY_ABI, functionName: 'deposit', args: [nsInfo.token_address as Address, BigInt(amount), `0x${receipt}` as Hex] });
+      await pc.waitForTransactionReceipt({ hash: dep });
+    }
+    await timed('watcher credit', async () => {
+      for (let i = 0; i < 60; i++) {
+        if ((await alice.syncDeposits()).length) return;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      throw new Error('deposit not credited');
+    });
     await alice.verifyReceipts();
     let v = await alice.view();
     expect(v.balance).toBe('0');

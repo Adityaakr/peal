@@ -32,7 +32,7 @@ fn main() {
     let cfg = LedgerConfig {
         namespace: ns,
         circuit_id: keys.circuit_id,
-        root_window: 64,
+        root_window: 1024,
     };
     let dir = tempfile::tempdir().unwrap();
     let mut ledger = Ledger::open(

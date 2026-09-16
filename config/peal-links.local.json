@@ -3,7 +3,7 @@
   "data_dir": ".dev-state/peal-links/data",
   "params_dir": ".dev-params",
   "auth_domains": ["localhost:5173", "localhost", "127.0.0.1:5173"],
-  "root_window": 64,
+  "root_window": 1024,
   "namespaces": [
     {
       "label": "local-a/tUSD",

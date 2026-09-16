@@ -552,3 +552,61 @@ fn batch_isolates_invalid_proofs_and_resolves_races_deterministically() {
     ));
     assert_eq!(proof_to_bytes(&good_proof).len(), 128);
 }
+
+/// Batched and replayed application must accept exactly the same
+/// operations: the recent-root window is judged at application time.
+#[test]
+fn batch_application_respects_the_root_window_and_replays_identically() {
+    let f = fixture();
+    let ns = namespace_id("test/ns-w");
+    let mut rng = peal_bonsai::os_rng();
+    let cfg = LedgerConfig {
+        namespace: ns,
+        circuit_id: f.keys.circuit_id,
+        root_window: 3,
+    };
+    let db = f.dir.path().join("ledger-w.sqlite");
+    let mut ledger = Ledger::open(&db, f.inst.clone(), VerifyingKeys::from(&f.keys), cfg).unwrap();
+    // Four funded wallets, each proving a claim against the same root.
+    let mut wallets = Vec::new();
+    for i in 0..4 {
+        let mut w = Wallet::create(&f.inst, f.keys.circuit_id, ns, &mut rng);
+        ledger.register(&w.register_envelope().unwrap()).unwrap();
+        w.registered = true;
+        mint(f, &mut ledger, &mut w, 10, &format!("w:{i}"));
+        wallets.push(w);
+    }
+    let root = ledger.receipt_root();
+    let mut envs = Vec::new();
+    for w in wallets.iter_mut() {
+        let witness = ReceiptWitness {
+            path: ledger.receipt_tree().path(w.receipts[0].position).unwrap(),
+            root,
+        };
+        let c = w
+            .prepare_receive(&f.inst, 0, &witness, 1, &mut rng)
+            .unwrap();
+        envs.push(w.prove_pending(&f.keys, c, &mut rng).unwrap());
+    }
+    // Window 3 covers the roots at sizes S, S+1, S+2: the first three land,
+    // the fourth reveals a root that is three appends old by then.
+    let results = ledger.apply_batch(&envs, &mut rng);
+    assert!(
+        results[0].is_ok() && results[1].is_ok() && results[2].is_ok(),
+        "{results:?}"
+    );
+    assert_eq!(results[3], Err(Error::RootNotRecent));
+    // Replay from the store agrees with what was applied.
+    assert_eq!(ledger.verify_replay().unwrap(), ledger.state_root());
+    // Reopening restores the same window.
+    let root_before = ledger.state_root();
+    drop(ledger);
+    let cfg = LedgerConfig {
+        namespace: ns,
+        circuit_id: f.keys.circuit_id,
+        root_window: 3,
+    };
+    let ledger = Ledger::open(&db, f.inst.clone(), VerifyingKeys::from(&f.keys), cfg).unwrap();
+    assert_eq!(ledger.state_root(), root_before);
+    assert_eq!(ledger.recent_roots().len(), 3);
+}

@@ -134,7 +134,7 @@ fn default_session_ttl() -> u64 {
     12 * 3600
 }
 fn default_root_window() -> usize {
-    64
+    1024
 }
 fn default_batch_ms() -> u64 {
     25
