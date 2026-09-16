@@ -1,9 +1,11 @@
 // Peal Links: the app (#/bonsai/app).
 //
-// Everything on this page is read from the node and from the wallet inside
-// the proving worker; nothing is fixture data. Controls that cannot work
-// yet are not rendered as if they could: they say which part of the build
-// they wait on. Money is base units as decimal strings until the moment it
+// One wallet, private by default: the connected EVM wallet is the only
+// identity on this page. The private account behind it is provisioned,
+// unlocked or recovered by the session module; nothing here shows a
+// Bonsai account id, a key, a nullifier or a proof. Everything is read
+// from the node and from the wallet inside the proving worker; nothing is
+// fixture data. Money is base units as decimal strings until the moment it
 // is formatted for a human.
 import QRCode from 'qrcode';
 import type { LinksAccount, PaymentRequest, WalletView } from 'peal-links';
@@ -13,18 +15,20 @@ import { connectInjected, injectedProvider, onAuthChange, session } from '../aut
 import { esc } from '../util';
 import { describeError, formatUnits, fmtTime, parseUnits, shortHex } from '../links/format';
 import {
+  acknowledgeRecoveryCode,
+  activate,
   client,
-  createAccount,
   links,
   loadStatus,
   lockAccount,
   onLinksChange,
-  openAccount,
-  restoreAccount,
+  payAddress,
+  recoverWithCode,
+  rename,
+  restoreFile,
   resumeSignIn,
   selectNamespace,
   setAutoClaim,
-  signIn,
 } from '../links/session';
 import '../links.css';
 
@@ -34,19 +38,41 @@ type Cleanup = () => void;
 
 interface PageState {
   view: WalletView | null;
+  labels: Record<string, string>;
+  displayName: string | null;
+  recovery: string | null;
   requests: PaymentRequest[];
   busy: string | null; // a running operation, shown as status
   error: string | null;
   notice: string | null;
   lastLink: { request: PaymentRequest; url: string; qr: string } | null;
+  /** An address that has not activated private receiving (invitation). */
+  invite: string | null;
   walletTokenBalance: string | null;
   withdrawals: Array<{ position: number; amount: string; recipient: string; status: string; tx_hash: string | null }>;
 }
 
-let page: PageState = { view: null, requests: [], busy: null, error: null, notice: null, lastLink: null, walletTokenBalance: null, withdrawals: [] };
+let page: PageState = {
+  view: null,
+  labels: {},
+  displayName: null,
+  recovery: null,
+  requests: [],
+  busy: null,
+  error: null,
+  notice: null,
+  lastLink: null,
+  invite: null,
+  walletTokenBalance: null,
+  withdrawals: [],
+};
 
 function requestUrl(id: string): string {
   return `${location.origin}/pay/${id}`;
+}
+
+function inviteUrl(address: string): string {
+  return `${location.origin}/#/bonsai?invite=${address.toLowerCase()}`;
 }
 
 // ---- rendering helpers ------------------------------------------------------
@@ -79,55 +105,88 @@ function setupNotice(): string {
     : '';
 }
 
-function accountPanel(): string {
+function connectButtons(): string {
+  const injected = injectedProvider();
+  return `<button type="button" class="pl-btn pl-btn-primary" id="pl-login">Connect wallet</button>${injected ? `<button type="button" class="pl-btn" id="pl-login-injected">Use browser wallet</button>` : ''}`;
+}
+
+/** The wallet panel: connect, continue, recover, or the active account. */
+function walletPanel(): string {
   const l = links();
   const evm = session();
-  const injected = injectedProvider();
-  const connect = evm.address
-    ? `<span class="pl-small">wallet <span class="pl-mono">${esc(shortHex(evm.address, 6, 4))}</span></span>
-       ${l.signedIn ? `<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>signed in</span>` : `<button type="button" class="pl-btn" id="pl-signin">Sign in</button>`}`
-    : `<button type="button" class="pl-btn" id="pl-login">Connect wallet</button>${injected ? `<button type="button" class="pl-btn" id="pl-login-injected">Use browser wallet</button>` : ''}`;
-
+  if (!evm.address) {
+    return `
+      <div class="pl-panel">
+        <div class="pl-panel-head"><h2 class="pl-panel-title">your wallet</h2></div>
+        <div style="padding:14px 18px">
+          <p class="pl-p">Your existing wallet is your payment identity here. Peal keeps a private account behind it: nothing to install, no second address to manage. Payments between Peal users hide the amount and the parties; deposits and withdrawals are public on the chain.</p>
+          <div class="pl-actions" style="margin:0">${connectButtons()}</div>
+        </div>
+      </div>`;
+  }
+  const who = `<span class="pl-small">wallet <span class="pl-mono">${esc(shortHex(evm.address, 6, 4))}</span></span>`;
   if (l.account && page.view) {
     const v = page.view;
     return `
       <div class="pl-panel">
         <div class="pl-panel-head">
-          <h2 class="pl-panel-title">private account</h2>
-          <div class="pl-actions" style="margin:0">${connect}<button type="button" class="pl-btn" id="pl-lock">Lock</button></div>
+          <h2 class="pl-panel-title">${esc(page.displayName ?? shortHex(evm.address, 6, 4))}</h2>
+          <div class="pl-actions" style="margin:0">${who}<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>private payments on</span><button type="button" class="pl-btn" id="pl-lock">Lock</button></div>
         </div>
         <div style="padding:14px 18px" class="pl-small">
-          account <span class="pl-mono">${esc(shortHex(v.account, 10, 6))}</span> · encryption key <span class="pl-mono">${esc(shortHex(v.enc_pubkey, 8, 4))}</span>
+          recovery: ${page.recovery === 'wallet-signature' ? 'your wallet signature opens your backup on any device' : 'your recovery code opens your backup on any device'}
           ${v.pending ? ` · <span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(v.pending)} pending</span>` : ''}
           <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-            <button type="button" class="pl-btn" id="pl-backup">Export encrypted backup</button>
+            <button type="button" class="pl-btn" id="pl-rename">Change display name</button>
+            <button type="button" class="pl-btn" id="pl-backup">Export backup file</button>
             <button type="button" class="pl-btn" id="pl-export-csv" title="a plaintext file of this account's receipts and payments">Export history (CSV)</button>
-            <label class="pl-small" style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="pl-autoclaim" ${l.autoClaim ? 'checked' : ''}> claim incoming receipts automatically while unlocked</label>
+            <label class="pl-small" style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="pl-autoclaim" ${l.autoClaim ? 'checked' : ''}> claim incoming payments automatically while this page is open</label>
           </div>
         </div>
       </div>`;
   }
-  if (l.hasStoredAccount) {
-    return `
-      <div class="pl-panel">
-        <div class="pl-panel-head"><h2 class="pl-panel-title">unlock your private account</h2><div>${connect}</div></div>
-        <form id="pl-unlock" style="padding:14px 18px">
-          <label class="pl-field"><span class="pl-label">passphrase</span><input class="pl-input" type="password" name="pass" autocomplete="current-password" required minlength="10"></label>
-          <div class="pl-actions" style="margin:0"><button type="submit" class="pl-btn pl-btn-primary">Unlock</button><button type="button" class="pl-btn" id="pl-show-restore">Restore from backup instead</button></div>
-        </form>
-      </div>`;
+  let body: string;
+  switch (l.setup) {
+    case 'signing-in':
+    case 'checking':
+    case 'setting-up':
+    case 'recovery-signature':
+      body = `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(l.setupDetail ?? 'working')}</span></div>`;
+      break;
+    case 'needs-recovery-code':
+      body = `
+        <p class="pl-p">This wallet already has private payments on Peal Links. Its backup is protected by the recovery code you saved when you set it up.</p>
+        <form id="pl-recovery-code">
+          <label class="pl-field"><span class="pl-label">recovery code</span><input class="pl-input pl-mono" name="code" required autocomplete="off" placeholder="PEAL-XXXXX-XXXXX-XXXXX-XXXXX"></label>
+          <div class="pl-actions" style="margin:0"><button type="submit" class="pl-btn pl-btn-primary">Open my account</button><button type="button" class="pl-btn" id="pl-show-restore">Import a backup file instead</button></div>
+        </form>`;
+      break;
+    case 'no-backup':
+      body = `
+        <div class="pl-notice pl-notice-warn">${esc(l.setupDetail ?? 'no backup is stored for this wallet')}</div>
+        <div class="pl-actions" style="margin:0"><button type="button" class="pl-btn" id="pl-show-restore">Import a backup file</button></div>`;
+      break;
+    default:
+      body = `
+        <p class="pl-p">${l.hasStoredAccount ? 'Your private account is on this device. Continue to unlock it; no signature is needed.' : 'First time here: your wallet will confirm one Peal Links message that authorizes a private account for it, and one recovery message so the account can be recovered from any device.'}</p>
+        ${l.setupDetail ? `<div class="pl-notice pl-notice-warn">${esc(l.setupDetail)}</div>` : ''}
+        <div class="pl-actions" style="margin:0"><button type="button" class="pl-btn pl-btn-primary" id="pl-activate">Continue with this wallet</button><button type="button" class="pl-btn" id="pl-show-restore">Import a backup file</button></div>`;
   }
   return `
     <div class="pl-panel">
-      <div class="pl-panel-head"><h2 class="pl-panel-title">set up your private account</h2><div>${connect}</div></div>
-      <div style="padding:14px 18px">
-        <p class="pl-p">Your balance lives in a private account on the ledger. Its keys are generated here, in your browser, and stored encrypted under a passphrase. <strong>Connecting a wallet does not recover it.</strong> If this browser's storage is lost, only the encrypted backup you export brings the account back; without it the funds cannot be moved by anyone.</p>
-        <form id="pl-create">
-          <label class="pl-field"><span class="pl-label">passphrase (at least 10 characters)</span><input class="pl-input" type="password" name="pass" autocomplete="new-password" required minlength="10"></label>
-          <label class="pl-field"><span class="pl-label">repeat it</span><input class="pl-input" type="password" name="pass2" autocomplete="new-password" required minlength="10"></label>
-          <div class="pl-actions" style="margin:0"><button type="submit" class="pl-btn pl-btn-primary">Create private account</button><button type="button" class="pl-btn" id="pl-show-restore">Restore from backup</button></div>
-        </form>
-      </div>
+      <div class="pl-panel-head"><h2 class="pl-panel-title">private payments</h2><div>${who}</div></div>
+      <div style="padding:14px 18px">${body}</div>
+    </div>`;
+}
+
+function recoveryCodeBanner(): string {
+  const code = links().newRecoveryCode;
+  if (!code) return '';
+  return `
+    <div class="pl-notice pl-notice-warn" role="alert">
+      <strong>Save your recovery code now.</strong> Your wallet cannot derive a recovery key, so this code protects the backup of your private account. It is shown once and Peal never stores it; without it, a new browser cannot recover your balance.
+      <div class="pl-share-link" style="margin-top:10px"><input class="pl-input pl-mono" readonly value="${esc(code)}" id="pl-code"><button type="button" class="pl-btn" data-copy="${esc(code)}">Copy</button></div>
+      <div class="pl-actions" style="margin:10px 0 0"><button type="button" class="pl-btn pl-btn-primary" id="pl-code-saved">I saved it</button></div>
     </div>`;
 }
 
@@ -135,12 +194,11 @@ function restoreDialog(): string {
   return `
     <dialog class="pl-dialog" id="pl-restore-dialog">
       <form class="pl-dialog-body" id="pl-restore" method="dialog">
-        <h3 class="pl-dialog-title">restore from backup</h3>
-        <p class="pl-small">The backup file is encrypted with the passphrase you chose when exporting it. After restoring, the account is checked against the ledger; a backup older than your last operation is reported as stale rather than used.</p>
+        <h3 class="pl-dialog-title">import a backup file</h3>
+        <p class="pl-small">A backup file exported from Peal Links, protected by the recovery code you chose when exporting it. After importing, the account is checked against the ledger; a backup older than your last operation is reported as stale rather than used.</p>
         <label class="pl-field"><span class="pl-label">backup file</span><input class="pl-input" type="file" name="file" accept="application/json,.json" required></label>
-        <label class="pl-field"><span class="pl-label">backup passphrase</span><input class="pl-input" type="password" name="bpass" required></label>
-        <label class="pl-field"><span class="pl-label">new passphrase for this browser</span><input class="pl-input" type="password" name="pass" required minlength="10" autocomplete="new-password"></label>
-        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Restore</button></div>
+        <label class="pl-field"><span class="pl-label">recovery code</span><input class="pl-input pl-mono" name="code" required autocomplete="off"></label>
+        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Import</button></div>
       </form>
     </dialog>`;
 }
@@ -149,14 +207,20 @@ function balances(): string {
   const ns = links().namespace!;
   const v = page.view;
   const demo = ns.environment !== 'mainnet';
-  const avail = v ? formatUnits(v.balance, ns.decimals) : formatUnits('0', ns.decimals);
-  const incoming = v ? formatUnits(v.unclaimed, ns.decimals) : formatUnits('0', ns.decimals);
+  const avail = formatUnits(v?.balance ?? '0', ns.decimals);
+  const incoming = formatUnits(v?.unclaimed ?? '0', ns.decimals);
+  const wallet = page.walletTokenBalance !== null ? formatUnits(page.walletTokenBalance, ns.decimals) : null;
   return `
     <div class="pl-balances">
       <div class="pl-balance">
-        <div class="pl-balance-label"><span>available · ${esc(ns.token_symbol)} on ${esc(ns.chain_name)}</span>${demo ? `<span class="pl-badge pl-badge-demo">${esc(ns.environment)} funds</span>` : ''}</div>
+        <div class="pl-balance-label"><span>wallet balance · public on ${esc(ns.chain_name)}</span>${demo ? `<span class="pl-badge pl-badge-demo">${esc(ns.environment)} funds</span>` : ''}</div>
+        <div class="pl-balance-amount">${wallet ?? '—'}<span class="pl-amount-unit">${esc(ns.token_symbol)}</span></div>
+        <div class="pl-balance-sub">${wallet !== null ? 'in your wallet; anyone can see it' : 'connect a wallet to see it'}</div>
+      </div>
+      <div class="pl-balance">
+        <div class="pl-balance-label"><span>private balance · ${esc(ns.token_symbol)}</span></div>
         <div class="pl-balance-amount">${avail}<span class="pl-amount-unit">${esc(ns.token_symbol)}</span></div>
-        <div class="pl-balance-sub">${v ? 'spendable now' : 'unlock your account to see it'}</div>
+        <div class="pl-balance-sub">${v ? 'available: spendable now' : 'continue with your wallet to see it'}</div>
       </div>
       <div class="pl-balance">
         <div class="pl-balance-label"><span>incoming · verified, not yet claimed</span></div>
@@ -168,26 +232,37 @@ function balances(): string {
 
 function actions(): string {
   const l = links();
-  const unlocked = !!l.account;
-  const canRequest = unlocked && !!l.signedIn;
+  const active = !!l.account;
   const devMint = !!l.status?.dev_mint;
   const nsAvail = !!l.namespace?.available;
   const hasWallet = !!session().address;
   return `
     <div class="pl-actions">
-      <button type="button" class="pl-btn pl-btn-primary" id="pl-new-request" ${canRequest ? '' : 'disabled'} title="${canRequest ? '' : unlocked ? 'sign in with your wallet to publish requests' : 'unlock your private account first'}">New payment link</button>
+      <button type="button" class="pl-btn pl-btn-primary" id="pl-new-request" ${active ? '' : 'disabled'} title="${active ? '' : 'continue with your wallet first'}">New payment link</button>
+      <button type="button" class="pl-btn" id="pl-send" ${active ? '' : 'disabled'} title="${active ? '' : 'continue with your wallet first'}">Send to an address</button>
       ${
         nsAvail
-          ? `<button type="button" class="pl-btn" id="pl-add-funds" ${unlocked && hasWallet ? '' : 'disabled'} title="${hasWallet ? '' : 'connect a wallet to deposit from'}">Add funds</button>`
+          ? `<button type="button" class="pl-btn" id="pl-add-funds" ${active && hasWallet ? '' : 'disabled'}>Add funds</button>`
           : devMint
-            ? `<button type="button" class="pl-btn" id="pl-dev-mint" ${unlocked ? '' : 'disabled'} title="development fixture: credits test funds without a chain deposit">Add test funds (dev mint)</button>`
+            ? `<button type="button" class="pl-btn" id="pl-dev-mint" ${active ? '' : 'disabled'} title="development fixture: credits test funds without a chain deposit">Add test funds (dev mint)</button>`
             : `<button type="button" class="pl-btn" disabled title="deposits are not available on this namespace">Add funds</button>`
       }
       ${
         nsAvail && l.status?.signer_mode !== 'none'
-          ? `<button type="button" class="pl-btn" id="pl-withdraw" ${unlocked && hasWallet ? '' : 'disabled'} title="${hasWallet ? '' : 'connect a wallet to submit the release'}">Withdraw</button>`
+          ? `<button type="button" class="pl-btn" id="pl-withdraw" ${active && hasWallet ? '' : 'disabled'}>Withdraw</button>`
           : `<button type="button" class="pl-btn" disabled title="withdrawals are not available on this namespace">Withdraw</button>`
       }
+    </div>`;
+}
+
+function invitePanel(): string {
+  if (!page.invite) return '';
+  const url = inviteUrl(page.invite);
+  return `
+    <div class="pl-notice pl-notice-warn" role="status" id="pl-invite">
+      <strong>${esc(shortHex(page.invite, 6, 4))} has not activated private receiving on Peal Links yet.</strong> No funds were moved. Send them this invitation; once they connect their wallet and continue, you can pay them privately.
+      <div class="pl-share-link" style="margin-top:10px"><input class="pl-input" readonly value="${esc(url)}" id="pl-invite-url"><button type="button" class="pl-btn" data-copy="${esc(url)}">Copy invitation</button></div>
+      <div class="pl-actions" style="margin:10px 0 0"><button type="button" class="pl-btn" id="pl-invite-close">Close</button></div>
     </div>`;
 }
 
@@ -204,12 +279,12 @@ function requestsPanel(): string {
       </li>`;
     })
     .join('');
-  const empty = l.signedIn
-    ? 'No payment requests yet. A request is a fixed amount in one asset, signed by your account, that anyone with the link can pay.'
-    : 'Sign in with your wallet to see and create your payment requests.';
+  const empty = l.account
+    ? 'No payment links yet. A link is a fixed amount in one asset that anyone can pay you privately.'
+    : 'Continue with your wallet to see and create your payment links.';
   return `
     <div class="pl-panel">
-      <div class="pl-panel-head"><h2 class="pl-panel-title">requests</h2><span class="pl-small">${page.requests.length}</span></div>
+      <div class="pl-panel-head"><h2 class="pl-panel-title">payment links</h2><span class="pl-small">${page.requests.length}</span></div>
       ${rows ? `<ul class="pl-list">${rows}</ul>` : `<div class="pl-empty">${empty}</div>`}
     </div>`;
 }
@@ -223,16 +298,16 @@ function receiptsPanel(): string {
     .reverse()
     .map(
       (r, i) => `<li>
-        <span class="pl-list-main">${r.sender === MINT_SENDER ? 'deposit' : `from ${esc(shortHex(r.sender, 8, 4))}`}${r.reference ? ` · for request ${esc(r.reference.slice(0, 8))}…` : ''}</span>
-        <span class="pl-list-sub">${receiptStatus(r.status)} · receipt #${r.position} · ${esc(fmtTime(r.discovered_at))}${r.status === 'unclaimed' ? ` · <button type="button" class="pl-linkbtn" data-claim="${v.receipts.length - 1 - i}">claim now</button>` : ''}</span>
+        <span class="pl-list-main">${r.sender === MINT_SENDER ? 'deposit from your wallet' : 'private payment'}${r.reference && /^[a-z2-7]{24}$/.test(r.reference) ? ` · for link ${esc(r.reference.slice(0, 8))}…` : r.reference ? ` · ${esc(r.reference)}` : ''}</span>
+        <span class="pl-list-sub">${receiptStatus(r.status)} · ${esc(fmtTime(r.discovered_at))}${r.status === 'unclaimed' ? ` · <button type="button" class="pl-linkbtn" data-claim="${v.receipts.length - 1 - i}">claim now</button>` : ''}</span>
         <span class="pl-list-side">${formatUnits(r.amount, ns.decimals)} ${esc(ns.token_symbol)}</span>
       </li>`,
     )
     .join('');
   return `
     <div class="pl-panel">
-      <div class="pl-panel-head"><h2 class="pl-panel-title">incoming receipts</h2><span class="pl-small">${v.receipts.length}</span></div>
-      ${rows ? `<ul class="pl-list">${rows}</ul>` : `<div class="pl-empty">Receipts addressed to you appear here once their encrypted opening reaches your inbox. Claiming one proves it is yours and adds it to your balance.</div>`}
+      <div class="pl-panel-head"><h2 class="pl-panel-title">incoming</h2><span class="pl-small">${v.receipts.length}</span></div>
+      ${rows ? `<ul class="pl-list">${rows}</ul>` : `<div class="pl-empty">Payments addressed to you appear here as soon as they reach you, and become available once claimed (automatically while this page is open).</div>`}
     </div>`;
 }
 
@@ -243,18 +318,31 @@ function activityPanel(): string {
   const rows = v.history
     .slice()
     .reverse()
-    .map(
-      (h) => `<li>
-        <span class="pl-list-main">${h.kind === 'send' ? `sent to ${esc(shortHex(h.counterparty, 8, 4))}` : h.counterparty === MINT_SENDER ? 'deposit claimed' : `received from ${esc(shortHex(h.counterparty, 8, 4))}`}${h.reference ? ` · request ${esc(h.reference.slice(0, 8))}…` : ''}</span>
-        <span class="pl-list-sub">${esc(fmtTime(h.at))}${h.position !== null ? ` · receipt #${h.position}` : ''}</span>
+    .map((h) => {
+      const to = h.position !== null ? page.labels[String(h.position)] : undefined;
+      const main =
+        h.kind === 'send'
+          ? h.reference?.startsWith('withdraw:')
+            ? `withdrew to ${esc(shortHex(h.reference.slice('withdraw:'.length), 6, 4))}`
+            : to
+              ? `sent to ${esc(shortHex(to, 6, 4))}`
+              : h.reference && /^[a-z2-7]{24}$/.test(h.reference)
+                ? `paid link ${esc(h.reference.slice(0, 8))}…`
+                : 'sent privately'
+          : h.counterparty === MINT_SENDER
+            ? 'deposit claimed'
+            : 'received privately';
+      return `<li>
+        <span class="pl-list-main">${main}</span>
+        <span class="pl-list-sub">${esc(fmtTime(h.at))}</span>
         <span class="pl-list-side">${h.kind === 'send' ? '−' : '+'}${formatUnits(h.amount, ns.decimals)} ${esc(ns.token_symbol)}</span>
-      </li>`,
-    )
+      </li>`;
+    })
     .join('');
   return `
     <div class="pl-panel">
       <div class="pl-panel-head"><h2 class="pl-panel-title">activity</h2><span class="pl-small">decrypted on this device</span></div>
-      ${rows ? `<ul class="pl-list">${rows}</ul>` : `<div class="pl-empty">Deposits, payments sent and received, and claims appear here.</div>`}
+      ${rows ? `<ul class="pl-list">${rows}</ul>` : `<div class="pl-empty">Deposits, payments sent and received, and withdrawals appear here.</div>`}
     </div>`;
 }
 
@@ -282,11 +370,37 @@ function newRequestDialog(): string {
         <h3 class="pl-dialog-title">new payment link</h3>
         <label class="pl-field"><span class="pl-label">what is it for</span><input class="pl-input" name="title" maxlength="140" required placeholder="Logo files, final"></label>
         <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)} on ${esc(ns.chain_name)})</span><div class="pl-amount-input"><input class="pl-input" name="amount" inputmode="decimal" required placeholder="0.00"></div><div class="pl-hint">exact amount; the link can be paid once</div></label>
-        <label class="pl-field"><span class="pl-label">your display name</span><input class="pl-input" name="display" maxlength="60" required placeholder="shown to the payer, not verified"></label>
         <label class="pl-field"><span class="pl-label">reference (optional)</span><input class="pl-input" name="reference" maxlength="64" placeholder="INV-0417"></label>
         <label class="pl-field"><span class="pl-label">expires (optional)</span><input class="pl-input" name="expires" type="datetime-local"></label>
-        <p class="pl-small">The title, amount and display name are public to anyone holding the link. Keep sensitive details out of them.</p>
+        <p class="pl-small">The title, amount, your display name and your wallet address are visible to anyone holding the link. Keep sensitive details out of them.</p>
         <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Create link</button></div>
+      </form>
+    </dialog>`;
+}
+
+function sendDialog(): string {
+  const ns = links().namespace!;
+  return `
+    <dialog class="pl-dialog" id="pl-send-dialog">
+      <form class="pl-dialog-body" id="pl-send-form" method="dialog">
+        <h3 class="pl-dialog-title">send to an address</h3>
+        <p class="pl-small">Enter a wallet address that uses Peal Links. Their receiving details are looked up and verified against their wallet's signature on this device; the payment itself hides the amount and the parties. Your wallet confirms the payment; nothing else leaves your browser but the proof and an encrypted receipt.</p>
+        <label class="pl-field"><span class="pl-label">recipient wallet address on ${esc(ns.chain_name)}</span><input class="pl-input pl-mono" name="to" required pattern="0x[0-9a-fA-F]{40}" placeholder="0x…"></label>
+        <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)}${page.view ? `, available ${formatUnits(page.view.balance, ns.decimals)}` : ''})</span><input class="pl-input" name="amount" inputmode="decimal" required placeholder="0.00"></label>
+        <label class="pl-field"><span class="pl-label">note for the recipient (optional)</span><input class="pl-input" name="reference" maxlength="64" placeholder="thanks for lunch"></label>
+        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Continue</button></div>
+      </form>
+    </dialog>`;
+}
+
+function renameDialog(): string {
+  return `
+    <dialog class="pl-dialog" id="pl-rename-dialog">
+      <form class="pl-dialog-body" id="pl-rename-form" method="dialog">
+        <h3 class="pl-dialog-title">display name</h3>
+        <p class="pl-small">Shown next to your wallet address on your payment links. It is a name you chose, not an identity check; your wallet confirms the change.</p>
+        <label class="pl-field"><span class="pl-label">display name</span><input class="pl-input" name="display" maxlength="60" required value="${esc(page.displayName ?? '')}"></label>
+        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Save</button></div>
       </form>
     </dialog>`;
 }
@@ -314,7 +428,7 @@ function fundDialog(): string {
     <dialog class="pl-dialog" id="pl-fund-dialog">
       <form class="pl-dialog-body" id="pl-fund-form" method="dialog">
         <h3 class="pl-dialog-title">add funds</h3>
-        <p class="pl-small">A public deposit of ${esc(ns.token_symbol)} from your wallet <span class="pl-mono">${esc(shortHex(evm.address ?? '', 6, 4))}</span> into the gateway on ${esc(ns.chain_name)}${page.walletTokenBalance !== null ? ` (wallet holds ${formatUnits(page.walletTokenBalance, ns.decimals)} ${esc(ns.token_symbol)})` : ''}. Two wallet confirmations: approve, then deposit. Credited to your private balance after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}; the amount and your address are visible on the chain, the private account is not.</p>
+        <p class="pl-small">A public deposit of ${esc(ns.token_symbol)} from your wallet <span class="pl-mono">${esc(shortHex(evm.address ?? '', 6, 4))}</span> into the gateway on ${esc(ns.chain_name)}${page.walletTokenBalance !== null ? ` (wallet holds ${formatUnits(page.walletTokenBalance, ns.decimals)} ${esc(ns.token_symbol)})` : ''}. Two wallet confirmations: approve, then deposit. Credited to your private balance after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}; the amount and your address are visible on the chain, what happens inside Peal afterwards is not.</p>
         <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)})</span><input class="pl-input" name="amount" inputmode="decimal" required placeholder="0.00"></label>
         <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Deposit from wallet</button></div>
       </form>
@@ -329,9 +443,9 @@ function withdrawDialog(): string {
     <dialog class="pl-dialog" id="pl-withdraw-dialog">
       <form class="pl-dialog-body" id="pl-withdraw-form" method="dialog">
         <h3 class="pl-dialog-title">withdraw to ${esc(ns.chain_name)}</h3>
-        <p class="pl-small">The amount is burned on the private ledger with a proof, then ${s.signer_threshold} of ${s.signers.length} settlement signers attest to its release and the gateway pays the recipient. This is a committee-attested bridge${s.signer_mode === 'single-process-fixture' ? ' and, on this node, the signers are a single-process fixture' : s.signer_mode === 'one-key-per-validator' ? ' and, on this stack, each local validator process holds one signer key' : ''}: a compromised committee could release funds wrongly. The withdrawal is public on the chain.</p>
+        <p class="pl-small">The amount leaves your private balance with a proof, then ${s.signer_threshold} of ${s.signers.length} settlement signers attest to its release and the gateway pays the recipient. This is a committee-attested bridge${s.signer_mode === 'single-process-fixture' ? ' and, on this node, the signers are a single-process fixture' : s.signer_mode === 'one-key-per-validator' ? ' and, on this stack, each local validator process holds one signer key' : ''}: a compromised committee could release funds wrongly. The withdrawal, its amount and the recipient are public on the chain.</p>
         <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)}${v ? `, available ${formatUnits(v.balance, ns.decimals)}` : ''})</span><input class="pl-input" name="amount" inputmode="decimal" required placeholder="0.00"></label>
-        <label class="pl-field"><span class="pl-label">recipient address on ${esc(ns.chain_name)}</span><input class="pl-input pl-mono" name="recipient" required pattern="0x[0-9a-fA-F]{40}" value="${esc(session().address ?? '')}"></label>
+        <label class="pl-field"><span class="pl-label">to wallet address on ${esc(ns.chain_name)}</span><input class="pl-input pl-mono" name="recipient" required pattern="0x[0-9a-fA-F]{40}" value="${esc(session().address ?? '')}"><div class="pl-hint">your connected wallet by default; it confirms the release</div></label>
         <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Withdraw</button></div>
       </form>
     </dialog>`;
@@ -346,7 +460,7 @@ function withdrawalsPanel(): string {
       <ul class="pl-list">
         ${page.withdrawals
           .map(
-            (w) => `<li><span class="pl-list-main">to ${esc(shortHex(w.recipient, 6, 4))}</span><span class="pl-list-sub">${w.status === 'confirmed' ? `<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>confirmed on chain</span>` : `<span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(w.status.replace('_', ' '))}</span>`}${w.tx_hash ? ` · tx <span class="pl-mono">${esc(shortHex(w.tx_hash, 8, 6))}</span>` : ''} · burn #${w.position}</span><span class="pl-list-side">${formatUnits(w.amount, ns.decimals)} ${esc(ns.token_symbol)}</span></li>`,
+            (w) => `<li><span class="pl-list-main">to ${esc(shortHex(w.recipient, 6, 4))}</span><span class="pl-list-sub">${w.status === 'confirmed' ? `<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>confirmed on chain</span>` : `<span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(w.status.replace('_', ' '))}</span>`}${w.tx_hash ? ` · tx <span class="pl-mono">${esc(shortHex(w.tx_hash, 8, 6))}</span>` : ''}</span><span class="pl-list-side">${formatUnits(w.amount, ns.decimals)} ${esc(ns.token_symbol)}</span></li>`,
           )
           .join('')}
       </ul>
@@ -390,9 +504,11 @@ function html(): string {
         ${page.notice ? `<div class="pl-notice" role="status">${esc(page.notice)}</div>` : ''}
         ${page.busy ? `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(page.busy)}</span></div>` : ''}
         ${l.paramsProgress ? `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(l.paramsProgress)}</span></div>` : ''}
-        ${accountPanel()}
+        ${recoveryCodeBanner()}
+        ${walletPanel()}
         ${balances()}
         ${actions()}
+        ${invitePanel()}
         ${requestsPanel()}
         ${receiptsPanel()}
         ${withdrawalsPanel()}
@@ -400,6 +516,8 @@ function html(): string {
         ${ledgerPanel()}
         ${restoreDialog()}
         ${newRequestDialog()}
+        ${sendDialog()}
+        ${renameDialog()}
         ${fundDialog()}
         ${withdrawDialog()}
         ${devMintDialog()}
@@ -416,8 +534,11 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
   let stale = false;
   let syncTimer = 0;
   let claiming = false;
-  page = { view: null, requests: [], busy: null, error: null, notice: null, lastLink: null, walletTokenBalance: null, withdrawals: [] };
+  page = { view: null, labels: {}, displayName: null, recovery: null, requests: [], busy: null, error: null, notice: null, lastLink: null, invite: null, walletTokenBalance: null, withdrawals: [] };
   MINT_SENDER = localStorage.getItem(MINT_SENDER_KEY) ?? '';
+  // An invitation link (#/bonsai?invite=0x…) lands here: say what it is.
+  const invited = /[?&]invite=(0x[0-9a-fA-F]{40})/.exec(location.hash);
+  if (invited) page.notice = `Someone wants to pay you privately on Peal Links. Connect the wallet ${shortHex(invited[1]!, 6, 4)} and continue; they can pay you once your wallet has private receiving.`;
 
   let deferredPaint = false;
   const paint = () => {
@@ -429,7 +550,6 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       return;
     }
     deferredPaint = false;
-    // Preserve typed passphrases across re-renders triggered by auth events.
     const active = document.activeElement as HTMLInputElement | null;
     const activeName = active?.name;
     const activeValue = active?.value;
@@ -462,9 +582,14 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     const l = links();
     if (!l.account) {
       page.view = null;
+      page.requests = [];
       return;
     }
     page.view = await l.account.view();
+    page.labels = await l.account.labels();
+    const profile = await l.account.profile();
+    page.displayName = profile?.display_name ?? null;
+    page.recovery = profile?.recovery ?? null;
     // Withdrawals: every send whose reference is a withdraw marker.
     const burns = page.view.history.filter((h) => h.kind === 'send' && h.reference?.startsWith('withdraw:') && h.position !== null);
     const withdrawals = [];
@@ -473,15 +598,12 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
         const w = await client.withdrawal(l.namespace!.id, b.position!);
         withdrawals.push({ position: b.position!, amount: w.amount, recipient: w.recipient, status: w.status, tx_hash: w.tx_hash });
       } catch {
-        withdrawals.push({ position: b.position!, amount: b.amount, recipient: b.reference!.slice('withdraw:'.length), status: 'burned, not yet settled', tx_hash: null });
+        withdrawals.push({ position: b.position!, amount: b.amount, recipient: b.reference!.slice('withdraw:'.length), status: 'not yet settled', tx_hash: null });
       }
     }
     page.withdrawals = withdrawals;
     if (l.signedIn) {
       try {
-        // Requests are owned by the signed-in wallet on the API; show only
-        // the ones this private account receives, since another account on
-        // the same wallet cannot claim them.
         const mine = page.view.account;
         page.requests = (await client.listRequests()).requests.filter((r) => r.manifest.receiver_account === mine);
       } catch (e) {
@@ -513,7 +635,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       let v = await account.view();
       for (let i = 0; i < v.receipts.length; i++) {
         if (v.receipts[i]!.status !== 'unclaimed' || stale) continue;
-        await run(`claiming receipt #${v.receipts[i]!.position}: proving on this device (about 7 s)`, async () => {
+        await run('claiming an incoming payment: proving on this device (about 7 s)', async () => {
           await account.claim(i);
           const ref = v.receipts[i]!.reference;
           if (ref && /^[a-z2-7]{24}$/.test(ref)) await account.acknowledge(ref, v.receipts[i]!.position).catch(() => {});
@@ -538,6 +660,18 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     }
   };
 
+  const doActivate = () =>
+    run('setting up private payments for your wallet', async () => {
+      const account = await activate();
+      if (account) {
+        const v = await account.view();
+        if (v.pending) {
+          const r = await account.reconcile();
+          page.notice = `A ${v.pending} was pending from an earlier session: ${r === 'committed' ? 'the ledger had accepted it, recorded' : r === 'aborted' ? 'the ledger had not seen it, dropped' : r}.`;
+        }
+      }
+    });
+
   root.addEventListener('click', (ev) => {
     const t = ev.target as HTMLElement;
     const btn = t.closest<HTMLElement>('button, a');
@@ -545,45 +679,53 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     const l = links();
     if (btn.id === 'pl-login') session().login();
     else if (btn.id === 'pl-login-injected') void run('connecting browser wallet', async () => void (await connectInjected()));
-    else if (btn.id === 'pl-signin') void run('signing in: confirm the message in your wallet', () => signIn().then(() => undefined));
-    else if (btn.id === 'pl-lock') {
+    else if (btn.id === 'pl-activate') void doActivate();
+    else if (btn.id === 'pl-code-saved') {
+      acknowledgeRecoveryCode();
+      paint();
+    } else if (btn.id === 'pl-lock') {
       lockAccount();
       page.view = null;
       paint();
     } else if (btn.id === 'pl-show-restore') root.querySelector<HTMLDialogElement>('#pl-restore-dialog')?.showModal();
     else if (btn.id === 'pl-new-request') root.querySelector<HTMLDialogElement>('#pl-request-dialog')?.showModal();
+    else if (btn.id === 'pl-send') root.querySelector<HTMLDialogElement>('#pl-send-dialog')?.showModal();
+    else if (btn.id === 'pl-rename') root.querySelector<HTMLDialogElement>('#pl-rename-dialog')?.showModal();
     else if (btn.id === 'pl-dev-mint') root.querySelector<HTMLDialogElement>('#pl-mint-dialog')?.showModal();
     else if (btn.id === 'pl-add-funds') root.querySelector<HTMLDialogElement>('#pl-fund-dialog')?.showModal();
     else if (btn.id === 'pl-withdraw') root.querySelector<HTMLDialogElement>('#pl-withdraw-dialog')?.showModal();
-    else if (btn.id === 'pl-backup') {
-      const pass = prompt('Passphrase for the backup file (at least 10 characters). You will need it to restore.');
-      if (!pass) return;
+    else if (btn.id === 'pl-invite-close') {
+      page.invite = null;
+      paint();
+    } else if (btn.id === 'pl-backup') {
+      const code = prompt('Choose a recovery code for this file (at least 10 characters). You will need it to import the file.');
+      if (!code || code.length < 10) return;
       void run('encrypting backup', async () => {
-        const json = await l.account!.exportBackup(pass);
+        const json = await l.account!.exportBackup(code);
         const blob = new Blob([json], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `peal-links-backup-${l.namespace!.label.replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().slice(0, 10)}.json`;
         a.click();
         URL.revokeObjectURL(a.href);
-        page.notice = 'Backup exported. It contains your spending key and every receipt opening, encrypted: keep it somewhere safe.';
+        page.notice = 'Backup file exported. It contains your private account, encrypted under the code you chose: keep both somewhere safe.';
       });
     } else if (btn.id === 'pl-export-csv') {
       const ns = l.namespace!;
       const v = page.view!;
       const ok = confirm(
-        'This writes a plaintext CSV of your receipts and payments (amounts, counterparty account ids, positions, times) to a file on this device. Anyone who gets the file learns exactly that. Continue?',
+        'This writes a plaintext CSV of your payments (amounts, direction, positions, times) to a file on this device. Anyone who gets the file learns exactly that. Continue?',
       );
       if (!ok) return;
       const q = (x: string) => `"${x.replace(/"/g, '""')}"`;
       const rows = [
-        ['kind', 'amount', 'asset', 'counterparty', 'position', 'reference', 'status', 'at'].map(q).join(','),
+        ['kind', 'amount', 'asset', 'to', 'position', 'reference', 'status', 'at'].map(q).join(','),
         ...v.history.map((h) =>
-          [h.kind, `${h.kind === 'send' ? '-' : ''}${formatUnits(h.amount, ns.decimals)}`, ns.token_symbol, h.counterparty, h.position ?? '', h.reference ?? '', 'settled', new Date(h.at * 1000).toISOString()].map((x) => q(String(x))).join(','),
+          [h.kind, `${h.kind === 'send' ? '-' : ''}${formatUnits(h.amount, ns.decimals)}`, ns.token_symbol, (h.position !== null && page.labels[String(h.position)]) || '', h.position ?? '', h.reference ?? '', 'settled', new Date(h.at * 1000).toISOString()].map((x) => q(String(x))).join(','),
         ),
         ...v.receipts
           .filter((r) => r.status !== 'claimed')
-          .map((r) => ['incoming', formatUnits(r.amount, ns.decimals), ns.token_symbol, r.sender, r.position, r.reference ?? '', r.status, new Date(r.discovered_at * 1000).toISOString()].map((x) => q(String(x))).join(',')),
+          .map((r) => ['incoming', formatUnits(r.amount, ns.decimals), ns.token_symbol, '', r.position, r.reference ?? '', r.status, new Date(r.discovered_at * 1000).toISOString()].map((x) => q(String(x))).join(',')),
       ];
       const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
       const a = document.createElement('a');
@@ -631,35 +773,20 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     ev.preventDefault();
     const data = new FormData(form);
     const l = links();
-    if (form.id === 'pl-create') {
-      const pass = String(data.get('pass') ?? '');
-      if (pass !== String(data.get('pass2') ?? '')) {
-        page.error = 'the two passphrases differ';
-        paint();
-        return;
-      }
-      void run('creating your private account and registering it on the ledger', async () => {
-        await createAccount(pass);
-        page.notice = 'Account created and registered. Export a backup before receiving funds: this browser is the only place the keys exist.';
-      });
-    } else if (form.id === 'pl-unlock') {
-      void run('unlocking', async () => {
-        const account = await openAccount(String(data.get('pass') ?? ''));
-        const v = await account.view();
-        if (v.pending) {
-          const r = await account.reconcile();
-          page.notice = `A ${v.pending} was pending from an earlier session: ${r === 'committed' ? 'the ledger had accepted it, recorded' : r === 'aborted' ? 'the ledger had not seen it, dropped' : r}.`;
-        }
+    if (form.id === 'pl-recovery-code') {
+      void run('opening your backup with the recovery code', async () => {
+        await recoverWithCode(String(data.get('code') ?? ''));
+        page.notice = 'Your private account is back on this device.';
       });
     } else if (form.id === 'pl-restore') {
       const file = data.get('file') as File | null;
       if (!file) return;
       form.closest('dialog')?.close();
-      void run('restoring and checking against the ledger', async () => {
+      void run('importing and checking against the ledger', async () => {
         const json = await file.text();
-        const account = await restoreAccount(json, String(data.get('bpass') ?? ''), String(data.get('pass') ?? ''));
+        const account = await restoreFile(json, String(data.get('code') ?? ''));
         const r = await account.reconcile();
-        page.notice = r === 'conflict' ? 'Restored, but this backup is older than the account on the ledger. Do not use it to pay; restore a newer backup.' : 'Restored from backup.';
+        page.notice = r === 'conflict' ? 'Imported, but this backup is older than the account on the ledger. Do not use it to pay; import a newer backup.' : 'Imported from the backup file.';
       });
     } else if (form.id === 'pl-request-form') {
       const ns = l.namespace!;
@@ -672,17 +799,45 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       const expiresRaw = String(data.get('expires') ?? '');
       const expiresAt = expiresRaw ? Math.floor(new Date(expiresRaw).getTime() / 1000) : null;
       form.closest('dialog')?.close();
-      void run('signing and publishing the request', async () => {
+      void run('signing and publishing the link', async () => {
         const request = await l.account!.createRequest({
           amount,
           title: String(data.get('title') ?? '').trim(),
-          displayName: String(data.get('display') ?? '').trim(),
           reference: String(data.get('reference') ?? '').trim() || null,
           expiresAt,
         });
         const url = requestUrl(request.manifest.request_id);
         const qr = await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
         page.lastLink = { request, url, qr };
+      });
+    } else if (form.id === 'pl-send-form') {
+      const ns = l.namespace!;
+      const to = String(data.get('to') ?? '').trim();
+      const amount = parseUnits(String(data.get('amount') ?? ''), ns.decimals);
+      if (!amount || amount === '0' || !/^0x[0-9a-fA-F]{40}$/.test(to)) {
+        page.error = 'enter a wallet address and an amount';
+        paint();
+        return;
+      }
+      form.closest('dialog')?.close();
+      page.invite = null;
+      void run('looking the recipient up and verifying their receiving profile', async () => {
+        const r = await payAddress(l.account!, to, amount, String(data.get('reference') ?? '').trim() || null, (stage) => {
+          page.busy = stage === 'approve' ? 'confirm the payment in your wallet' : 'preparing the payment: proving on this device (about 7 s)';
+          paint();
+        });
+        if ('unregistered' in r) {
+          page.invite = to;
+          return;
+        }
+        page.notice = `Sent ${formatUnits(amount, ns.decimals)} ${ns.token_symbol} to ${r.profile.display_name} (${shortHex(to, 6, 4)}). ${r.result.delivered ? 'They will see it when they are next online.' : 'The encrypted receipt is queued for delivery; the payment itself is complete.'}`;
+      });
+    } else if (form.id === 'pl-rename-form') {
+      const name = String(data.get('display') ?? '').trim();
+      if (!name) return;
+      form.closest('dialog')?.close();
+      void run('confirm the new display name in your wallet', async () => {
+        await rename(l.account!, name);
       });
     } else if (form.id === 'pl-fund-form') {
       const ns = l.namespace!;
@@ -694,10 +849,10 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
         return;
       }
       form.closest('dialog')?.close();
-      void run('deposit: proving the intent, then confirm the approval and the deposit in your wallet', async () => {
+      void run('adding funds: proving the deposit intent, then confirm the approval and the deposit in your wallet', async () => {
         const { receipt } = await l.account!.prepareDeposit(amount);
         const tx = await depositOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, BigInt(amount), receipt);
-        page.notice = `Deposit confirmed on ${ns.chain_name} (tx ${shortHex(tx.depositHash, 8, 6)}). It is credited as an incoming receipt after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}; claim it to make it spendable.`;
+        page.notice = `Deposit confirmed on ${ns.chain_name} (tx ${shortHex(tx.depositHash, 8, 6)}). It shows under incoming after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'} and becomes available once claimed.`;
       });
     } else if (form.id === 'pl-withdraw-form') {
       const ns = l.namespace!;
@@ -710,7 +865,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
         return;
       }
       form.closest('dialog')?.close();
-      void run('withdrawal: proving the burn on this device (about 7 s), then the committee certificate, then confirm the release in your wallet', async () => {
+      void run('withdrawal: proving on this device (about 7 s), then the committee certificate, then confirm the release in your wallet', async () => {
         const { certificate } = await l.account!.withdraw(amount, recipient);
         const hash = await withdrawOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, certificate);
         page.notice = `Withdrawal released on ${ns.chain_name} (tx ${shortHex(hash, 8, 6)}) to ${shortHex(recipient, 6, 4)}.`;
@@ -734,7 +889,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
           MINT_SENDER = mint.sender;
           localStorage.setItem(MINT_SENDER_KEY, MINT_SENDER);
         }
-        page.notice = 'Test funds credited as an incoming receipt. Claim it to make it spendable.';
+        page.notice = 'Test funds credited under incoming. They become available once claimed.';
       });
     }
   });
@@ -753,6 +908,11 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     await refresh();
     await refreshWalletBalance();
     paint();
+    // A returning visit with a signed-in session and an account on this
+    // device unlocks by itself: no prompt of any kind.
+    const l = links();
+    const evm = session();
+    if (!l.account && l.hasStoredAccount && l.signedIn && evm.address && l.signedIn.toLowerCase() === evm.address.toLowerCase()) void doActivate();
     syncTimer = window.setInterval(() => void syncOnce(), 5000);
   })();
 

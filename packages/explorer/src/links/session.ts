@@ -1,30 +1,62 @@
 // Peal Links client session for the explorer: the node client, the prover
-// worker, parameter loading, the private account, and sign-in.
+// worker, parameter loading, the private account behind the connected
+// wallet, and sign-in.
 //
-// Four things stay separate, as the spec requires:
-// - EVM ownership: the connected wallet (Privy, or an injected provider),
-//   used to sign the sign-in message and, in Phase D, deposits;
-// - private spending authority and encryption keys: inside the wasm wallet,
-//   encrypted at rest in IndexedDB under a passphrase;
-// - recovery material: the exported backup file;
-// - the product session: a bearer token the node issues after sign-in.
+// One wallet, private by default (SPEC-ADDENDUM-one-wallet.md): the person
+// connects their EVM wallet and everything else happens here. On first use
+// the wallet signs one receiving profile (decision 0011) and, where it can,
+// the recovery message (decision 0012); the private account is provisioned
+// in the wasm worker and sealed under a device key. On a later visit the
+// account unlocks with no signature. On a fresh browser the profile in the
+// directory says which recovery path applies.
 //
-// Module-level state with a tiny subscription, in the style of auth.tsx, so
-// the vanilla pages can read it and re-render.
+// Four things stay separate: EVM ownership (the wallet), private spending
+// authority and encryption keys (the wasm wallet, device-sealed), recovery
+// material (derived key or code, never sent), and the product session (a
+// bearer token the node issues after sign-in, no spending authority).
 
 import {
   createRemoteProver,
+  deriveBackupKey,
+  deterministicSignature,
+  indexedDbDeviceKeys,
   indexedDbStore,
+  isContractAddress,
   LinksAccount,
   loadParams,
+  newIntentId,
+  newRecoveryCode,
   NodeClient,
+  paymentIntentTypedData,
+  providerSigner,
+  publicClientFor,
+  recoveryMessage,
   siweMessage,
   type AsyncProver,
+  type DeviceKeys,
   type LinksStatus,
   type NamespaceInfo,
+  type PaymentRequest,
+  type PayResult,
+  type Profile,
+  type RecoveryPlan,
+  type WalletSigner,
   type WalletStore,
 } from 'peal-links';
+import type { EIP1193Provider } from 'viem';
 import { session as evmSession, type Eip1193Like } from '../auth';
+import { shortHex } from './format';
+
+/** Where the person is in activating their private account. */
+export type SetupState =
+  | 'idle'
+  | 'signing-in'
+  | 'checking'
+  | 'recovery-signature'
+  | 'needs-recovery-code'
+  | 'setting-up'
+  | 'ready'
+  | 'no-backup';
 
 export interface LinksSession {
   status: LinksStatus | null;
@@ -40,6 +72,13 @@ export interface LinksSession {
   account: LinksAccount | null;
   /** Signed-in EVM address for the product API, if any. */
   signedIn: string | null;
+  setup: SetupState;
+  setupDetail: string | null;
+  /** The directory profile found for the connected wallet when this
+   * browser holds no state for it (recovery pending). */
+  recoveryProfile: Profile | null;
+  /** A recovery code generated at setup, shown once until acknowledged. */
+  newRecoveryCode: string | null;
   autoClaim: boolean;
 }
 
@@ -52,7 +91,11 @@ let state: LinksSession = {
   hasStoredAccount: false,
   account: null,
   signedIn: null,
-  autoClaim: false,
+  setup: 'idle',
+  setupDetail: null,
+  recoveryProfile: null,
+  newRecoveryCode: null,
+  autoClaim: readAutoClaim(),
 };
 
 const listeners = new Set<() => void>();
@@ -73,6 +116,7 @@ function publish(next: Partial<LinksSession>): void {
 
 export const client = new NodeClient({ baseUrl: (import.meta.env.VITE_LINKS_URL as string | undefined) ?? '' });
 export const store: WalletStore = indexedDbStore('peal-links');
+export const deviceKeys: DeviceKeys = indexedDbDeviceKeys('peal-links-device');
 
 let prover: AsyncProver | null = null;
 let paramsPromise: Promise<void> | null = null;
@@ -101,7 +145,7 @@ export async function loadStatus(): Promise<LinksStatus | null> {
 
 export async function selectNamespace(ns: NamespaceInfo): Promise<void> {
   const hasStoredAccount = await LinksAccount.exists(store, ns.id);
-  publish({ namespace: ns, hasStoredAccount, account: null });
+  publish({ namespace: ns, hasStoredAccount, account: null, setup: 'idle', setupDetail: null, recoveryProfile: null });
 }
 
 /** Load proving keys into the worker (cached by digest in IndexedDB). */
@@ -120,41 +164,46 @@ export function ensureParams(): Promise<void> {
 }
 
 function opts(ns: NamespaceInfo) {
-  return { prover: getProver(), client, namespace: ns.id, store };
+  const evm = evmSession();
+  return {
+    prover: getProver(),
+    client,
+    namespace: ns.id,
+    store,
+    deviceKeys,
+    publicClient: evm.provider ? publicClientFor(ns, evm.provider as unknown as EIP1193Provider) : undefined,
+  };
 }
 
-export async function createAccount(passphrase: string): Promise<LinksAccount> {
-  const { status, namespace } = state;
-  if (!status || !namespace) throw new Error('node status not loaded');
-  await ensureParams();
-  const account = await LinksAccount.create(opts(namespace), status.circuit_id, passphrase);
-  await account.register();
-  publish({ account, hasStoredAccount: true });
-  return account;
+function walletSigner(ns: NamespaceInfo): WalletSigner {
+  const evm = evmSession();
+  if (!evm.address || !evm.provider) throw new Error('connect a wallet first');
+  return providerSigner(evm.provider, evm.address, ns.chain_id);
 }
 
-export async function openAccount(passphrase: string): Promise<LinksAccount> {
-  const { namespace } = state;
-  if (!namespace) throw new Error('node status not loaded');
-  await ensureParams();
-  const account = await LinksAccount.open(opts(namespace), passphrase);
-  await account.register(); // idempotent: also re-publishes the key binding
-  publish({ account });
-  return account;
+function readAutoClaim(): boolean {
+  try {
+    return localStorage.getItem('peal-links:autoclaim') !== '0';
+  } catch {
+    return true;
+  }
 }
 
-export async function restoreAccount(backupJson: string, backupPassphrase: string, passphrase: string): Promise<LinksAccount> {
-  const { namespace } = state;
-  if (!namespace) throw new Error('node status not loaded');
-  await ensureParams();
-  const account = await LinksAccount.restore(opts(namespace), backupJson, backupPassphrase, passphrase);
-  await account.register();
-  publish({ account, hasStoredAccount: true });
-  return account;
+export function setAutoClaim(on: boolean): void {
+  try {
+    localStorage.setItem('peal-links:autoclaim', on ? '1' : '0');
+  } catch {
+    /* storage unavailable */
+  }
+  publish({ autoClaim: on });
+}
+
+export function acknowledgeRecoveryCode(): void {
+  publish({ newRecoveryCode: null });
 }
 
 export function lockAccount(): void {
-  publish({ account: null, autoClaim: false });
+  publish({ account: null, setup: 'idle', setupDetail: null });
 }
 
 export function signOut(): void {
@@ -164,14 +213,173 @@ export function signOut(): void {
   } catch {
     /* storage unavailable */
   }
-  publish({ signedIn: null });
+  publish({ signedIn: null, account: null, setup: 'idle', setupDetail: null, recoveryProfile: null });
 }
 
-export function setAutoClaim(on: boolean): void {
-  publish({ autoClaim: on });
+// ---- activation: the one-wallet flow ------------------------------------------
+
+/** Bring the connected wallet's private account up: sign in, then unlock
+ * this device's state, or recover from the backup the directory profile
+ * points at, or set a new account up. The only wallet prompts are the
+ * sign-in message, the profile signature (first use), and, for wallets that
+ * sign deterministically, the recovery message. */
+export async function activate(): Promise<LinksAccount | null> {
+  const { status, namespace } = state;
+  if (!status || !namespace) throw new Error('node status not loaded');
+  const evm = evmSession();
+  if (!evm.address || !evm.provider) throw new Error('connect a wallet first');
+  const address = evm.address.toLowerCase();
+  if (state.account) return state.account;
+  try {
+    if (!state.signedIn || state.signedIn.toLowerCase() !== address) {
+      publish({ setup: 'signing-in', setupDetail: 'confirm the sign-in message in your wallet' });
+      await signIn();
+    }
+    publish({ setup: 'checking', setupDetail: 'loading proving keys and checking this browser' });
+    await ensureParams();
+    // 1. Same device: unlock, no prompt. The stored account must belong to
+    //    the connected wallet; another wallet gets its own activation.
+    if (await LinksAccount.exists(store, namespace.id)) {
+      const account = await LinksAccount.unlock(opts(namespace));
+      const owner = await account.walletAddress();
+      if (owner && owner !== address) {
+        publish({ setup: 'idle', setupDetail: `this browser holds the private account of wallet ${shortHex(owner, 6, 4)}; connect that wallet, or clear site data to set up ${shortHex(address, 6, 4)}` });
+        return null;
+      }
+      const v = await account.view();
+      if (v.pending) await account.reconcile();
+      publish({ account, hasStoredAccount: true, setup: 'ready', setupDetail: null });
+      return account;
+    }
+    // 2. Known to the directory: recover.
+    const entry = await client.profile(namespace.id, address);
+    if (entry) {
+      if (entry.profile.revoked) {
+        publish({ setup: 'idle', setupDetail: 'this wallet revoked its private account; set it up again from a wallet you control' });
+        return null;
+      }
+      publish({ recoveryProfile: entry.profile });
+      if (entry.profile.recovery === 'wallet-signature') {
+        publish({ setup: 'recovery-signature', setupDetail: 'sign the Peal Links recovery message in your wallet to open your backup' });
+        const signer = walletSigner(namespace);
+        const sig = await signer.signMessage(recoveryMessage(address, namespace.label, namespace.id));
+        const backupKey = await deriveBackupKey(sig, address, namespace.id);
+        return await finishRecovery(namespace, { mechanism: 'wallet-signature', backupKey });
+      }
+      publish({ setup: 'needs-recovery-code', setupDetail: 'enter the recovery code you saved when you set up private payments' });
+      return null;
+    }
+    // 3. New: set up. Wallets that sign deterministically get the derived
+    //    key; the rest get a recovery code, shown once.
+    publish({ setup: 'setting-up', setupDetail: 'checking how your wallet signs (two identical signatures make the recovery key derivable)' });
+    const signer = walletSigner(namespace);
+    let plan: RecoveryPlan;
+    const pc = opts(namespace).publicClient;
+    const contract = pc ? await isContractAddress(pc, address).catch(() => false) : false;
+    const sig = contract ? null : await deterministicSignature(signer, recoveryMessage(address, namespace.label, namespace.id));
+    if (sig) {
+      plan = { mechanism: 'wallet-signature', backupKey: await deriveBackupKey(sig, address, namespace.id) };
+    } else {
+      plan = { mechanism: 'recovery-code', code: newRecoveryCode() };
+    }
+    publish({ setupDetail: 'confirm the Peal Links account authorization in your wallet' });
+    const account = await LinksAccount.setup(opts(namespace), status.circuit_id, signer, shortHex(address, 6, 4), plan);
+    publish({
+      account,
+      hasStoredAccount: true,
+      setup: 'ready',
+      setupDetail: null,
+      newRecoveryCode: plan.mechanism === 'recovery-code' ? plan.code : null,
+    });
+    return account;
+  } catch (e) {
+    publish({ setup: 'idle', setupDetail: null });
+    throw e;
+  }
 }
 
-/** Sign in to the request API with the connected EVM wallet (EIP-4361). */
+/** The recovery-code path, after `activate` asked for the code. */
+export async function recoverWithCode(code: string): Promise<LinksAccount> {
+  const { namespace } = state;
+  if (!namespace) throw new Error('node status not loaded');
+  return finishRecovery(namespace, { mechanism: 'recovery-code', code });
+}
+
+async function finishRecovery(namespace: NamespaceInfo, secret: RecoveryPlan): Promise<LinksAccount> {
+  publish({ setup: 'checking', setupDetail: 'opening your backup and checking it against the ledger' });
+  try {
+    const account = await LinksAccount.recover(opts(namespace), secret);
+    const profile = state.recoveryProfile;
+    if (profile) await store.set(`peal-links:${namespace.id}:profile`, JSON.stringify(profile));
+    publish({ account, hasStoredAccount: true, setup: 'ready', setupDetail: null, recoveryProfile: null });
+    return account;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/no backup is stored/.test(msg)) {
+      publish({ setup: 'no-backup', setupDetail: 'this wallet has a Peal Links account but no backup is stored for it; import a backup file if you have one' });
+    } else {
+      publish({ setup: secret.mechanism === 'recovery-code' ? 'needs-recovery-code' : 'idle', setupDetail: null });
+    }
+    throw e;
+  }
+}
+
+/** Import a backup file protected by a recovery code (manual path). */
+export async function restoreFile(backupJson: string, code: string): Promise<LinksAccount> {
+  const { namespace } = state;
+  if (!namespace) throw new Error('node status not loaded');
+  await ensureParams();
+  const account = await LinksAccount.restoreFile(opts(namespace), backupJson, code);
+  await account.register();
+  publish({ account, hasStoredAccount: true, setup: 'ready', setupDetail: null });
+  return account;
+}
+
+// ---- payments with a wallet-approved local intent ---------------------------------
+
+/** Ask the wallet to approve the payment (a local EIP-712 intent, verified
+ * here and never transmitted), then prove and pay. */
+export async function payRequest(account: LinksAccount, request: PaymentRequest, intentId: string, onStage?: (s: string) => void): Promise<PayResult> {
+  const ns = state.namespace!;
+  const signer = walletSigner(ns);
+  const intent = await account.paymentIntentFor({ request });
+  onStage?.('approve');
+  const signature = await signer.signTypedData(paymentIntentTypedData(intent, ns.chain_id));
+  onStage?.('preparing');
+  return account.pay({ request }, intentId, { intent, signature });
+}
+
+/** Pay a plain wallet address resolved through the directory. */
+export async function payAddress(
+  account: LinksAccount,
+  address: string,
+  amount: string,
+  reference: string | null,
+  onStage?: (s: string) => void,
+): Promise<{ result: PayResult; profile: Profile } | { unregistered: true }> {
+  const ns = state.namespace!;
+  const resolved = await account.resolve(address);
+  if (!resolved) return { unregistered: true };
+  const signer = walletSigner(ns);
+  const target = { profile: resolved.profile, profileHash: resolved.hash, amount, reference };
+  const intent = await account.paymentIntentFor(target);
+  onStage?.('approve');
+  const signature = await signer.signTypedData(paymentIntentTypedData(intent, ns.chain_id));
+  onStage?.('preparing');
+  const result = await account.pay(target, newIntentId(), { intent, signature });
+  return { result, profile: resolved.profile };
+}
+
+/** Rename: a new profile version signed by the wallet. */
+export async function rename(account: LinksAccount, displayName: string): Promise<void> {
+  const ns = state.namespace!;
+  const profile = await account.profile();
+  await account.publishProfile(walletSigner(ns), displayName, profile?.recovery ?? 'recovery-code');
+  publish({});
+}
+
+// ---- sign-in (EIP-4361; API access only, never spending authority) -------------
+
 export async function signIn(): Promise<string> {
   const evm = evmSession();
   if (!evm.address || !evm.provider) throw new Error('connect a wallet first');

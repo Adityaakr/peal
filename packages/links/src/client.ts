@@ -5,6 +5,8 @@
 // not there (network error, proxy 5xx without JSON) is `code: 'unreachable'`
 // with status 0, so a page can tell "down" from "refused".
 
+import type { Profile } from './typed.js';
+
 export interface NamespaceInfo {
   id: string;
   label: string;
@@ -91,7 +93,7 @@ export interface HistoryOp {
 }
 
 export interface RequestManifest {
-  version: 1;
+  version: 2;
   request_id: string;
   namespace: string;
   receiver_account: string;
@@ -99,6 +101,8 @@ export interface RequestManifest {
   amount: string;
   title: string;
   display_name: string;
+  /** The receiver's 0x wallet address, lowercase (decision 0011). */
+  receiver_address: string;
   reference: string | null;
   expires_at: number | null;
   created_at: number;
@@ -206,6 +210,10 @@ export class NodeClient {
 
   private post<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
     return this.call<T>(path, { method: 'POST', body: JSON.stringify(body), headers });
+  }
+
+  private put<T>(path: string, body: unknown): Promise<T> {
+    return this.call<T>(path, { method: 'PUT', body: JSON.stringify(body) });
   }
 
   // ---- status and params
@@ -353,10 +361,56 @@ export class NodeClient {
     return this.call(`/ledger/${ns}/accounting`);
   }
 
+  // ---- directory and backups (decisions 0011 to 0013; session required)
+
+  /** Publish a signed receiving profile for the signed-in wallet. */
+  putProfile(profile: Profile): Promise<{ hash: string; version: number; verified: 'eoa' | 'erc1271'; block: number | null }> {
+    return this.put('/directory', profile);
+  }
+
+  /** The latest profile of `address` on `ns`, or null when the address has
+   * not activated private receiving. The caller verifies the signature. */
+  async profile(ns: string, address: string): Promise<DirectoryEntry | null> {
+    try {
+      return await this.call<DirectoryEntry>(`/directory/${ns}/${address.toLowerCase()}`);
+    } catch (e) {
+      if (e instanceof LinksApiError && e.code === 'not_registered') return null;
+      throw e;
+    }
+  }
+
+  putBackup(ns: string, upload: BackupUpload): Promise<{ seq: number }> {
+    return this.put(`/backups/${ns}`, upload);
+  }
+
+  async backup(ns: string): Promise<(BackupUpload & { created_at: number }) | null> {
+    try {
+      return await this.call<BackupUpload & { created_at: number }>(`/backups/${ns}`);
+    } catch (e) {
+      if (e instanceof LinksApiError && e.code === 'no_backup') return null;
+      throw e;
+    }
+  }
+
   /** DEVELOPMENT FIXTURE: only exists when the node runs with dev_mint. */
   devMint(ns: string, receipt: string): Promise<Applied> {
     return this.post('/dev/mint', { namespace: ns, receipt });
   }
+}
+
+export interface DirectoryEntry {
+  profile: Profile;
+  hash: string;
+  verified: 'eoa' | 'erc1271';
+  block: number | null;
+  log: { version: number; hash: string; created_at: number }[];
+}
+
+export interface BackupUpload {
+  seq: number;
+  mechanism: 'wallet-signature' | 'recovery-code';
+  /** Ciphertext JSON, opaque to the node. */
+  blob: string;
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {

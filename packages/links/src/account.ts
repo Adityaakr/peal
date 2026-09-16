@@ -1,6 +1,17 @@
-// A private account on one namespace: the wallet state, its encrypted local
-// storage, and every flow the product needs (register, fund, pay a request,
-// sync the inbox, claim, withdraw later, back up, recover).
+// A private account on one namespace, behind the connected wallet: the
+// wallet state, its encrypted local storage, and every flow the product
+// needs (set up, publish the receiving profile, fund, pay a request or an
+// address, sync the inbox, claim, withdraw, back up, recover).
+//
+// One-wallet rules (decisions 0011 to 0013):
+// - the 0x wallet signs one receiving profile at setup (the account
+//   authorization published to the directory) and, per payment, a local
+//   payment intent that is verified here and never transmitted;
+// - private state is sealed under a device key (WebCrypto, non-extractable)
+//   so a returning visit needs neither passphrase nor signature;
+// - the backup key is derived from a deterministic wallet signature or
+//   protected by a recovery code; backups are uploaded to the node as
+//   ciphertext after every state change.
 //
 // Ordering rules that make the flows crash-safe, all enforced here:
 // - a prepared operation is saved (encrypted) BEFORE it is submitted, so an
@@ -12,8 +23,23 @@
 //   local outbox and is retried on the next sync; the send is never reported
 //   as failed.
 
+import type { Hex, PublicClient } from 'viem';
 import { LinksApiError, NodeClient, type PaymentRequest, type ReceiptPath, type WithdrawalCertificate } from './client.js';
+import { deviceKey, MemoryDeviceKeys, openWithDevice, sealWithDevice, type DeviceKeys } from './device.js';
 import type { AsyncProver, Delivery, WalletView } from './prover.js';
+import { normalizeRecoveryCode } from './recovery.js';
+import {
+  profileHash,
+  profileTypedData,
+  randomHex32,
+  verifyPaymentIntent,
+  verifyProfile,
+  type PaymentIntent,
+  type Profile,
+  type RecoveryMechanism,
+  type UnsignedProfile,
+  type WalletSigner,
+} from './typed.js';
 
 export interface WalletStore {
   get(key: string): Promise<string | null>;
@@ -50,7 +76,30 @@ export interface AccountOptions {
   client: NodeClient;
   namespace: string;
   store: WalletStore;
+  /** Where the device key lives. Defaults to memory (tests, scripts). */
+  deviceKeys?: DeviceKeys;
+  /** Verifies contract-wallet signatures (ERC-1271) when present. */
+  publicClient?: PublicClient;
 }
+
+/** The recovery material chosen at setup (decision 0012). */
+export type RecoveryPlan =
+  | { mechanism: 'wallet-signature'; backupKey: string }
+  | { mechanism: 'recovery-code'; code: string };
+
+/** What a payment goes to: a signed request, or an address resolved
+ * through the directory. */
+export type PaymentTarget =
+  | { request: PaymentRequest }
+  | { profile: Profile; profileHash: string; amount: string; reference?: string | null };
+
+/** The wallet's confirmation of a payment, verified locally. */
+export interface PaymentApproval {
+  intent: PaymentIntent;
+  signature: Hex;
+}
+
+export const PROFILE_VALIDITY_SECS = 365 * 24 * 3600;
 
 const key = (ns: string, what: string) => `peal-links:${ns}:${what}`;
 
@@ -61,14 +110,19 @@ export class LinksAccount {
   readonly namespace: string;
   private readonly store: WalletStore;
   private readonly storageKey: string;
+  private readonly publicClient?: PublicClient;
+  /** Hex key that seals backups, or null before recovery is set up. */
+  private backupKey: string | null;
 
-  private constructor(opts: AccountOptions, wallet: string, storageKey: string) {
+  private constructor(opts: AccountOptions, wallet: string, storageKey: string, backupKey: string | null) {
     this.prover = opts.prover;
     this.client = opts.client;
     this.namespace = opts.namespace;
     this.store = opts.store;
     this.wallet = wallet;
     this.storageKey = storageKey;
+    this.backupKey = backupKey;
+    this.publicClient = opts.publicClient;
   }
 
   /** Whether an encrypted wallet exists in the store for this namespace. */
@@ -76,39 +130,114 @@ export class LinksAccount {
     return (await store.get(key(namespace, 'wallet'))) !== null;
   }
 
-  /** Create a fresh account, protected by `passphrase`. */
-  static async create(opts: AccountOptions, circuitId: string, passphrase: string): Promise<LinksAccount> {
-    if (await LinksAccount.exists(opts.store, opts.namespace)) throw new Error('an account already exists here; open or restore it');
+  // ---- lifecycle -----------------------------------------------------------
+
+  /** First use: provision the private account, register it, have the wallet
+   * sign the receiving profile, publish it, seal everything under the
+   * device key and upload the first backup. The wallet signs once here
+   * (the profile); the recovery plan was prepared by the caller. */
+  static async setup(
+    opts: AccountOptions,
+    circuitId: string,
+    signer: WalletSigner,
+    displayName: string,
+    recovery: RecoveryPlan,
+  ): Promise<LinksAccount> {
+    if (await LinksAccount.exists(opts.store, opts.namespace)) throw new Error('an account already exists here; unlock or recover it');
     const wallet = await opts.prover.createWallet(opts.namespace, circuitId);
     const storageKey = await opts.prover.newStorageKey();
-    await opts.store.set(key(opts.namespace, 'key'), await opts.prover.wrapKey(storageKey, passphrase));
-    const acct = new LinksAccount(opts, wallet, storageKey);
+    const dk = await deviceKey(opts.deviceKeys ?? new MemoryDeviceKeys());
+    await opts.store.set(key(opts.namespace, 'device-sealed-key'), await sealWithDevice(dk, storageKey));
+    const backupKey = recovery.mechanism === 'wallet-signature' ? recovery.backupKey : await opts.prover.newStorageKey();
+    const acct = new LinksAccount(opts, wallet, storageKey, backupKey);
     await acct.save();
+    await acct.register();
+    await acct.publishProfile(signer, displayName, recovery.mechanism);
+    await opts.store.set(key(opts.namespace, 'backup-key'), await sealWithDevice(dk, backupKey));
+    if (recovery.mechanism === 'recovery-code') {
+      const code = normalizeRecoveryCode(recovery.code);
+      if (!code) throw new Error('malformed recovery code');
+      await opts.store.set(key(opts.namespace, 'backup-wrapped'), await opts.prover.wrapKey(backupKey, code));
+    }
+    // Recovery is part of setup: no account is handed over without its
+    // first backup stored.
+    if (!(await acct.backupNow())) throw new Error('the first backup could not be stored; setup is not complete');
     return acct;
   }
 
-  /** Unlock the stored account. */
-  static async open(opts: AccountOptions, passphrase: string): Promise<LinksAccount> {
-    const wrapped = await opts.store.get(key(opts.namespace, 'key'));
+  /** A returning visit on the same device: no passphrase, no signature. */
+  static async unlock(opts: AccountOptions): Promise<LinksAccount> {
+    const sealedKey = await opts.store.get(key(opts.namespace, 'device-sealed-key'));
     const locked = await opts.store.get(key(opts.namespace, 'wallet'));
-    if (!wrapped || !locked) throw new Error('no account stored here');
-    const storageKey = await opts.prover.unwrapKey(wrapped, passphrase);
+    if (!sealedKey || !locked) throw new Error('no account stored here');
+    const dk = await deviceKey(opts.deviceKeys ?? new MemoryDeviceKeys());
+    const storageKey = await openWithDevice(dk, sealedKey);
     const wallet = await opts.prover.unlockWallet(locked, storageKey);
-    return new LinksAccount(opts, wallet, storageKey);
+    const sealedBackup = await opts.store.get(key(opts.namespace, 'backup-key'));
+    const backupKey = sealedBackup ? await openWithDevice(dk, sealedBackup) : null;
+    return new LinksAccount(opts, wallet, storageKey, backupKey);
   }
 
-  /** Restore from an exported backup onto this device, protected here by
-   * `passphrase` (which may differ from the backup's). */
-  static async restore(opts: AccountOptions, backupJson: string, backupPassphrase: string, passphrase: string): Promise<LinksAccount> {
-    const wallet = await opts.prover.importBackup(backupJson, backupPassphrase);
+  /** A fresh browser: fetch the latest backup the node holds for the
+   * signed-in wallet and open it with the derived key or the recovery
+   * code, then reconcile against the ledger (anti-rollback). Never creates
+   * an empty replacement account. */
+  static async recover(opts: AccountOptions, secret: RecoveryPlan): Promise<LinksAccount> {
+    const stored = await opts.client.backup(opts.namespace);
+    if (!stored) throw new Error('no backup is stored for this wallet');
+    if (stored.mechanism !== secret.mechanism) throw new Error(`this backup needs the ${stored.mechanism} path`);
+    const blob = JSON.parse(stored.blob) as { sealed: string; wrapped?: string };
+    let backupKey: string;
+    if (secret.mechanism === 'wallet-signature') {
+      backupKey = secret.backupKey;
+    } else {
+      const code = normalizeRecoveryCode(secret.code);
+      if (!code || !blob.wrapped) throw new Error('malformed recovery code');
+      backupKey = await opts.prover.unwrapKey(blob.wrapped, code);
+    }
+    const wallet = await opts.prover.unlockWallet(blob.sealed, backupKey);
     const storageKey = await opts.prover.newStorageKey();
-    await opts.store.set(key(opts.namespace, 'key'), await opts.prover.wrapKey(storageKey, passphrase));
-    const acct = new LinksAccount(opts, wallet, storageKey);
+    const dk = await deviceKey(opts.deviceKeys ?? new MemoryDeviceKeys());
+    await opts.store.set(key(opts.namespace, 'device-sealed-key'), await sealWithDevice(dk, storageKey));
+    await opts.store.set(key(opts.namespace, 'backup-key'), await sealWithDevice(dk, backupKey));
+    if (blob.wrapped) await opts.store.set(key(opts.namespace, 'backup-wrapped'), blob.wrapped);
+    const acct = new LinksAccount(opts, wallet, storageKey, backupKey);
     await acct.save();
     // Anti-rollback: a restored wallet is checked against the ledger before
     // it is used, so a stale backup cannot double-spend into a conflict
     // unnoticed.
     await acct.reconcile();
+    await acct.register();
+    await acct.adoptProfile();
+    return acct;
+  }
+
+  /** Copy the signed-in wallet's directory profile to this device, when it
+   * names this account (a recovered device has the state but not the
+   * profile). */
+  private async adoptProfile(): Promise<void> {
+    try {
+      const me = await this.client.me();
+      const entry = await this.client.profile(this.namespace, me.address);
+      const v = await this.view();
+      if (entry && entry.profile.account === v.account && !entry.profile.revoked) {
+        await this.store.set(key(this.namespace, 'profile'), JSON.stringify(entry.profile));
+      }
+    } catch {
+      /* not signed in: the caller publishes or adopts a profile later */
+    }
+  }
+
+  /** Restore from an exported file protected by a recovery code. */
+  static async restoreFile(opts: AccountOptions, backupJson: string, code: string): Promise<LinksAccount> {
+    const wallet = await opts.prover.importBackup(backupJson, normalizeRecoveryCode(code) ?? code);
+    const storageKey = await opts.prover.newStorageKey();
+    const dk = await deviceKey(opts.deviceKeys ?? new MemoryDeviceKeys());
+    await opts.store.set(key(opts.namespace, 'device-sealed-key'), await sealWithDevice(dk, storageKey));
+    const acct = new LinksAccount(opts, wallet, storageKey, null);
+    await acct.save();
+    await acct.reconcile();
+    await acct.adoptProfile();
     return acct;
   }
 
@@ -121,8 +250,105 @@ export class LinksAccount {
     return this.prover.walletView(this.wallet);
   }
 
-  exportBackup(passphrase: string): Promise<string> {
-    return this.prover.exportBackup(this.wallet, passphrase);
+  /** A manual backup file protected by a recovery code (argon2id). */
+  exportBackup(code: string): Promise<string> {
+    return this.prover.exportBackup(this.wallet, normalizeRecoveryCode(code) ?? code);
+  }
+
+  // ---- backups ----------------------------------------------------------------
+
+  hasRecovery(): boolean {
+    return this.backupKey !== null;
+  }
+
+  /** Seal the current state and upload it. The node stores ciphertext only
+   * and refuses a lower state version. Failures are not fatal to the flow
+   * that triggered them; the next state change tries again. */
+  async backupNow(): Promise<boolean> {
+    if (!this.backupKey) return false;
+    const v = await this.view();
+    const profile = await this.profile();
+    const mechanism: RecoveryMechanism = profile?.recovery ?? 'wallet-signature';
+    const sealed = await this.prover.lockWallet(this.wallet, this.backupKey);
+    const wrapped = mechanism === 'recovery-code' ? await this.store.get(key(this.namespace, 'backup-wrapped')) : null;
+    // Monotonic per wallet: the profile version first (a wallet that sets a
+    // new account up publishes a higher version and its backups must win),
+    // then this account's state version.
+    const seq = (profile?.version ?? 1) * 2 ** 32 + v.history.length + v.receipts.length + (v.registered ? 1 : 0);
+    try {
+      await this.client.putBackup(this.namespace, { seq, mechanism, blob: JSON.stringify(wrapped ? { sealed, wrapped } : { sealed }) });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async saveAndBackup(): Promise<void> {
+    await this.save();
+    await this.backupNow();
+  }
+
+  // ---- profile (the account authorization) -------------------------------------
+
+  /** The receiving profile this device holds for the account. */
+  async profile(): Promise<Profile | null> {
+    const raw = await this.store.get(key(this.namespace, 'profile'));
+    return raw ? (JSON.parse(raw) as Profile) : null;
+  }
+
+  /** The wallet address the account is authorized by, from the profile. */
+  async walletAddress(): Promise<string | null> {
+    return (await this.profile())?.wallet ?? null;
+  }
+
+  /** Sign and publish a new profile version (setup, rename, key rotation
+   * after `register`, or revocation). One wallet signature. */
+  async publishProfile(signer: WalletSigner, displayName: string, recovery: RecoveryMechanism, revoked = false): Promise<Profile> {
+    const v = await this.view();
+    // Chain onto the directory's latest version for this wallet, so a wallet
+    // that sets up again (a new account after losing everything, or a key
+    // rotation) publishes a successor rather than a conflicting first version.
+    const previous = (await this.profile()) ?? (await this.client.profile(this.namespace, signer.address).catch(() => null))?.profile ?? null;
+    const now = Math.floor(Date.now() / 1000);
+    const unsigned: UnsignedProfile = {
+      version: (previous?.version ?? 0) + 1,
+      wallet: signer.address.toLowerCase(),
+      chain_id: signer.chainId,
+      namespace: this.namespace,
+      account: v.account,
+      enc_key: v.enc_pubkey,
+      profile_key: JSON.parse(await this.prover.keyBinding(this.wallet, 1)).pubkey as string,
+      display_name: displayName,
+      recovery,
+      nonce: randomHex32(),
+      issued_at: now,
+      expiry: now + PROFILE_VALIDITY_SECS,
+      prev: previous ? profileHash(previous) : '0'.repeat(64),
+      revoked,
+    };
+    const signature = await signer.signTypedData(profileTypedData(unsigned));
+    const profile: Profile = { ...unsigned, signature };
+    await this.client.putProfile(profile);
+    await this.store.set(key(this.namespace, 'profile'), JSON.stringify(profile));
+    return profile;
+  }
+
+  /** Resolve a wallet address to a verified receiving profile. Returns null
+   * when the address never activated private receiving; throws when the
+   * directory's answer does not verify (a substituted key, a foreign ledger,
+   * an expired or revoked profile). */
+  async resolve(address: string): Promise<{ profile: Profile; hash: string } | null> {
+    const entry = await this.client.profile(this.namespace, address);
+    if (!entry) return null;
+    const p = entry.profile;
+    if (p.wallet !== address.toLowerCase()) throw new Error('directory answered for another address');
+    if (p.namespace.toLowerCase() !== this.namespace.toLowerCase()) throw new Error('profile is for another ledger domain');
+    if (p.revoked) throw new Error('this address stopped receiving private payments');
+    if (p.expiry * 1000 < Date.now()) throw new Error('the receiving profile has expired; ask the recipient to renew it');
+    if (!(await verifyProfile(p, this.publicClient))) throw new Error('the receiving profile does not verify; not paying');
+    const hash = profileHash(p);
+    if (hash !== entry.hash.replace(/^0x/, '')) throw new Error('directory hash mismatch');
+    return { profile: p, hash };
   }
 
   // ---- registration ------------------------------------------------------
@@ -158,7 +384,7 @@ export class LinksAccount {
   async prepareDeposit(amount: string, reference: string | null = null): Promise<{ receipt: string; amount: string }> {
     const r = await this.prover.prepareDeposit(this.wallet, amount, reference);
     this.wallet = r.wallet;
-    await this.save();
+    await this.saveAndBackup();
     await this.client.registerDepositIntent(r.value);
     return { receipt: r.value.receipt, amount };
   }
@@ -175,7 +401,7 @@ export class LinksAccount {
         credited.push(receipt);
       }
     }
-    if (credited.length) await this.save();
+    if (credited.length) await this.saveAndBackup();
     return credited;
   }
 
@@ -205,7 +431,7 @@ export class LinksAccount {
       after = item.id;
     }
     if (items.length) {
-      await this.save();
+      await this.saveAndBackup();
       await this.store.set(cursorKey, String(after));
     }
     return added;
@@ -236,12 +462,26 @@ export class LinksAccount {
     return this.submitPending(out.value);
   }
 
+  /** Claim every verified, unclaimed receipt. Returns how many were claimed. */
+  async claimAll(): Promise<number> {
+    let n = 0;
+    for (;;) {
+      const v = await this.view();
+      if (v.pending) break;
+      const idx = v.receipts.findIndex((r) => r.status === 'unclaimed');
+      if (idx < 0) break;
+      await this.claim(idx);
+      n++;
+    }
+    return n;
+  }
+
   /** Submit a proved pending operation and settle the journal. */
   private async submitPending(envelope: unknown): Promise<number> {
     try {
       const applied = await this.client.apply(this.namespace, envelope);
       this.wallet = await this.prover.commitPending(this.wallet, applied.position!);
-      await this.save();
+      await this.saveAndBackup();
       return applied.position!;
     } catch (e) {
       if (e instanceof LinksApiError && e.status !== 0) {
@@ -282,27 +522,90 @@ export class LinksAccount {
 
   // ---- paying --------------------------------------------------------------
 
-  /** Pay a request: verify its manifest, reserve it, prove and submit the
-   * send, then deliver the encrypted opening to the receiver's inbox. */
-  async pay(request: PaymentRequest, intentId: string): Promise<PayResult> {
-    const m = request.manifest;
-    if (m.namespace !== this.namespace) throw new Error('request is for another asset domain');
-    await this.prover.verifyRequest(JSON.stringify(m));
-    if (request.status !== 'active') throw new Error(`request is ${request.status}`);
-    if (m.expires_at !== null && m.expires_at * 1000 < Date.now()) throw new Error('request has expired');
+  /** The amount, receiving details and reference of a target. */
+  private async targetDetails(target: PaymentTarget): Promise<{
+    amount: string;
+    receiverAccount: string;
+    receiverEncKey: string;
+    reference: string | null;
+    requestId: string;
+    profileHash: string;
+  }> {
+    if ('request' in target) {
+      const m = target.request.manifest;
+      if (m.namespace !== this.namespace) throw new Error('request is for another asset domain');
+      await this.prover.verifyRequest(JSON.stringify(m));
+      if (target.request.status !== 'active') throw new Error(`request is ${target.request.status}`);
+      if (m.expires_at !== null && m.expires_at * 1000 < Date.now()) throw new Error('request has expired');
+      return {
+        amount: m.amount,
+        receiverAccount: m.receiver_account,
+        receiverEncKey: m.receiver_enc_key,
+        reference: m.request_id,
+        requestId: m.request_id,
+        profileHash: '0'.repeat(64),
+      };
+    }
+    const p = target.profile;
+    if (p.namespace.toLowerCase() !== this.namespace.toLowerCase()) throw new Error('profile is for another ledger domain');
+    if (!/^\d+$/.test(target.amount) || BigInt(target.amount) === 0n) throw new Error('amount must be a positive integer');
+    return {
+      amount: target.amount,
+      receiverAccount: p.account,
+      receiverEncKey: p.enc_key,
+      reference: target.reference ?? null,
+      requestId: '',
+      profileHash: target.profileHash,
+    };
+  }
+
+  /** The intent the wallet is asked to confirm for `target` (decision 0011). */
+  async paymentIntentFor(target: PaymentTarget): Promise<PaymentIntent> {
+    const d = await this.targetDetails(target);
+    const v = await this.view();
+    return {
+      amount: d.amount,
+      recipient_profile_hash: d.profileHash,
+      request_id: d.requestId,
+      namespace: this.namespace,
+      account_state_version: v.history.length,
+      nonce: randomHex32(),
+      expiry: Math.floor(Date.now() / 1000) + 600,
+    };
+  }
+
+  /** Pay a request or a resolved address: verify the target, check the
+   * wallet's local approval (when given), reserve a request, prove and
+   * submit the send, then deliver the encrypted opening to the receiver's
+   * inbox. */
+  async pay(target: PaymentTarget, intentId: string, approval?: PaymentApproval): Promise<PayResult> {
+    const d = await this.targetDetails(target);
     const v = await this.view();
     if (v.pending) throw new Error('an operation is pending; reconcile first');
-    if (BigInt(v.balance) < BigInt(m.amount)) throw new Error('insufficient balance');
-    await this.client.reserveRequest(m.request_id, intentId);
+    if (BigInt(v.balance) < BigInt(d.amount)) throw new Error('insufficient balance');
+    if (approval) {
+      const wallet = await this.walletAddress();
+      const chainId = (await this.profile())?.chain_id;
+      if (!wallet || chainId === undefined) throw new Error('no wallet is bound to this account');
+      const i = approval.intent;
+      if (i.amount !== d.amount || i.request_id !== d.requestId || i.recipient_profile_hash !== d.profileHash || i.namespace !== this.namespace) {
+        throw new Error('the wallet approved a different payment');
+      }
+      if (!(await verifyPaymentIntent(i, chainId, approval.signature, wallet, this.publicClient))) {
+        throw new Error('the wallet approval does not verify');
+      }
+    }
+    if (d.requestId) await this.client.reserveRequest(d.requestId, intentId);
     const summary = await this.client.ledger(this.namespace);
-    const out = await this.prover.send(this.wallet, m.amount, m.receiver_account, summary.receipt_root, m.request_id);
+    const out = await this.prover.send(this.wallet, d.amount, d.receiverAccount, summary.receipt_root, d.reference);
     this.wallet = out.wallet;
     await this.save(); // pending + opening journaled before submission
     const position = await this.submitPending(out.envelope);
+    if (!('request' in target)) await this.label(position, target.profile.wallet);
     const envelope = JSON.parse(
-      await this.prover.sealReceipt(this.namespace, m.receiver_enc_key, JSON.stringify(out.opening), position, m.request_id),
+      await this.prover.sealReceipt(this.namespace, d.receiverEncKey, JSON.stringify(out.opening), position, d.reference),
     );
-    const delivered = await this.deliver({ account: m.receiver_account, envelope, request_id: m.request_id });
+    const delivered = await this.deliver({ account: d.receiverAccount, envelope, request_id: d.requestId || null });
     return { position, delivered };
   }
 
@@ -335,6 +638,20 @@ export class LinksAccount {
     return remaining.length;
   }
 
+  // ---- labels (device-local names for history entries) -----------------------
+
+  /** Remember the wallet address a send went to, for this device's history. */
+  async label(position: number, address: string): Promise<void> {
+    const k = key(this.namespace, 'labels');
+    const labels = JSON.parse((await this.store.get(k)) ?? '{}') as Record<string, string>;
+    labels[String(position)] = address.toLowerCase();
+    await this.store.set(k, JSON.stringify(labels));
+  }
+
+  async labels(): Promise<Record<string, string>> {
+    return JSON.parse((await this.store.get(key(this.namespace, 'labels'))) ?? '{}') as Record<string, string>;
+  }
+
   // ---- withdrawals -------------------------------------------------------------
 
   /** Burn `amount` on the ledger (a send to the withdraw identifier) and
@@ -364,16 +681,23 @@ export class LinksAccount {
 
   // ---- requests --------------------------------------------------------------
 
-  async createRequest(input: {
-    amount: string;
-    title: string;
-    displayName: string;
-    reference?: string | null;
-    expiresAt?: number | null;
-  }): Promise<PaymentRequest> {
+  /** Create a payment link. Signed by the account's key (authorized under
+   * the profile), so no wallet popup; the manifest names the wallet. */
+  async createRequest(input: { amount: string; title: string; reference?: string | null; expiresAt?: number | null }): Promise<PaymentRequest> {
+    const profile = await this.profile();
+    if (!profile) throw new Error('publish a receiving profile first');
     const id = await this.prover.newRequestId();
     const manifest = JSON.parse(
-      await this.prover.signRequest(this.wallet, id, input.amount, input.title, input.displayName, input.reference ?? null, input.expiresAt ?? null),
+      await this.prover.signRequest(
+        this.wallet,
+        id,
+        input.amount,
+        input.title,
+        profile.display_name,
+        profile.wallet,
+        input.reference ?? null,
+        input.expiresAt ?? null,
+      ),
     );
     return this.client.createRequest(manifest);
   }

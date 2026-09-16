@@ -106,7 +106,7 @@ export interface AsyncProver {
   reconcile(wallet: string, ledgerCom: string, position: number | null): Promise<{ wallet: string; value: 'in_sync' | 'committed' | 'aborted' | 'conflict' }>;
   commitment(wallet: string): Promise<string>;
   newRequestId(): Promise<string>;
-  signRequest(wallet: string, requestId: string, amount: string, title: string, displayName: string, reference: string | null, expiresAt: number | null): Promise<string>;
+  signRequest(wallet: string, requestId: string, amount: string, title: string, displayName: string, receiverAddress: string, reference: string | null, expiresAt: number | null): Promise<string>;
   verifyRequest(manifestJson: string): Promise<void>;
   fulfillmentAck(wallet: string, requestId: string, position: number): Promise<string>;
   sealReceipt(namespace: string, recipientEncKey: string, openingJson: string, position: number, reference: string | null): Promise<string>;
@@ -166,7 +166,7 @@ const BIGINT_ARGS: Partial<Record<keyof typeof PROVER_METHODS, number[]>> = {
   commitPending: [1],
   withdrawalClaim: [1],
   reconcile: [2],
-  signRequest: [6],
+  signRequest: [7],
   fulfillmentAck: [2],
   sealReceipt: [3],
 };

@@ -19,6 +19,9 @@ export * from './remote.js';
 export * from './account.js';
 export * from './storage.js';
 export * from './chain.js';
+export * from './typed.js';
+export * from './device.js';
+export * from './recovery.js';
 
 import { NodeClient } from './client.js';
 import type { AsyncProver, KeyInfo } from './prover.js';

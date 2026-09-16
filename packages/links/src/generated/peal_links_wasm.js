@@ -619,13 +619,14 @@ export class Prover {
      * @param {string} amount
      * @param {string} title
      * @param {string} display_name
+     * @param {string} receiver_address
      * @param {string | null} [reference]
      * @param {bigint | null} [expires_at]
      * @returns {string}
      */
-    sign_request(wallet_json, request_id, amount, title, display_name, reference, expires_at) {
-        let deferred8_0;
-        let deferred8_1;
+    sign_request(wallet_json, request_id, amount, title, display_name, receiver_address, reference, expires_at) {
+        let deferred9_0;
+        let deferred9_1;
         try {
             const ptr0 = passStringToWasm0(wallet_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len0 = WASM_VECTOR_LEN;
@@ -637,20 +638,22 @@ export class Prover {
             const len3 = WASM_VECTOR_LEN;
             const ptr4 = passStringToWasm0(display_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
             const len4 = WASM_VECTOR_LEN;
-            var ptr5 = isLikeNone(reference) ? 0 : passStringToWasm0(reference, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            var len5 = WASM_VECTOR_LEN;
-            const ret = wasm.prover_sign_request(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, !isLikeNone(expires_at), isLikeNone(expires_at) ? BigInt(0) : expires_at);
-            var ptr7 = ret[0];
-            var len7 = ret[1];
+            const ptr5 = passStringToWasm0(receiver_address, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len5 = WASM_VECTOR_LEN;
+            var ptr6 = isLikeNone(reference) ? 0 : passStringToWasm0(reference, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            var len6 = WASM_VECTOR_LEN;
+            const ret = wasm.prover_sign_request(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, !isLikeNone(expires_at), isLikeNone(expires_at) ? BigInt(0) : expires_at);
+            var ptr8 = ret[0];
+            var len8 = ret[1];
             if (ret[3]) {
-                ptr7 = 0; len7 = 0;
+                ptr8 = 0; len8 = 0;
                 throw takeFromExternrefTable0(ret[2]);
             }
-            deferred8_0 = ptr7;
-            deferred8_1 = len7;
-            return getStringFromWasm0(ptr7, len7);
+            deferred9_0 = ptr8;
+            deferred9_1 = len8;
+            return getStringFromWasm0(ptr8, len8);
         } finally {
-            wasm.__wbindgen_free(deferred8_0, deferred8_1, 1);
+            wasm.__wbindgen_free(deferred9_0, deferred9_1, 1);
         }
     }
     /**

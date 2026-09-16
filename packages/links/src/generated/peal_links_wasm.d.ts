@@ -87,7 +87,7 @@ export class Prover {
      * wallet is now pending and must be persisted before submission.
      */
     send(wallet_json: string, amount: string, to: string, root: string, reference?: string | null): any;
-    sign_request(wallet_json: string, request_id: string, amount: string, title: string, display_name: string, reference?: string | null, expires_at?: bigint | null): string;
+    sign_request(wallet_json: string, request_id: string, amount: string, title: string, display_name: string, receiver_address: string, reference?: string | null, expires_at?: bigint | null): string;
     unlock_wallet(locked_json: string, key_hex: string): string;
     unwrap_key(wrapped_json: string, passphrase: string): string;
     /**
@@ -152,7 +152,7 @@ export interface InitOutput {
     readonly prover_register_envelope: (a: number, b: number, c: number) => [number, number, number, number];
     readonly prover_seal_receipt: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: bigint, i: number, j: number) => [number, number, number, number];
     readonly prover_send: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number];
-    readonly prover_sign_request: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: bigint) => [number, number, number, number];
+    readonly prover_sign_request: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: bigint) => [number, number, number, number];
     readonly prover_unlock_wallet: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly prover_unwrap_key: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly prover_verify_receipt: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];

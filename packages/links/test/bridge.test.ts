@@ -11,19 +11,16 @@ import { createLocalProver } from '../src/local.js';
 import {
   ERC20_ABI,
   GATEWAY_ABI,
-  LinksAccount,
   loadParams,
-  MemoryStore,
   NodeClient,
   type AsyncProver,
   type LinksStatus,
   type NamespaceInfo,
 } from '../src/index.js';
+import { evmAccount, setupAccount, URL_ } from './helpers.js';
 
-const URL_ = process.env.LINKS_URL ?? 'http://127.0.0.1:8790';
 const RPC_A = process.env.ANVIL_A ?? 'http://127.0.0.1:8545';
 const RPC_B = process.env.ANVIL_B ?? 'http://127.0.0.1:8546';
-const PASS = 'correct horse battery staple';
 // anvil account 1 (public test key), funded with tUSD by the stack script.
 const KEY = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d';
 
@@ -84,9 +81,9 @@ describe('peal-links bridge (real deposits and withdrawals on two local chains)'
     const walletBefore = await pc.readContract({ address: token, abi: ERC20_ABI, functionName: 'balanceOf', args: [account.address] });
     expect(walletBefore).toBeGreaterThan(0n);
 
-    // Alice: intent first, then the on-chain deposit carrying the receipt.
-    const alice = await LinksAccount.create({ prover, client, namespace: nsA.id, store: new MemoryStore() }, status.circuit_id, PASS);
-    await alice.register();
+    // Alice: one profile signature sets the account up; intent first, then
+    // the on-chain deposit carrying the receipt.
+    const { account: alice } = await setupAccount(prover, nsA, status.circuit_id, account, 'Alice', 'wallet-signature');
     const amount = 25_000_000n; // 25.000000 tUSD
     const { receipt } = await alice.prepareDeposit(amount.toString());
     const approve = await wc.writeContract({ address: token, abi: ERC20_ABI, functionName: 'approve', args: [gateway, amount] });
@@ -121,18 +118,9 @@ describe('peal-links bridge (real deposits and withdrawals on two local chains)'
     expect((await alice.view()).balance).toBe(amount.toString());
 
     // Bob receives a private payment, then withdraws part of it to chain A.
-    const bob = await LinksAccount.create({ prover, client, namespace: nsA.id, store: new MemoryStore() }, status.circuit_id, PASS);
-    await bob.register();
-    const bobClient = new NodeClient({ baseUrl: URL_ });
-    // Bob needs a session to publish a request; sign in as anvil account 2.
-    const bobEvm = privateKeyToAccount('0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a');
-    const { nonce } = await bobClient.nonce();
-    const { siweMessage } = await import('../src/index.js');
-    const msg = siweMessage({ domain: 'localhost:5173', address: bobEvm.address, uri: 'http://localhost:5173/bonsai/app', chainId: nsA.chain_id, nonce });
-    await bobClient.session(msg, await bobEvm.signMessage({ message: msg }));
-    const bobSigned = await LinksAccount.open({ prover, client: bobClient, namespace: nsA.id, store: (bob as unknown as { store: MemoryStore }).store }, PASS);
-    const req = await bobSigned.createRequest({ amount: '10000000', title: 'Ten', displayName: 'Bob' });
-    await alice.pay(req, 'intent-bridge-1');
+    const { account: bob } = await setupAccount(prover, nsA, status.circuit_id, evmAccount(2), 'Bob', 'recovery-code');
+    const req = await bob.createRequest({ amount: '10000000', title: 'Ten' });
+    await alice.pay({ request: req }, 'intent-bridge-1');
     await bob.sync();
     await bob.claim(0);
     expect((await bob.view()).balance).toBe('10000000');

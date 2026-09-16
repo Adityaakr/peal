@@ -158,13 +158,14 @@ function privacy(): string {
             <tbody>
               <tr><td data-label="who">the public ledger</td><td data-label="sees">which account acted, and when</td><td data-label="does not see">the amount, the other party, whether it was a send or a receive</td></tr>
               <tr><td data-label="who">the backing chain</td><td data-label="sees">deposits and withdrawals: address, amount, token</td><td data-label="does not see">which private account a deposit went to, or which payments happened in between</td></tr>
-              <tr><td data-label="who">the payer</td><td data-label="sees">the amount, your account id and your display name</td><td data-label="does not see">your balance, your other payments</td></tr>
-              <tr><td data-label="who">you, the receiver</td><td data-label="sees">the amount and the payer's account id</td><td data-label="does not see">the payer's balance or their other payments</td></tr>
+              <tr><td data-label="who">the payer</td><td data-label="sees">the amount, your display name and your wallet address</td><td data-label="does not see">your balance, your other payments</td></tr>
+              <tr><td data-label="who">you, the receiver</td><td data-label="sees">the amount and, for a payment to your address, who paid</td><td data-label="does not see">the payer's balance or their other payments</td></tr>
+              <tr><td data-label="who">Peal's directory</td><td data-label="sees">which wallet address owns which private account: the signed receiving profile you publish so others can pay your address</td><td data-label="does not see">your payments, amounts or balance</td></tr>
               <tr><td data-label="who">Peal's services</td><td data-label="sees">request titles and amounts you publish, when a request is viewed, encrypted receipt envelopes, submission times and IP addresses</td><td data-label="does not see">the contents of receipts, your spending key, your balance</td></tr>
             </tbody>
           </table>
         </div>
-        <p class="pl-small" style="margin-top:14px">Not hidden: that your account was active, the timing of your submissions, and the metadata of the connection you submit over. Peal Links does not claim anonymity or metadata privacy. The full observer matrix is in the repository under <span class="pl-mono">docs/peal-links/THREAT_MODEL.md</span>.</p>
+        <p class="pl-small" style="margin-top:14px">Your wallet is your only visible identity here, and Peal's directory links it to your private account so others can pay you; that is a service that knows the link, not cryptographic unlinkability. Not hidden: that your account was active, the timing of your submissions, and the metadata of the connection you submit over. Peal Links does not claim anonymity or metadata privacy. The full observer matrix is in the repository under <span class="pl-mono">docs/peal-links/THREAT_MODEL.md</span>.</p>
       </div>
     </section>`;
 }

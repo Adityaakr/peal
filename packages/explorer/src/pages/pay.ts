@@ -1,18 +1,22 @@
 // Peal Links: public checkout (#/pay/:requestId).
 //
 // Readable without a wallet. The manifest's signature is verified in the
-// payer's own wasm before the amount is trusted; the display name is shown
-// as what it is (self-chosen). Paying needs a private account with enough
-// balance: a first-time payer sets one up right here, and funds it, and the
-// page says so instead of hiding the dependency. Every terminal state is
-// its own honest screen.
+// payer's own wasm before the amount is trusted, and once the payer is
+// signed in the signing key is checked against the payee's receiving
+// profile in the directory, so the shortened wallet address shown is the
+// verified part; the display name is what the payee chose. Paying is one
+// continuous flow: if the private balance is short, the wallet funds the
+// difference and the payment follows ("Approve payment", "Adding funds",
+// "Preparing payment", "Payment sent"). Progress and intent ids persist so
+// a reload resumes without paying twice. Every terminal state is its own
+// honest screen.
 import type { LinksAccount, PaymentRequest } from 'peal-links';
-import { depositOnChain, LinksApiError, newIntentId, tokenBalance } from 'peal-links';
+import { depositOnChain, LinksApiError, newIntentId, paymentIntentTypedData, providerSigner, publicClientFor, tokenBalance } from 'peal-links';
 import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, injectedProvider, onAuthChange, session } from '../auth';
 import { esc } from '../util';
-import { describeError, formatUnits, fmtTime, parseUnits, shortHex } from '../links/format';
-import { client, createAccount, links, loadStatus, onLinksChange, openAccount } from '../links/session';
+import { describeError, formatUnits, fmtTime, shortHex } from '../links/format';
+import { acknowledgeRecoveryCode, activate, client, links, loadStatus, onLinksChange, recoverWithCode, resumeSignIn } from '../links/session';
 import '../links.css';
 
 function setMeta(name: string, content: string): () => void {
@@ -42,21 +46,23 @@ function initials(name: string): string {
   );
 }
 
-type Stage = 'idle' | 'setup' | 'funding' | 'preparing' | 'proving' | 'submitted' | 'accepted' | 'delivered' | 'delivery_pending' | 'rejected';
+/** The addendum's progress labels, only the applicable ones. */
+type Stage = 'idle' | 'approve' | 'funding' | 'preparing' | 'sent' | 'sent_queued';
 
 interface PayState {
   request: PaymentRequest | null;
   manifestOk: boolean | null;
+  /** The manifest's signing key matches the payee's directory profile. */
+  profileOk: boolean | null;
   stage: Stage;
   error: string | null;
   busy: string | null;
   balance: string | null;
   position: number | null;
   intentId: string;
-  /** Funding dialog open, and the chain-side progress line. */
-  funding: boolean;
-  fundingNote: string | null;
   walletTokenBalance: string | null;
+  /** Estimated network fee for the funding leg, in wei, when funding is needed. */
+  feeWei: string | null;
 }
 
 const REQUEST_ID = /^[a-z2-7]{24}$/;
@@ -93,22 +99,48 @@ function markPaid(requestId: string, position: number): void {
   }
 }
 
-function stageList(stage: Stage): string {
-  const steps: Array<[Stage[], string]> = [
-    [['preparing'], 'checking the signed request and reserving it'],
-    [['proving'], 'proving the payment on this device (about 7 s)'],
-    [['submitted'], 'submitting to the ledger'],
-    [['accepted'], 'accepted by the ledger'],
-    [['delivered', 'delivery_pending'], 'delivering the encrypted receipt'],
+/** Funding in progress for this request: survives a reload so the page
+ * resumes waiting for the credit instead of starting a second deposit. */
+function fundingMarker(requestId: string): string | null {
+  try {
+    return sessionStorage.getItem(`peal-links:funding:${requestId}`);
+  } catch {
+    return null;
+  }
+}
+
+function setFundingMarker(requestId: string, receipt: string | null): void {
+  try {
+    if (receipt) sessionStorage.setItem(`peal-links:funding:${requestId}`, receipt);
+    else sessionStorage.removeItem(`peal-links:funding:${requestId}`);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function stageList(stage: Stage, needsFunds: boolean): string {
+  const steps: Array<[Stage, string]> = [
+    ['approve', 'Approve payment'],
+    ...(needsFunds ? ([['funding', 'Adding funds']] as Array<[Stage, string]>) : []),
+    ['preparing', 'Preparing payment'],
+    ['sent', 'Payment sent'],
   ];
-  const order: Stage[] = ['preparing', 'proving', 'submitted', 'accepted', 'delivered'];
-  const idx = order.indexOf(stage === 'delivery_pending' ? 'delivered' : stage);
+  const order = steps.map(([s]) => s);
+  const current = stage === 'sent_queued' ? 'sent' : stage;
+  const idx = order.indexOf(current);
   return `<ul class="pl-steps">${steps
-    .map(([ss, label], i) => {
-      const cls = i < idx || stage === 'delivered' ? 'pl-step-done' : ss.includes(stage) ? 'pl-step-active' : '';
+    .map(([s, label], i) => {
+      const cls = i < idx || current === 'sent' ? 'pl-step-done' : s === current ? 'pl-step-active' : '';
       return `<li class="pl-step ${cls}">${label}</li>`;
     })
     .join('')}</ul>`;
+}
+
+function fmtEth(wei: string): string {
+  const w = BigInt(wei);
+  const whole = w / 10n ** 18n;
+  const frac = (w % 10n ** 18n).toString().padStart(18, '0').slice(0, 6).replace(/0+$/, '') || '0';
+  return `${whole}.${frac}`;
 }
 
 function html(s: PayState): string {
@@ -121,12 +153,13 @@ function html(s: PayState): string {
   const symbol = ns ? ns.token_symbol : 'units';
   const expired = m.expires_at !== null && m.expires_at * 1000 < Date.now();
   const state = s.request.status === 'fulfilled' ? 'fulfilled' : s.request.status === 'archived' ? 'archived' : expired || s.request.status === 'expired' ? 'expired' : !ns ? 'unavailable' : 'payable';
+  const evm = session();
 
   const paidHere = s.position ?? paidMarker(m.request_id);
   const stateLine = {
     payable:
       paidHere !== null
-        ? `<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>paid from this device · receipt #${paidHere} · awaiting the payee's claim</span>`
+        ? `<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>paid from this device · awaiting the payee's claim</span>`
         : s.request.reserved && s.stage === 'idle'
           ? `<span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>someone is completing this payment right now</span>`
           : `<span class="pl-status"><span class="pl-status-dot"></span>awaiting payment</span>`,
@@ -139,69 +172,80 @@ function html(s: PayState): string {
   const manifestLine =
     s.manifestOk === null
       ? `<span class="pl-small">checking signature…</span>`
-      : s.manifestOk
-        ? `<span class="pl-small">signed by the payee's account · verified on this device</span>`
-        : `<span class="pl-status pl-status-bad"><span class="pl-status-dot"></span>signature does not verify: do not pay</span>`;
+      : !s.manifestOk
+        ? `<span class="pl-status pl-status-bad"><span class="pl-status-dot"></span>signature does not verify: do not pay</span>`
+        : s.profileOk === false
+          ? `<span class="pl-status pl-status-bad"><span class="pl-status-dot"></span>the payee's wallet did not authorize this request's key: do not pay</span>`
+          : s.profileOk
+            ? `<span class="pl-small">signed by the payee's account · wallet authorization verified on this device</span>`
+            : `<span class="pl-small">signed by the payee's account · verified on this device</span>`;
+
+  const needsFunds = s.balance !== null && BigInt(s.balance) < BigInt(m.amount);
+  const shortfall = needsFunds && ns ? BigInt(m.amount) - BigInt(s.balance!) : 0n;
 
   let action = '';
   if (state === 'payable' && s.manifestOk && paidHere === null && s.stage === 'idle' && s.request.reserved) {
     action = `<p class="pl-small" style="text-align:center;margin:0">Another payer reserved this request a few minutes ago. If they do not complete it, the reservation expires and this page updates by itself.</p>`;
   } else if (state === 'payable' && s.manifestOk && paidHere !== null && s.stage === 'idle') {
     action = `<a class="pl-btn pl-btn-block" href="#/bonsai/app">Open my payments</a><p class="pl-small" style="text-align:center;margin:0">This link was paid from this browser. Paying it again would send a second payment.</p>`;
-  } else if (state === 'payable' && s.manifestOk) {
-    if (s.stage === 'delivered' || s.stage === 'delivery_pending' || s.stage === 'accepted') {
+  } else if (state === 'payable' && s.manifestOk && s.profileOk !== false) {
+    if (s.stage === 'sent' || s.stage === 'sent_queued') {
       action = `
-        <div class="pl-notice" role="status"><strong>Payment accepted by the ledger.</strong> Receipt #${s.position}. ${s.stage === 'delivered' ? 'The encrypted receipt was delivered to the payee; they will see it when they are next online.' : 'The encrypted receipt could not be delivered yet; it is queued and will be retried. The payment itself is complete.'}</div>
-        ${stageList(s.stage)}
+        <div class="pl-notice" role="status"><strong>Payment sent.</strong> ${s.stage === 'sent' ? 'The encrypted receipt was delivered to the payee; they will see it when they are next online.' : 'The encrypted receipt could not be delivered yet; it is queued and will be retried. The payment itself is complete.'}</div>
+        ${stageList(s.stage, needsFunds)}
         <a class="pl-btn pl-btn-block" href="#/bonsai/app">Open my payments</a>`;
-    } else if (s.stage === 'preparing' || s.stage === 'proving' || s.stage === 'submitted') {
-      action = `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(s.busy ?? 'working')}</span></div>${stageList(s.stage)}`;
+    } else if (s.stage !== 'idle') {
+      action = `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(s.busy ?? 'working')}</span></div>${stageList(s.stage, needsFunds)}`;
+    } else if (!evm.address) {
+      action = `<div class="pl-actions" style="margin:0"><button type="button" class="pl-btn pl-btn-primary" id="pay-login">Connect wallet</button>${injectedProvider() ? `<button type="button" class="pl-btn" id="pay-login-injected">Use browser wallet</button>` : ''}</div>
+        <p class="pl-small" style="margin:8px 0 0">Your existing wallet is all you need. Peal keeps a private account behind it; the payment hides the amount and the parties.</p>`;
     } else if (!l.account) {
-      action = l.hasStoredAccount
-        ? `<form id="pay-unlock"><label class="pl-field"><span class="pl-label">unlock your private account to pay</span><input class="pl-input" type="password" name="pass" required minlength="10" autocomplete="current-password"></label><button type="submit" class="pl-btn pl-btn-primary pl-btn-block">Unlock and continue</button></form>`
-        : `<div class="pl-notice">Paying needs a private account on the ledger. It is created here in your browser and protected by a passphrase; <strong>export a backup afterwards</strong>, because a lost browser storage cannot be recovered by a wallet connection. Then it needs funds.</div>
-           <form id="pay-create"><label class="pl-field"><span class="pl-label">passphrase (at least 10 characters)</span><input class="pl-input" type="password" name="pass" required minlength="10" autocomplete="new-password"></label><button type="submit" class="pl-btn pl-btn-primary pl-btn-block">Create private account and continue</button></form>
-           <p class="pl-small" style="text-align:center;margin:8px 0 0">Already have one? <a href="#/bonsai/app">Restore it from your backup</a>, then come back to this link.</p>`;
-    } else if (s.balance !== null && BigInt(s.balance) < BigInt(m.amount)) {
-      const short = ns ? formatUnits((BigInt(m.amount) - BigInt(s.balance)).toString(), ns.decimals) : '';
-      const evm = session();
-      const suggested = ns ? formatUnits(((BigInt(m.amount) - BigInt(s.balance) + 10n ** BigInt(ns.decimals) - 1n) / 10n ** BigInt(ns.decimals) * 10n ** BigInt(ns.decimals)).toString(), ns.decimals, 0) : '';
-      const fundForm = ns?.available
-        ? evm.address
-          ? `<form id="pay-fund-form" class="pl-notice" style="margin:0">
-               <div class="pl-small" style="margin-bottom:8px">wallet <span class="pl-mono">${esc(shortHex(evm.address, 6, 4))}</span>${s.walletTokenBalance !== null ? ` · ${formatUnits(s.walletTokenBalance, ns.decimals)} ${esc(symbol)} on ${esc(ns.chain_name)}` : ''}</div>
-               <label class="pl-field"><span class="pl-label">deposit (${esc(symbol)})</span><div class="pl-amount-input"><input class="pl-input" name="amount" inputmode="decimal" required value="${esc(suggested)}"></div><div class="pl-hint">two wallet confirmations: approve, then deposit. Credited after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}; the deposit is public on ${esc(ns.chain_name)}.</div></label>
-               ${s.fundingNote ? `<div class="pl-small" role="status" style="margin-bottom:8px"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(s.fundingNote)}</span></div>` : ''}
-               <button type="submit" class="pl-btn pl-btn-primary pl-btn-block" ${s.fundingNote ? 'disabled' : ''}>Deposit from wallet</button>
-             </form>`
-          : `<div class="pl-actions" style="margin:0"><button type="button" class="pl-btn pl-btn-primary" id="pay-login">Connect wallet</button>${injectedProvider() ? `<button type="button" class="pl-btn" id="pay-login-injected">Use browser wallet</button>` : ''}</div>
-             <p class="pl-small" style="margin:8px 0 0">Funds come from your own wallet on ${esc(ns.chain_name)} as a public deposit into the gateway.</p>`
-        : l.status.dev_mint
-          ? `<button type="button" class="pl-btn pl-btn-block" id="pay-dev-mint" title="development fixture">Add test funds (dev mint) and continue</button>`
-          : `<div class="pl-small" style="text-align:center">Deposits on ${esc(ns?.chain_name ?? 'this chain')} are not available on this node.</div>`;
-      action = `
-        <div class="pl-notice pl-notice-warn"><strong>Not enough balance.</strong> Available ${ns ? formatUnits(s.balance, ns.decimals) : s.balance} ${esc(symbol)}; this request needs ${short} ${esc(symbol)} more.</div>
-        ${fundForm}`;
+      if (l.setup === 'needs-recovery-code') {
+        action = `<form id="pay-recovery-code"><label class="pl-field"><span class="pl-label">your Peal Links recovery code</span><input class="pl-input pl-mono" name="code" required autocomplete="off" placeholder="PEAL-XXXXX-XXXXX-XXXXX-XXXXX"></label><button type="submit" class="pl-btn pl-btn-primary pl-btn-block">Open my account and continue</button></form>`;
+      } else if (l.setup !== 'idle' && l.setup !== 'no-backup') {
+        action = `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(l.setupDetail ?? 'working')}</span></div>`;
+      } else {
+        action = `${l.setupDetail ? `<div class="pl-notice pl-notice-warn">${esc(l.setupDetail)}</div>` : ''}<button type="button" class="pl-btn pl-btn-primary pl-btn-block" id="pay-activate">Continue with wallet ${esc(shortHex(evm.address, 6, 4))}</button>
+          <p class="pl-small" style="text-align:center;margin:8px 0 0">${l.hasStoredAccount ? 'Unlocks your private account on this device; no signature needed.' : 'First time: your wallet confirms one Peal Links authorization and one recovery message.'}</p>`;
+      }
+    } else if (needsFunds && ns) {
+      const short = formatUnits(shortfall.toString(), ns.decimals);
+      const fundable = ns.available && s.walletTokenBalance !== null && BigInt(s.walletTokenBalance) >= shortfall;
+      action = fundable
+        ? `<button type="button" class="pl-btn pl-btn-primary pl-btn-block" id="pay-now">Approve and pay ${esc(amount)} ${esc(symbol)}</button>
+           <p class="pl-small" style="text-align:center;margin:8px 0 0">Adds ${esc(short)} ${esc(symbol)} from your wallet to your private balance first (two wallet confirmations, public on ${esc(ns.chain_name)}; credited after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}, which can take a few minutes on slower chains), then pays privately.</p>`
+        : ns.available
+          ? `<div class="pl-notice pl-notice-warn"><strong>Not enough funds.</strong> Your private balance is ${formatUnits(s.balance!, ns.decimals)} ${esc(symbol)} and your wallet holds ${s.walletTokenBalance !== null ? formatUnits(s.walletTokenBalance, ns.decimals) : '—'} ${esc(symbol)} on ${esc(ns.chain_name)}; this request needs ${esc(short)} ${esc(symbol)} more.</div>`
+          : `<div class="pl-small" style="text-align:center">Deposits on ${esc(ns.chain_name)} are not available on this node.</div>`;
     } else {
       action = `<button type="button" class="pl-btn pl-btn-primary pl-btn-block" id="pay-now">Pay ${esc(amount)} ${esc(symbol)}</button>
-        <p class="pl-small" style="text-align:center;margin:0">Proving takes about seven seconds on this device. Nothing leaves your browser except the proof and an encrypted receipt.</p>`;
+        <p class="pl-small" style="text-align:center;margin:0">Your wallet confirms the payment; proving takes about seven seconds on this device. Nothing leaves your browser except the proof and an encrypted receipt.</p>`;
     }
   }
 
+  const feeRow = needsFunds && ns
+    ? `<div class="pl-row"><span class="pl-row-label">fees</span><span class="pl-row-value">none on the private ledger · funding leg ≈ ${s.feeWei ? `${esc(fmtEth(s.feeWei))} ETH` : 'estimating…'} network fee on ${esc(ns.chain_name)} (approve + deposit)</span></div>`
+    : `<div class="pl-row"><span class="pl-row-label">fees</span><span class="pl-row-value">none on the private ledger</span></div>`;
+
+  const codeBanner = l.newRecoveryCode
+    ? `<div class="pl-notice pl-notice-warn" role="alert" style="margin-bottom:12px"><strong>Save your recovery code now.</strong> Your wallet cannot derive a recovery key, so this code protects the backup of your private account. It is shown once and Peal never stores it.<div class="pl-share-link" style="margin-top:10px"><input class="pl-input pl-mono" readonly value="${esc(l.newRecoveryCode)}" id="pl-code"><button type="button" class="pl-btn" data-copy="${esc(l.newRecoveryCode)}">Copy</button></div><div class="pl-actions" style="margin:10px 0 0"><button type="button" class="pl-btn pl-btn-primary" id="pl-code-saved">I saved it</button></div></div>`
+    : '';
+
   return card(`
     <span class="pl-product-label">Peal Links</span>
+    ${codeBanner}
     <div class="pl-payee">
       <div class="pl-avatar" aria-hidden="true">${esc(initials(m.display_name))}</div>
       <div>
         <div class="pl-payee-name">${esc(m.display_name)}</div>
-        <div class="pl-payee-assurance">display name chosen by the payee · account <span class="pl-mono">${esc(shortHex(m.receiver_account, 8, 6))}</span></div>
+        <div class="pl-payee-assurance">wallet <span class="pl-mono">${esc(shortHex(m.receiver_address, 6, 4))}</span> · the name is chosen by the payee, the address is the verified part</div>
       </div>
     </div>
     <p class="pl-checkout-title">${esc(m.title)}</p>
     <div class="pl-amount">${esc(amount)}<span class="pl-amount-unit">${esc(symbol)}</span></div>
     <div class="pl-preview-rows">
-      <div class="pl-row"><span class="pl-row-label">network</span><span class="pl-row-value">${ns ? `${esc(ns.chain_name)}${ns.environment !== 'mainnet' ? ` · ${esc(ns.environment)} funds` : ''}` : 'unknown asset domain'}</span></div>
-      <div class="pl-row"><span class="pl-row-label">fee</span><span class="pl-row-value">none on the private ledger</span></div>
+      <div class="pl-row"><span class="pl-row-label">route</span><span class="pl-row-value">${ns ? `private payment on the Peal ledger · ${esc(ns.token_symbol)} from ${esc(ns.chain_name)}${ns.environment !== 'mainnet' ? ` · ${esc(ns.environment)} funds` : ''}` : 'unknown asset domain'}</span></div>
+      ${feeRow}
       ${m.reference ? `<div class="pl-row"><span class="pl-row-label">reference</span><span class="pl-row-value">${esc(m.reference)}</span></div>` : ''}
       <div class="pl-row"><span class="pl-row-label">created</span><span class="pl-row-value">${esc(fmtTime(m.created_at))}</span></div>
       ${m.expires_at ? `<div class="pl-row"><span class="pl-row-label">expires</span><span class="pl-row-value">${esc(fmtTime(m.expires_at))}</span></div>` : ''}
@@ -215,16 +259,13 @@ function html(s: PayState): string {
 }
 
 export function renderPay(root: HTMLElement, requestId: string): () => void {
-  const l0Namespace = () => {
-    const l = links();
-    return l.status?.namespaces.find((n) => n.id === s.request?.manifest.namespace) ?? null;
-  };
   const previousTitle = document.title;
   document.title = 'Peal Links. payment request';
   const unmeta = [setMeta('robots', 'noindex, nofollow'), setMeta('referrer', 'no-referrer')];
   let stale = false;
-  const s: PayState = { request: null, manifestOk: null, stage: 'idle', error: null, busy: null, balance: null, position: null, intentId: intentFor(requestId), funding: false, fundingNote: null, walletTokenBalance: null };
+  const s: PayState = { request: null, manifestOk: null, profileOk: null, stage: 'idle', error: null, busy: null, balance: null, position: null, intentId: intentFor(requestId), walletTokenBalance: null, feeWei: null };
   const cleanups: Array<() => void> = [];
+  const nsOf = () => links().status?.namespaces.find((n) => n.id === s.request?.manifest.namespace) ?? null;
   const paint = () => {
     if (stale) return;
     const active = document.activeElement as HTMLInputElement | null;
@@ -263,6 +304,38 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     }
   };
 
+  const refreshWalletBalance = async () => {
+    const evm = session();
+    const ns = nsOf();
+    if (!ns || !evm.address || !evm.provider || !ns.available) {
+      s.walletTokenBalance = null;
+      return;
+    }
+    try {
+      s.walletTokenBalance = (await tokenBalance(ns, evm.address as Address, evm.provider as unknown as EIP1193Provider)).toString();
+      const pc = publicClientFor(ns, evm.provider as unknown as EIP1193Provider);
+      const gasPrice = await pc.getGasPrice();
+      // approve (about 50k gas) plus deposit (about 90k): an estimate shown
+      // before any authorization, labelled as such.
+      s.feeWei = (gasPrice * 150_000n).toString();
+    } catch {
+      s.walletTokenBalance = null;
+    }
+  };
+
+  /** Once signed in, check the manifest's signing key against the payee's
+   * directory profile. Not signed in: the wasm signature check stands alone. */
+  const checkProfile = async () => {
+    const l = links();
+    if (!s.request || !l.signedIn || s.profileOk !== null) return;
+    try {
+      const entry = await client.profile(s.request.manifest.namespace, s.request.manifest.receiver_address);
+      s.profileOk = !!entry && entry.profile.profile_key === s.request.manifest.signer_pubkey && entry.profile.account === s.request.manifest.receiver_account && !entry.profile.revoked;
+    } catch {
+      /* rate limited or offline: leave undecided */
+    }
+  };
+
   const run = async (label: string, stage: Stage | null, f: () => Promise<void>) => {
     s.busy = label;
     s.error = null;
@@ -271,9 +344,9 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     try {
       await f();
     } catch (e) {
-      const ns = l0Namespace();
+      const ns = nsOf();
       s.error = e instanceof LinksApiError && e.code === 'reserved' ? 'Someone else is completing this payment right now. Try again in a few minutes.' : describeError(e, ns?.chain_name, ns?.chain_id);
-      if (s.stage !== 'accepted' && s.stage !== 'delivered' && s.stage !== 'delivery_pending') s.stage = 'idle';
+      if (s.stage !== 'sent' && s.stage !== 'sent_queued') s.stage = 'idle';
     } finally {
       s.busy = null;
       await refreshBalance().catch(() => {});
@@ -281,88 +354,80 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     }
   };
 
+  /** The whole flow: approve (a local wallet intent), add funds if the
+   * private balance is short, prepare (prove and submit), sent. */
   const pay = async (account: LinksAccount) => {
     const req = await client.getRequest(requestId, s.intentId);
     s.request = req;
-    await run('checking the request and reserving it', 'preparing', async () => {
-      // The SDK verifies the manifest, reserves, proves, submits, delivers.
-      s.stage = 'proving';
-      s.busy = 'proving the payment on this device';
+    const ns = nsOf()!;
+    const evm = session();
+    if (!evm.address || !evm.provider) throw new Error('connect a wallet first');
+    await run('confirm the payment in your wallet', 'approve', async () => {
+      const signer = providerSigner(evm.provider!, evm.address!, ns.chain_id);
+      const intent = await account.paymentIntentFor({ request: req });
+      const signature = await signer.signTypedData(paymentIntentTypedData(intent, ns.chain_id));
+      // Funding leg, only when needed; resumes a deposit that is already on
+      // chain (marker) instead of making a second one.
+      let balance = (await account.view()).balance;
+      if (BigInt(balance) < BigInt(req.manifest.amount)) {
+        s.stage = 'funding';
+        let receipt = fundingMarker(requestId);
+        if (!receipt) {
+          const unit = 10n ** BigInt(ns.decimals);
+          const need = BigInt(req.manifest.amount) - BigInt(balance);
+          const topUp = ((need + unit - 1n) / unit) * unit; // whole units, so the balance reads cleanly
+          s.busy = 'adding funds: proving the deposit intent';
+          paint();
+          const prepared = await account.prepareDeposit(topUp.toString(), `for link ${requestId.slice(0, 8)}`);
+          receipt = prepared.receipt;
+          setFundingMarker(requestId, receipt);
+          s.busy = 'adding funds: confirm the approval and the deposit in your wallet';
+          paint();
+          await depositOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, topUp, receipt);
+        }
+        s.busy = `adding funds: waiting for ${ns.confirmations} confirmation${ns.confirmations === 1 ? '' : 's'} on ${ns.chain_name} and the ledger credit (this can take minutes on slower chains)`;
+        paint();
+        let credited = false;
+        for (let i = 0; i < 300 && !stale; i++) {
+          if ((await account.syncDeposits()).length) {
+            credited = true;
+            break;
+          }
+          const v = await account.view();
+          if (v.receipts.some((r) => r.receipt === receipt)) {
+            credited = true;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+        if (!credited) throw new Error('the deposit was not credited in time; it will appear under incoming on your payments page, and this link can be paid then');
+        await account.verifyReceipts();
+        const v = await account.view();
+        const idx = v.receipts.findIndex((r) => r.receipt === receipt && r.status === 'unclaimed');
+        if (idx >= 0) {
+          s.busy = 'adding funds: claiming the deposit (proving on this device, about 7 s)';
+          paint();
+          await account.claim(idx);
+        }
+        setFundingMarker(requestId, null);
+        balance = (await account.view()).balance;
+        if (BigInt(balance) < BigInt(req.manifest.amount)) throw new Error('funds were added but the balance is still short; try again');
+      }
+      s.stage = 'preparing';
+      s.busy = 'preparing the payment: proving on this device (about 7 s)';
       paint();
-      const res = await account.pay(req, s.intentId);
+      const res = await account.pay({ request: req }, s.intentId, { intent, signature });
       s.position = res.position;
       markPaid(requestId, res.position);
-      s.stage = res.delivered ? 'delivered' : 'delivery_pending';
+      s.stage = res.delivered ? 'sent' : 'sent_queued';
     });
-  };
-
-  const refreshWalletBalance = async () => {
-    const l = links();
-    const evm = session();
-    const ns = l.status?.namespaces.find((n) => n.id === s.request?.manifest.namespace);
-    if (!ns || !evm.address || !evm.provider || !ns.available) {
-      s.walletTokenBalance = null;
-      return;
-    }
-    try {
-      s.walletTokenBalance = (await tokenBalance(ns, evm.address as Address, evm.provider as unknown as EIP1193Provider)).toString();
-    } catch {
-      s.walletTokenBalance = null;
-    }
   };
 
   root.addEventListener('submit', (ev) => {
     ev.preventDefault();
     const form = ev.target as HTMLFormElement;
     const data = new FormData(form);
-    const pass = String(data.get('pass') ?? '');
-    const l = links();
-    if (form.id === 'pay-unlock') void run('unlocking', null, async () => void (await openAccount(pass)));
-    else if (form.id === 'pay-create') void run('creating your private account and registering it', null, async () => void (await createAccount(pass)));
-    else if (form.id === 'pay-fund-form' && l.account && s.request) {
-      const ns = l.status!.namespaces.find((n) => n.id === s.request!.manifest.namespace)!;
-      const amount = parseUnits(String(data.get('amount') ?? ''), ns.decimals);
-      const evm = session();
-      if (!amount || amount === '0' || !evm.address || !evm.provider) {
-        s.error = 'enter an amount and connect a wallet';
-        paint();
-        return;
-      }
-      const account = l.account;
-      void (async () => {
-        s.error = null;
-        try {
-          s.fundingNote = 'proving the deposit intent';
-          paint();
-          const { receipt } = await account.prepareDeposit(amount);
-          s.fundingNote = 'confirm the approval and the deposit in your wallet';
-          paint();
-          const tx = await depositOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, BigInt(amount), receipt);
-          s.fundingNote = `deposit confirmed on chain (${shortHex(tx.depositHash, 8, 6)}); waiting for ${ns.confirmations} confirmation${ns.confirmations === 1 ? '' : 's'} and the ledger credit`;
-          paint();
-          // Poll until the watcher credits the intent, then claim it.
-          for (let i = 0; i < 120; i++) {
-            const credited = await account.syncDeposits();
-            if (credited.length) break;
-            await new Promise((r) => setTimeout(r, 1000));
-          }
-          await account.verifyReceipts();
-          const v = await account.view();
-          const idx = v.receipts.findIndex((r) => r.receipt === receipt && r.status === 'unclaimed');
-          if (idx < 0) throw new Error('the deposit was not credited in time; it will appear under incoming receipts once the watcher sees it');
-          s.fundingNote = 'claiming the deposit: proving on this device (about 7 s)';
-          paint();
-          await account.claim(idx);
-          s.fundingNote = null;
-        } catch (e) {
-          s.fundingNote = null;
-          s.error = describeError(e, ns.chain_name, ns.chain_id);
-        }
-        await refreshBalance().catch(() => {});
-        await refreshWalletBalance();
-        paint();
-      })();
-    }
+    if (form.id === 'pay-recovery-code') void run('opening your account with the recovery code', null, async () => void (await recoverWithCode(String(data.get('code') ?? ''))));
   });
 
   root.addEventListener('click', (ev) => {
@@ -372,30 +437,18 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     if (btn.id === 'pay-now' && l.account) void pay(l.account);
     else if (btn.id === 'pay-login') session().login();
     else if (btn.id === 'pay-login-injected') void connectInjected().then(refreshWalletBalance).then(paint).catch((e) => { s.error = describeError(e); paint(); });
-    else if (btn.id === 'pay-dev-mint' && l.account && s.request) {
-      const account = l.account;
-      const m = s.request.manifest;
-      void run('crediting test funds and claiming them (two proofs, about 8 s)', null, async () => {
-        const need = BigInt(m.amount) - BigInt(s.balance ?? '0');
-        const ns = l.status!.namespaces.find((n) => n.id === m.namespace)!;
-        // Round up to a whole unit so the balance reads cleanly.
-        const unit = 10n ** BigInt(ns.decimals);
-        const amount = ((need + unit - 1n) / unit) * unit;
-        const { receipt } = await account.prepareDeposit(amount.toString(), 'test funds (dev mint)');
-        await client.devMint(m.namespace, receipt);
-        await account.sync();
-        const v = await account.view();
-        const idx = v.receipts.findIndex((r) => r.receipt === receipt && r.status === 'unclaimed');
-        if (idx >= 0) await account.claim(idx);
-      });
-    } else if (btn.id === 'pay-fund') {
-      s.error = 'On-chain funding arrives with the chain gateway (Phase D).';
+    else if (btn.id === 'pay-activate') void run('setting up private payments for your wallet', null, async () => void (await activate()));
+    else if (btn.id === 'pl-code-saved') {
+      acknowledgeRecoveryCode();
       paint();
-    }
+    } else if (btn.dataset.copy) void navigator.clipboard?.writeText(btn.dataset.copy);
   });
 
   const unsub = onLinksChange(() => {
-    void refreshBalance().then(paint);
+    void refreshBalance()
+      .then(checkProfile)
+      .then(paint)
+      .catch(() => paint());
   });
   const unsubAuth = onAuthChange(() => {
     void refreshWalletBalance().then(paint);
@@ -403,6 +456,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
 
   void (async () => {
     await loadStatus();
+    await resumeSignIn();
     try {
       s.request = await client.getRequest(requestId, s.intentId);
     } catch (e) {
@@ -421,6 +475,15 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
       s.manifestOk = true;
     } catch {
       s.manifestOk = false;
+    }
+    await checkProfile();
+    await refreshWalletBalance();
+    // A signed-in wallet with an account on this device continues by itself
+    // (an unlock, no prompt), so a reload mid-checkout resumes where it was.
+    const l = links();
+    const evm = session();
+    if (!l.account && l.hasStoredAccount && l.signedIn && evm.address && l.signedIn.toLowerCase() === evm.address.toLowerCase()) {
+      await activate().catch(() => {});
     }
     await refreshBalance().catch(() => {});
     paint();
