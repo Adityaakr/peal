@@ -40,6 +40,7 @@ Repository tooling: Rust workspace (`Cargo.toml`, crates in `crates/`), pnpm 11 
 - Dev server: `pnpm -C packages/explorer dev` (vite, proxies `/v0`, `/v1` to the coordinator and `/links` to the Peal Links node).
 - Test (unit / integration / e2e): `cargo test --workspace` (Rust); `pnpm -r test` (TS, vitest); `cd contracts && forge test` (Solidity); `pnpm -C packages/explorer test:e2e` (Playwright, needs the local stack up).
 - Lint and typecheck: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings`; `pnpm -r typecheck`; `pnpm -C packages/explorer build` (tsc + vite).
-- Local stack up / down / reset: `scripts/peal-links/stack.sh up|down|reset` (two anvil chains, gateway deploys, ledger node, explorer).
+- Local stack up / down / reset: `scripts/peal-links/stack.sh up|down|reset` (two anvil chains, gateway deploys, ledger node, explorer). `PEAL_LINKS_VALIDATORS=3` runs three consensus validators instead of one node; `scripts/peal-links/stack.sh consensus` compares them.
+- Consensus crate tests (deterministic, four simulated validators): `cargo test -p peal-links-consensus`.
 - Full demo flow: `scripts/peal-links/demo.sh` (brings the stack up and drives request, deposit, pay, claim, withdraw with test funds).
 - Smoke check: `cargo test -p peal-bonsai --release` (pinned zk-pari send and receive on the persistent ledger).

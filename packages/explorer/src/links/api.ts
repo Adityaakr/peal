@@ -39,7 +39,8 @@ export interface LinksStatus {
   /** How the proving keys were made. */
   setup: 'local-dev' | 'ceremony';
   /** `single-node` is a development mode, never a decentralised claim. */
-  ledger_mode: 'single-node' | 'multi-node';
+  ledger_mode: string;
+  consensus: null | { validator: string; validators: string[]; height: number; head: string; state_root: string };
   namespaces: NamespaceInfo[];
   ledgers: Array<{ namespace: string; seq: number; receipt_count: number; state_root: string; receipt_root: string }>;
 }

@@ -120,6 +120,11 @@ pub enum Message {
     Drop {
         id: Id,
     },
+    /// Build the block now, after the idle wait.
+    ProposeNow {
+        context: Ctx,
+        response: oneshot::Sender<Digest>,
+    },
     Tick,
 }
 
@@ -329,6 +334,7 @@ where
 }
 
 const REQUEST_RETRY: Duration = Duration::from_millis(500);
+const IDLE_PROPOSE_DELAY: Duration = Duration::from_millis(400);
 const BLOCK_CACHE_DEPTH: u64 = 2_000;
 
 impl<E, S> Actor<E, S>
@@ -403,7 +409,21 @@ where
 
     fn on_message(&mut self, msg: Message) {
         match msg {
-            Message::Propose { context, response } => self.on_propose(context, response),
+            Message::Propose { context, response } => {
+                if self.mempool.is_empty() {
+                    // Nothing to order: wait a little before proposing an
+                    // empty block, so an idle chain advances a few times a
+                    // second rather than as fast as the engine can turn.
+                    let back = self.self_tx.clone();
+                    self.context.child("idle").spawn(move |ctx| async move {
+                        ctx.sleep(IDLE_PROPOSE_DELAY).await;
+                        let _ = back.send(Message::ProposeNow { context, response });
+                    });
+                } else {
+                    self.on_propose(context, response)
+                }
+            }
+            Message::ProposeNow { context, response } => self.on_propose(context, response),
             Message::Verify {
                 context,
                 payload,
@@ -756,14 +776,22 @@ where
                 let head = self.cfg.state.lock().expect("state lock").head();
                 self.head = head;
                 let ok = results.iter().filter(|r| r.is_ok()).count();
-                info!(
-                    height = head.height,
-                    digest = hex::encode(id),
-                    txs = results.len(),
-                    accepted = ok,
-                    state_root = hex::encode(head.root),
-                    "block finalized and applied"
-                );
+                if results.is_empty() {
+                    debug!(
+                        height = head.height,
+                        digest = hex::encode(id),
+                        "empty block applied"
+                    );
+                } else {
+                    info!(
+                        height = head.height,
+                        digest = hex::encode(id),
+                        txs = results.len(),
+                        accepted = ok,
+                        state_root = hex::encode(head.root),
+                        "block finalized and applied"
+                    );
+                }
                 for (tx, result) in cached.block.txs.iter().zip(results) {
                     let tx_id = tx.id();
                     self.remove_from_mempool(&tx_id);

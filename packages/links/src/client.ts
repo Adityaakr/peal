@@ -33,11 +33,17 @@ export interface LinksStatus {
   version: string;
   circuit_id: string;
   setup: 'local-dev' | 'ceremony';
-  ledger_mode: 'single-node' | 'multi-node';
+  /** `single-node`, or `simplex-N-validators` when the ledger is replicated
+   * by a Commonware simplex validator set (decision 0010). */
+  ledger_mode: string;
+  /** This validator's consensus view, or null in single-node mode. */
+  consensus: null | { validator: string; validators: string[]; height: number; head: string; state_root: string; genesis: string; mempool: number };
   dev_mint: boolean;
-  /** `single-process-fixture`: every settlement signer key is held by the
+  /** `one-key-per-validator`: each local validator process holds one key and
+   * the others co-sign after checking their own replicated ledger.
+   * `single-process-fixture`: every settlement signer key is held by the
    * node (local demo). `none`: no withdrawals. */
-  signer_mode: 'single-process-fixture' | 'none';
+  signer_mode: 'single-process-fixture' | 'one-key-per-validator' | 'none';
   signers: string[];
   signer_threshold: number;
   namespaces: NamespaceInfo[];

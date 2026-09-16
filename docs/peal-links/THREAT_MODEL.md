@@ -36,6 +36,8 @@ Legend: **sees** = learns directly; **link** = can correlate; blank = does not l
 - **Watcher** (`crates/peal-links-node/src/watcher.rs`): verifies chain id and contract code before marking a namespace available; credits only events from the configured gateway and token, at least `confirmations` blocks deep, deduplicated by `chain:tx:logIndex`; detects a changed block hash under its cursor and rewinds; a deposit whose amount differs from its registered intent is never credited (recorded as `wrong_amount`).
 - **Settlement** (`settlement.rs`): every signer checks the burn opening against the ledger leaf, the claim signature, and the account before signing; positions are consumed exactly once by a primary key; the message names the gateway's current epoch.
 - **Product API (Phase E)**: signed request manifests, EIP-4361-style session auth, idempotency keys bound to contents, rate limits, no secrets in logs.
+- **Consensus** (`crates/peal-links-consensus`, decision 0010): a block is voted for only if its round, parent and height match the engine's context and every envelope passes the ledger's stateless checks (namespace, circuit, signature, canonical encoding, proof against the claimed commitment); a mint is voted for only if the validator's own RPC shows the deposit event, from the configured gateway and token, with the intent's amount and receipt, `confirmations` deep. Application at finalization goes through the same ledger code and re-verifies every proof, so a validator set cannot make the ledger accept what the STF refuses; it can only choose the order. Blocks and transactions are identified by the hash of their bytes; genesis binds the circuit id and the namespace set.
+- **Distributed settlement** (`sign_for_peer`): a validator co-signs a withdrawal only after `SignerPolicy::check` against its own replicated ledger, after matching the message to the claim and to its own namespace configuration, and after reading the gateway epoch from its own RPC; it records the digest it attested per position and refuses a different one.
 
 ## Threats considered in Phase A (with the test that exercises them)
 
@@ -75,8 +77,9 @@ Legend: **sees** = learns directly; **link** = can correlate; blank = does not l
 - Which account acts, and when, is visible to the ledger and anyone reading its log.
 - Deposit and withdrawal amounts and EVM addresses are public.
 - Submission metadata (IP, timing) can link operations to people.
-- The ledger operator can censor or delay; a single-node ledger is a development mode, not a decentralized service.
-- The settlement committee can release reserves incorrectly if a threshold of signers is compromised (decision 0005). Locally the committee is a single-process fixture inside the node, which is no separation at all.
+- The ledger operator can censor or delay. In single-node mode that is one process; in validator mode the leader of a view chooses what to include and a set of three validators tolerates no faulty member (four would tolerate one). All validators run on one machine under one operator: the consensus path works, the decentralisation does not exist yet.
+- The settlement committee can release reserves incorrectly if a threshold of signers is compromised (decision 0005). Locally the committee is either a single-process fixture inside the node or one key per local validator process; neither is independent custody.
+- Consensus liveness depends on every validator's chain view: a validator whose RPC lags votes against mints it cannot confirm, and one whose RPC is down abstains. Three validators with one abstaining cannot finalize.
 - The gateway owner can rotate the signer set, so the owner key is equivalent to the committee after one rotation; production needs a timelock and multisig on it.
 - Deposits credited under the confirmation policy and later reorged away are the accepted risk of that policy.
 - Simulation extractability of ZK-Pari is asserted, not proven (RESEARCH.md); a passing test suite does not change that.

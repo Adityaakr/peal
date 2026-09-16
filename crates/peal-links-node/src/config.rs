@@ -81,6 +81,33 @@ pub fn is_address(s: &str) -> bool {
     s.len() == 42 && s.starts_with("0x") && s[2..].bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+/// Replicated-ledger mode: this node is one validator of a Commonware
+/// simplex set (decision 0010). Absent means the single-node ledger.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ConsensusConfig {
+    /// This validator's ed25519 key: a file holding the 32-byte seed in
+    /// hex, written by `peal-links-node --keygen <path>` (never committed).
+    pub key_file: PathBuf,
+    /// Every validator's public key (hex), this one included.
+    pub validators: Vec<String>,
+    /// p2p listen address of this validator.
+    pub listen: String,
+    /// p2p address of every validator by public key (hex).
+    pub peers: std::collections::HashMap<String, String>,
+    #[serde(default = "default_max_block_txs")]
+    pub max_block_txs: usize,
+    /// How long an API call waits for its operation to be finalized.
+    #[serde(default = "default_submit_ms")]
+    pub submit_timeout_ms: u64,
+}
+
+fn default_max_block_txs() -> usize {
+    64
+}
+fn default_submit_ms() -> u64 {
+    30_000
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeConfig {
     #[serde(default = "default_listen")]
@@ -118,6 +145,18 @@ pub struct NodeConfig {
     /// Watcher polling interval in milliseconds.
     #[serde(default = "default_watch_ms")]
     pub watch_interval_ms: u64,
+    /// Validator mode (decision 0010).
+    #[serde(default)]
+    pub consensus: Option<ConsensusConfig>,
+    /// Distributed committee: the ONE settlement key this validator holds
+    /// (file with a hex private key), with `signer_addresses` listing every
+    /// member. Signatures from the other members are gathered over the
+    /// validator network. Requires `consensus`. Refused with a mainnet
+    /// namespace: the members are still local processes on one machine.
+    #[serde(default)]
+    pub signer_key_file: Option<PathBuf>,
+    #[serde(default)]
+    pub signer_addresses: Vec<String>,
 }
 
 fn default_threshold() -> usize {
@@ -180,6 +219,45 @@ impl NodeConfig {
             anyhow::bail!(
                 "a single-process signer fixture cannot be used with a mainnet namespace"
             );
+        }
+        if cfg.signer_keys_file.is_some() && cfg.signer_key_file.is_some() {
+            anyhow::bail!(
+                "signer_keys_file (fixture) and signer_key_file (distributed) are exclusive"
+            );
+        }
+        if let Some(c) = &cfg.consensus {
+            if c.validators.len() < 3 {
+                anyhow::bail!("consensus needs at least three validators");
+            }
+            for v in &c.validators {
+                if !c.peers.contains_key(v) {
+                    anyhow::bail!("validator {v} has no p2p address in peers");
+                }
+            }
+            if !c.key_file.exists() {
+                anyhow::bail!("consensus key file {} does not exist", c.key_file.display());
+            }
+        }
+        if let Some(path) = &cfg.signer_key_file {
+            if cfg.consensus.is_none() {
+                anyhow::bail!(
+                    "signer_key_file needs consensus (the committee is the validator set)"
+                );
+            }
+            if has_mainnet {
+                anyhow::bail!("local validator signers cannot be used with a mainnet namespace");
+            }
+            if !path.exists() {
+                anyhow::bail!("signer key file {} does not exist", path.display());
+            }
+            if cfg.signer_addresses.len() < cfg.signer_threshold || cfg.signer_threshold == 0 {
+                anyhow::bail!("signer_addresses must list at least signer_threshold members");
+            }
+            for a in &cfg.signer_addresses {
+                if !is_address(a) {
+                    anyhow::bail!("signer address {a} is not a 20-byte hex address");
+                }
+            }
         }
         Ok(cfg)
     }

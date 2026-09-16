@@ -48,8 +48,11 @@ pub struct AppState {
     /// Set by the watcher once a namespace's chain configuration has been
     /// verified against the chain. Never true for a disabled namespace.
     pub availability: Mutex<HashMap<Namespace, bool>>,
-    /// The settlement committee (local single-process fixture), if any.
+    /// The settlement committee (a local fixture or one key per
+    /// validator), if any.
     pub committee: Option<crate::settlement::Committee>,
+    /// Validator mode: the consensus handle (decision 0010).
+    pub consensus: Option<peal_links_consensus::Handle>,
 }
 
 impl AppState {
@@ -150,12 +153,62 @@ async fn status(State(app): State<App>) -> Res<Json<Value>> {
         "version": VERSION,
         "circuit_id": hex::encode(app.circuit_id),
         "setup": "local-dev",
-        "ledger_mode": "single-node",
+        "ledger_mode": match &app.consensus {
+            Some(h) => format!("simplex-{}-validators", h.validators.len()),
+            None => "single-node".to_string(),
+        },
+        "consensus": consensus_status(&app).await,
         "dev_mint": app.cfg.dev_mint,
-        "signer_mode": if app.committee.is_some() { "single-process-fixture" } else { "none" },
+        "signer_mode": app.committee.as_ref().map(|c| c.mode()).unwrap_or("none"),
         "signers": app.committee.as_ref().map(|c| c.addresses()).unwrap_or_default(),
-        "signer_threshold": app.committee.as_ref().map(|c| c.threshold).unwrap_or(0),
+        "signer_threshold": app.committee.as_ref().map(|c| c.threshold()).unwrap_or(0),
         "namespaces": app.cfg.namespaces.iter().map(|n| namespace_out(&app, n)).collect::<Vec<_>>(),
+        "ledgers": ledgers,
+    })))
+}
+
+/// What this validator reports about consensus, or null in single-node mode.
+async fn consensus_status(app: &AppState) -> Value {
+    match &app.consensus {
+        None => Value::Null,
+        Some(h) => match h.status().await {
+            Some(s) => serde_json::to_value(s).unwrap_or(Value::Null),
+            None => json!({ "error": "consensus actor not answering" }),
+        },
+    }
+}
+
+/// `GET /links/v1/consensus`: this validator's view (height, head digest,
+/// applied state root, mempool) plus every ledger's summary, so two
+/// validators can be compared byte for byte.
+async fn consensus_view(State(app): State<App>) -> Res<Json<Value>> {
+    let Some(h) = &app.consensus else {
+        return Err(Problem::not_found(
+            "single_node",
+            "this node runs the single-node ledger",
+        ));
+    };
+    let status = h
+        .status()
+        .await
+        .ok_or_else(|| Problem::internal("consensus actor not answering".to_string()))?;
+    let mut ledgers = Vec::new();
+    for ns in &app.cfg.namespaces {
+        ledgers.push(
+            serde_json::to_value(ledger(&app, &ns.id()).summary().await).expect("serializes"),
+        );
+    }
+    Ok(Json(json!({
+        "validator": status.validator,
+        "validators": status.validators,
+        "height": status.height,
+        "head": status.head,
+        "state_root": status.state_root,
+        "genesis": status.genesis,
+        "mempool": status.mempool,
+        "finalized_seen": status.finalized_seen,
+        "last_finalized_view": status.last_finalized_view,
+        "pending_finalized": status.pending_finalized,
         "ledgers": ledgers,
     })))
 }
@@ -1025,7 +1078,7 @@ async fn get_withdrawal(
         "message": serde_json::from_str::<Value>(&message).unwrap_or(Value::Null),
         "signatures": serde_json::from_str::<Value>(&signatures).unwrap_or(Value::Null),
         "signers": app.committee.as_ref().map(|c| c.addresses()).unwrap_or_default(),
-        "threshold": app.committee.as_ref().map(|c| c.threshold).unwrap_or(0),
+        "threshold": app.committee.as_ref().map(|c| c.threshold()).unwrap_or(0),
     })))
 }
 
@@ -1068,6 +1121,7 @@ async fn dev_mint(State(app): State<App>, Json(body): Json<DevMintIn>) -> Res<Js
 pub fn router(app: App) -> Router {
     let mut api = Router::new()
         .route("/status", get(status))
+        .route("/consensus", get(consensus_view))
         .route("/params", get(params_index))
         .route("/params/{name}", get(params_file))
         .route("/ledger/{ns}", get(ledger_summary))

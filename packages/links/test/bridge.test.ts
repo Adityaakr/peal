@@ -66,7 +66,13 @@ describe('peal-links bridge (real deposits and withdrawals on two local chains)'
     const nsB = status.namespaces.find((n) => n.chain_id === 31338)!;
     expect(nsA.available, 'chain A gateway must be verified by the watcher').toBe(true);
     expect(nsB.available).toBe(true);
-    expect(status.signer_mode).toBe('single-process-fixture');
+    expect(['single-process-fixture', 'one-key-per-validator']).toContain(status.signer_mode);
+    if (status.consensus) {
+      expect(status.ledger_mode).toMatch(/^simplex-\d+-validators$/);
+      expect(status.consensus.validators.length).toBeGreaterThanOrEqual(3);
+    } else {
+      expect(status.ledger_mode).toBe('single-node');
+    }
 
     const account = privateKeyToAccount(KEY);
     const pc = createPublicClient({ chain: chain(nsA), transport: http(RPC_A) });

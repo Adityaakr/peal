@@ -48,6 +48,16 @@ CREATE TABLE IF NOT EXISTS withdrawals (
     PRIMARY KEY (namespace, position)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawals_id ON withdrawals(namespace, withdrawal_id);
+-- What this validator's signer attested for a position (distributed
+-- committee): a second request for the same position with a different
+-- digest is refused.
+CREATE TABLE IF NOT EXISTS signed_withdrawals (
+    namespace TEXT NOT NULL,
+    position  INTEGER NOT NULL,
+    digest    TEXT NOT NULL,
+    signed_at INTEGER NOT NULL,
+    PRIMARY KEY (namespace, position)
+);
 "#;
 
 fn keccak(parts: &[&[u8]]) -> [u8; 32] {
@@ -142,11 +152,25 @@ impl Signer {
     }
 }
 
-/// The local fixture committee: every key in one process. Sorted by
-/// address, as the gateway requires the signatures to be.
-pub struct Committee {
-    pub signers: Vec<Signer>,
-    pub threshold: usize,
+/// The settlement committee, in one of two shapes.
+///
+/// `Fixture`: every key in one process (the local single-process fixture).
+/// `Distributed`: this validator holds one key; the other members are the
+/// other validators, asked over the validator network, each verifying the
+/// claim against its own replicated ledger before signing. Both are local
+/// deployments on one machine and are labelled as such.
+pub enum Committee {
+    Fixture {
+        /// Sorted by address, as the gateway requires the signatures to be.
+        signers: Vec<Signer>,
+        threshold: usize,
+    },
+    Distributed {
+        local: Signer,
+        /// Every member's address, lowercase, sorted.
+        members: Vec<String>,
+        threshold: usize,
+    },
 }
 
 impl Committee {
@@ -159,17 +183,281 @@ impl Committee {
             return Err("bad committee configuration".into());
         }
         signers.sort_by(|a, b| a.address.cmp(&b.address));
-        Ok(Self { signers, threshold })
+        Ok(Self::Fixture { signers, threshold })
+    }
+
+    pub fn distributed(
+        key_hex: &str,
+        members: &[String],
+        threshold: usize,
+    ) -> Result<Self, String> {
+        let local = Signer::from_hex_key(key_hex.trim())?;
+        let mut members: Vec<String> = members.iter().map(|m| m.to_lowercase()).collect();
+        members.sort();
+        members.dedup();
+        if !members.contains(&local.address.to_lowercase()) {
+            return Err(format!(
+                "the local signer {} is not a committee member",
+                local.address
+            ));
+        }
+        if threshold == 0 || threshold > members.len() {
+            return Err("bad committee threshold".into());
+        }
+        Ok(Self::Distributed {
+            local,
+            members,
+            threshold,
+        })
     }
 
     pub fn addresses(&self) -> Vec<String> {
-        self.signers.iter().map(|s| s.address.clone()).collect()
+        match self {
+            Self::Fixture { signers, .. } => signers.iter().map(|s| s.address.clone()).collect(),
+            Self::Distributed { members, .. } => members.clone(),
+        }
     }
 
-    /// Every signer signs (the fixture has them all); a real committee
-    /// gathers `threshold` signatures over the network.
-    pub fn certify(&self, digest: &[u8; 32]) -> Result<Vec<String>, String> {
-        self.signers.iter().map(|s| s.sign_digest(digest)).collect()
+    pub fn threshold(&self) -> usize {
+        match self {
+            Self::Fixture { threshold, .. } | Self::Distributed { threshold, .. } => *threshold,
+        }
+    }
+
+    pub fn mode(&self) -> &'static str {
+        match self {
+            Self::Fixture { .. } => "single-process-fixture",
+            Self::Distributed { .. } => "one-key-per-validator",
+        }
+    }
+
+    pub fn local_signer(&self) -> Option<&Signer> {
+        match self {
+            Self::Distributed { local, .. } => Some(local),
+            Self::Fixture { .. } => None,
+        }
+    }
+
+    /// Gather at least `threshold` signatures over `digest`, sorted by
+    /// signer address ascending as the gateway requires.
+    pub async fn certify(
+        &self,
+        app: &AppState,
+        claim: &WithdrawalClaim,
+        message: &WithdrawalMessage,
+        digest: &[u8; 32],
+    ) -> Result<Vec<String>, Problem> {
+        match self {
+            // Every signer signs (the fixture has them all).
+            Self::Fixture { signers, .. } => signers
+                .iter()
+                .map(|s| s.sign_digest(digest))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(Problem::internal),
+            Self::Distributed {
+                local,
+                members,
+                threshold,
+            } => {
+                let consensus = app.consensus.as_ref().ok_or_else(|| {
+                    Problem::new(
+                        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                        "no_consensus",
+                        "the distributed committee needs the validator network",
+                    )
+                })?;
+                let mut collected: Vec<(String, String)> = vec![(
+                    local.address.to_lowercase(),
+                    local.sign_digest(digest).map_err(Problem::internal)?,
+                )];
+                let body = serde_json::to_vec(&SignRequest {
+                    claim: claim.clone(),
+                    message: message.clone(),
+                })
+                .map_err(|e| Problem::internal(e.to_string()))?;
+                // Two rounds: a refusal counts as an answer, so a first
+                // round can come back short.
+                for round in 0..2 {
+                    if collected.len() >= *threshold {
+                        break;
+                    }
+                    let want = threshold - collected.len();
+                    let answers = consensus
+                        .gather(
+                            body.clone(),
+                            if round == 0 { want } else { members.len() - 1 },
+                            std::time::Duration::from_secs(if round == 0 { 6 } else { 10 }),
+                        )
+                        .await;
+                    for (peer, bytes) in answers {
+                        let Ok(resp) = serde_json::from_slice::<SignResponse>(&bytes) else {
+                            continue;
+                        };
+                        let Some(sig) = resp.signature else {
+                            tracing::warn!(peer = %peer, error = resp.error.unwrap_or_default(), "peer signer refused");
+                            continue;
+                        };
+                        let Ok(addr) = crate::auth::recover(digest, &sig) else {
+                            tracing::warn!(peer = %peer, "peer signature does not recover");
+                            continue;
+                        };
+                        let addr = addr.to_lowercase();
+                        if members.contains(&addr) && !collected.iter().any(|(a, _)| *a == addr) {
+                            tracing::info!(peer = %peer, signer = addr, "settlement signature gathered");
+                            collected.push((addr, sig));
+                        }
+                    }
+                }
+                if collected.len() < *threshold {
+                    return Err(Problem::new(
+                        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                        "not_enough_signers",
+                        format!(
+                            "{} of {} committee signatures gathered",
+                            collected.len(),
+                            threshold
+                        ),
+                    ));
+                }
+                collected.sort_by(|a, b| a.0.cmp(&b.0));
+                Ok(collected.into_iter().map(|(_, s)| s).collect())
+            }
+        }
+    }
+}
+
+/// What one validator asks another to sign.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignRequest {
+    pub claim: WithdrawalClaim,
+    pub message: WithdrawalMessage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignResponse {
+    pub signer: String,
+    pub signature: Option<String>,
+    pub error: Option<String>,
+}
+
+/// A peer asked this validator to co-sign a withdrawal. Everything is
+/// checked against THIS validator's replicated ledger, its own namespace
+/// configuration and its own chain view; the requester's word counts for
+/// nothing.
+pub async fn sign_for_peer(app: &AppState, peer: &str, req: SignRequest) -> SignResponse {
+    let refuse = |signer: String, e: String| {
+        tracing::warn!(peer, error = %e, "refusing to co-sign a withdrawal");
+        SignResponse {
+            signer,
+            signature: None,
+            error: Some(e),
+        }
+    };
+    let Some(local) = app.committee.as_ref().and_then(|c| c.local_signer()) else {
+        return refuse(
+            String::new(),
+            "this validator holds no settlement key".into(),
+        );
+    };
+    let signer = local.address.clone();
+    let Some(ns) = app.namespaces.get(&req.claim.namespace).cloned() else {
+        return refuse(signer, "unknown namespace".into());
+    };
+    if !ns.enabled || ns.gateway.is_empty() {
+        return refuse(signer, "namespace has no gateway here".into());
+    }
+    // The requester applied the burn a moment ago; this validator may be a
+    // block behind. Give the replicated ledger a short moment to catch up
+    // before refusing a claim about a position it does not hold yet.
+    let mut attempts = 0;
+    loop {
+        match SignerPolicy::check(app, &ns, &req.claim).await {
+            Ok(()) => break,
+            Err(p)
+                if attempts < 12
+                    && (p.status == axum::http::StatusCode::NOT_FOUND || p.code == "wallet") =>
+            {
+                attempts += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+            Err(p) => return refuse(signer, p.detail),
+        }
+    }
+    let m = &req.message;
+    let expected_id = hex::encode(withdrawal_id(&req.claim.namespace, req.claim.position));
+    if m.chain_id != ns.chain_id
+        || m.gateway != ns.gateway.to_lowercase()
+        || m.token != ns.token_address.to_lowercase()
+        || m.recipient != req.claim.recipient.to_lowercase()
+        || m.amount != req.claim.opening.amount.to_string()
+        || m.withdrawal_id != expected_id
+    {
+        return refuse(
+            signer,
+            "message does not match the claim and this namespace".into(),
+        );
+    }
+    let epoch = match crate::evm::Rpc::new(&ns.rpc_url)
+        .gateway_epoch(&ns.gateway)
+        .await
+    {
+        Ok(e) => e,
+        Err(e) => return refuse(signer, format!("chain unreachable: {e}")),
+    };
+    if epoch != m.epoch {
+        return refuse(
+            signer,
+            format!("gateway epoch is {epoch}, message says {}", m.epoch),
+        );
+    }
+    let digest = match withdrawal_digest(m) {
+        Ok(d) => d,
+        Err(e) => return refuse(signer, e),
+    };
+    {
+        let conn = app.product.lock().expect("product lock");
+        let prior: Option<String> = conn
+            .query_row(
+                "SELECT digest FROM signed_withdrawals WHERE namespace = ?1 AND position = ?2",
+                params![hex::encode(req.claim.namespace), req.claim.position as i64],
+                |r| r.get(0),
+            )
+            .optional()
+            .unwrap_or(None);
+        match prior {
+            Some(d) if d != hex::encode(digest) => {
+                return refuse(signer, "already attested a different message for this position".into());
+            }
+            Some(_) => {}
+            None => {
+                if let Err(e) = conn.execute(
+                    "INSERT INTO signed_withdrawals (namespace, position, digest, signed_at) VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        hex::encode(req.claim.namespace),
+                        req.claim.position as i64,
+                        hex::encode(digest),
+                        crate::product::now() as i64
+                    ],
+                ) {
+                    return refuse(signer, format!("store: {e}"));
+                }
+            }
+        }
+    }
+    match local.sign_digest(&digest) {
+        Ok(sig) => {
+            tracing::info!(
+                peer,
+                position = req.claim.position,
+                "co-signed a withdrawal after checking the replicated ledger"
+            );
+            SignResponse {
+                signer,
+                signature: Some(sig),
+                error: None,
+            }
+        }
+        Err(e) => refuse(signer, e),
     }
 }
 
@@ -264,7 +552,7 @@ pub async fn settle(app: &AppState, claim: WithdrawalClaim) -> Result<Certificat
                 signatures: serde_json::from_str(&s)
                     .map_err(|e| Problem::internal(e.to_string()))?,
                 signers: committee.addresses(),
-                threshold: committee.threshold,
+                threshold: committee.threshold(),
             });
         }
     }
@@ -287,7 +575,7 @@ pub async fn settle(app: &AppState, claim: WithdrawalClaim) -> Result<Certificat
         epoch,
     };
     let digest = withdrawal_digest(&message).map_err(Problem::internal)?;
-    let signatures = committee.certify(&digest).map_err(Problem::internal)?;
+    let signatures = committee.certify(app, &claim, &message, &digest).await?;
     let conn = app.product.lock().expect("product lock");
     // Consume exactly once: the primary key on (namespace, position) makes
     // a racing second claim fail here rather than produce a second
@@ -318,7 +606,7 @@ pub async fn settle(app: &AppState, claim: WithdrawalClaim) -> Result<Certificat
         message,
         signatures,
         signers: committee.addresses(),
-        threshold: committee.threshold,
+        threshold: committee.threshold(),
     })
 }
 

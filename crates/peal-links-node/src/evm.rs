@@ -242,6 +242,24 @@ impl Rpc {
             .map_err(|e| RpcError::Decode(e.to_string()))
     }
 
+    /// Logs of a mined transaction with the block it landed in, or `None`
+    /// if the chain does not know the transaction.
+    pub async fn transaction_logs(
+        &self,
+        tx_hash: &str,
+    ) -> Result<Option<(u64, Vec<Log>)>, RpcError> {
+        let v = self
+            .call("eth_getTransactionReceipt", json!([tx_hash]))
+            .await?;
+        if v.is_null() {
+            return Ok(None);
+        }
+        let block = hex_to_u64(v.get("blockNumber").and_then(|b| b.as_str()).unwrap_or(""))?;
+        let logs: Vec<Log> = serde_json::from_value(v.get("logs").cloned().unwrap_or(Value::Null))
+            .map_err(|e| RpcError::Decode(e.to_string()))?;
+        Ok(Some((block, logs)))
+    }
+
     /// `epoch()` on the gateway.
     pub async fn gateway_epoch(&self, gateway: &str) -> Result<u64, RpcError> {
         let selector = &keccak_topic("epoch()")[..10];

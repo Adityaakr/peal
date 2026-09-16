@@ -1,46 +1,33 @@
-//! One thread per namespace owns its `Ledger`. Every access goes through a
-//! command channel, which gives two things for free: the sqlite connection
-//! and the in-memory receipt tree are never shared, and operations that
-//! arrive close together are verified as one batch.
+//! Access to a namespace's ledger, in one of two shapes behind one handle.
 //!
+//! **Local**: one thread per namespace owns its `Ledger`. Every access goes
+//! through a command channel, which gives two things for free: the sqlite
+//! connection and the in-memory receipt tree are never shared, and
+//! operations that arrive close together are verified as one batch.
 //! Batching policy: when an `Apply` arrives, the actor keeps draining
 //! further `Apply` commands for up to `window` or `max` operations, then
 //! calls `apply_batch`, which batch-verifies and applies in order. Under low
 //! load the window is the only added latency (default 25 ms); under high
 //! load the batch fills and the window is never waited for. Measured in
 //! BENCHMARKS.md.
+//!
+//! **Replicated** (decision 0010): the ledger belongs to the consensus
+//! state shared by every validator. Writes are submitted to consensus and
+//! answered once a finalized block applied them; reads come straight from
+//! the replicated state.
 
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
-use peal_bonsai::account::{OpEnvelope, RegisterEnvelope};
+use peal_bonsai::account::{Namespace, OpEnvelope, RegisterEnvelope};
 use peal_bonsai::deposit::MintEnvelope;
 use peal_bonsai::encoding::fr_to_hex;
 use peal_bonsai::ledger::{AccountView, Applied, HistoryRow, Ledger};
 use peal_bonsai::Fr;
-use serde::Serialize;
+use peal_links_consensus::{Envelope, Tx};
 use tokio::sync::oneshot;
 
-#[derive(Clone, Serialize)]
-pub struct Summary {
-    pub namespace: String,
-    pub seq: u64,
-    pub receipt_count: u64,
-    pub receipt_root: String,
-    pub state_root: String,
-    pub recent_roots: Vec<String>,
-    pub minted_total: String,
-}
-
-#[derive(Serialize)]
-pub struct PathOut {
-    pub position: u64,
-    pub size: u64,
-    pub root: String,
-    pub leaf: String,
-    pub siblings: Vec<String>,
-    pub index_bits: Vec<bool>,
-}
+pub use peal_links_consensus::state::{LedgerSummary as Summary, ReceiptPath as PathOut};
 
 pub enum Command {
     Apply(OpEnvelope, oneshot::Sender<peal_bonsai::Result<Applied>>),
@@ -67,8 +54,17 @@ pub enum Command {
 }
 
 #[derive(Clone)]
-pub struct LedgerHandle {
-    tx: Sender<Command>,
+pub struct Replicated {
+    namespace: Namespace,
+    state: peal_links_consensus::Shared,
+    consensus: peal_links_consensus::Handle,
+    submit_timeout: Duration,
+}
+
+#[derive(Clone)]
+pub enum LedgerHandle {
+    Local(Sender<Command>),
+    Replicated(Box<Replicated>),
 }
 
 impl LedgerHandle {
@@ -85,35 +81,140 @@ impl LedgerHandle {
                 )
             })
             .expect("spawn ledger actor");
-        Self { tx }
+        Self::Local(tx)
     }
 
-    async fn ask<T>(&self, make: impl FnOnce(oneshot::Sender<T>) -> Command) -> T {
-        let (tx, rx) = oneshot::channel();
-        self.tx.send(make(tx)).expect("ledger actor alive");
+    pub fn replicated(
+        namespace: Namespace,
+        state: peal_links_consensus::Shared,
+        consensus: peal_links_consensus::Handle,
+        submit_timeout: Duration,
+    ) -> Self {
+        Self::Replicated(Box::new(Replicated {
+            namespace,
+            state,
+            consensus,
+            submit_timeout,
+        }))
+    }
+
+    pub fn is_replicated(&self) -> bool {
+        matches!(self, Self::Replicated(_))
+    }
+
+    async fn ask<T>(tx: &Sender<Command>, make: impl FnOnce(oneshot::Sender<T>) -> Command) -> T {
+        let (reply, rx) = oneshot::channel();
+        tx.send(make(reply)).expect("ledger actor alive");
         rx.await.expect("ledger actor answers")
     }
 
+    async fn submit(
+        consensus: &peal_links_consensus::Handle,
+        namespace: Namespace,
+        envelope: Envelope,
+        timeout: Duration,
+    ) -> peal_bonsai::Result<Applied> {
+        consensus
+            .submit(
+                Tx {
+                    namespace,
+                    envelope,
+                },
+                timeout,
+            )
+            .await
+    }
+
     pub async fn apply(&self, env: OpEnvelope) -> peal_bonsai::Result<Applied> {
-        self.ask(|tx| Command::Apply(env, tx)).await
+        match self {
+            Self::Local(tx) => Self::ask(tx, |r| Command::Apply(env, r)).await,
+            Self::Replicated(r) => {
+                Self::submit(
+                    &r.consensus,
+                    r.namespace,
+                    Envelope::Op(env),
+                    r.submit_timeout,
+                )
+                .await
+            }
+        }
     }
+
     pub async fn register(&self, env: RegisterEnvelope) -> peal_bonsai::Result<Applied> {
-        self.ask(|tx| Command::Register(env, tx)).await
+        match self {
+            Self::Local(tx) => Self::ask(tx, |r| Command::Register(env, r)).await,
+            Self::Replicated(r) => {
+                Self::submit(
+                    &r.consensus,
+                    r.namespace,
+                    Envelope::Register(env),
+                    r.submit_timeout,
+                )
+                .await
+            }
+        }
     }
+
     pub async fn mint(&self, env: MintEnvelope) -> peal_bonsai::Result<Applied> {
-        self.ask(|tx| Command::Mint(env, tx)).await
+        match self {
+            Self::Local(tx) => Self::ask(tx, |r| Command::Mint(env, r)).await,
+            Self::Replicated(r) => {
+                Self::submit(
+                    &r.consensus,
+                    r.namespace,
+                    Envelope::Mint(env),
+                    r.submit_timeout,
+                )
+                .await
+            }
+        }
     }
+
     pub async fn account(&self, id: Fr) -> peal_bonsai::Result<Option<AccountView>> {
-        self.ask(|tx| Command::Account(id, tx)).await
+        match self {
+            Self::Local(tx) => Self::ask(tx, |r| Command::Account(id, r)).await,
+            Self::Replicated(r) => r
+                .state
+                .lock()
+                .expect("state lock")
+                .account(&r.namespace, &id),
+        }
     }
+
     pub async fn summary(&self) -> Summary {
-        self.ask(Command::Summary).await
+        match self {
+            Self::Local(tx) => Self::ask(tx, Command::Summary).await,
+            Self::Replicated(r) => r
+                .state
+                .lock()
+                .expect("state lock")
+                .summary(&r.namespace)
+                .expect("namespace is served"),
+        }
     }
+
     pub async fn path(&self, pos: u64, size: Option<u64>) -> peal_bonsai::Result<PathOut> {
-        self.ask(|tx| Command::Path(pos, size, tx)).await
+        match self {
+            Self::Local(tx) => Self::ask(tx, |r| Command::Path(pos, size, r)).await,
+            Self::Replicated(r) => {
+                r.state
+                    .lock()
+                    .expect("state lock")
+                    .path(&r.namespace, pos, size)
+            }
+        }
     }
+
     pub async fn history(&self, from: u64, limit: usize) -> peal_bonsai::Result<Vec<HistoryRow>> {
-        self.ask(|tx| Command::History(from, limit, tx)).await
+        match self {
+            Self::Local(tx) => Self::ask(tx, |r| Command::History(from, limit, r)).await,
+            Self::Replicated(r) => {
+                r.state
+                    .lock()
+                    .expect("state lock")
+                    .history(&r.namespace, from, limit)
+            }
+        }
     }
 }
 

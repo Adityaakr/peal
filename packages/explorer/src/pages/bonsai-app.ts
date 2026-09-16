@@ -262,7 +262,7 @@ function ledgerPanel(): string {
   const s = links().status!;
   return `
     <div class="pl-panel">
-      <div class="pl-panel-head"><h2 class="pl-panel-title">ledger</h2><span class="pl-small">${esc(s.ledger_mode)} · circuit <span class="pl-mono">${esc(s.circuit_id.slice(0, 12))}…</span></span></div>
+      <div class="pl-panel-head"><h2 class="pl-panel-title">ledger</h2><span class="pl-small">${esc(s.ledger_mode)}${s.consensus ? ` · height ${s.consensus.height} · state <span class="pl-mono">${esc(s.consensus.state_root.slice(0, 12))}…</span>` : ''} · circuit <span class="pl-mono">${esc(s.circuit_id.slice(0, 12))}…</span></span></div>
       <ul class="pl-list">
         ${s.ledgers
           .map((l) => {
@@ -329,7 +329,7 @@ function withdrawDialog(): string {
     <dialog class="pl-dialog" id="pl-withdraw-dialog">
       <form class="pl-dialog-body" id="pl-withdraw-form" method="dialog">
         <h3 class="pl-dialog-title">withdraw to ${esc(ns.chain_name)}</h3>
-        <p class="pl-small">The amount is burned on the private ledger with a proof, then ${s.signer_threshold} of ${s.signers.length} settlement signers attest to its release and the gateway pays the recipient. This is a committee-attested bridge${s.signer_mode === 'single-process-fixture' ? ' and, on this node, the signers are a single-process fixture' : ''}: a compromised committee could release funds wrongly. The withdrawal is public on the chain.</p>
+        <p class="pl-small">The amount is burned on the private ledger with a proof, then ${s.signer_threshold} of ${s.signers.length} settlement signers attest to its release and the gateway pays the recipient. This is a committee-attested bridge${s.signer_mode === 'single-process-fixture' ? ' and, on this node, the signers are a single-process fixture' : s.signer_mode === 'one-key-per-validator' ? ' and, on this stack, each local validator process holds one signer key' : ''}: a compromised committee could release funds wrongly. The withdrawal is public on the chain.</p>
         <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)}${v ? `, available ${formatUnits(v.balance, ns.decimals)}` : ''})</span><input class="pl-input" name="amount" inputmode="decimal" required placeholder="0.00"></label>
         <label class="pl-field"><span class="pl-label">recipient address on ${esc(ns.chain_name)}</span><input class="pl-input pl-mono" name="recipient" required pattern="0x[0-9a-fA-F]{40}" value="${esc(session().address ?? '')}"></label>
         <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Withdraw</button></div>

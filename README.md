@@ -113,6 +113,8 @@ everything between them is inside commitments and 128-byte proofs.
   [`docs/peal-links/MAINNET_READINESS.md`](docs/peal-links/MAINNET_READINESS.md).
   The full build log is [`docs/peal-links/BUILD_STATUS.md`](docs/peal-links/BUILD_STATUS.md).
 
+Validator mode: `PEAL_LINKS_VALIDATORS=3 scripts/peal-links/stack.sh reset` runs the ledger as three local Commonware simplex validators (`docs/peal-links/decisions/0010-simplex-consensus-over-the-ledger.md`); `scripts/peal-links/stack.sh consensus` shows that they agree.
+
 ## The encrypted mempool
 
 The flagship demo. It is the same swap sent into two mempools at once, live on

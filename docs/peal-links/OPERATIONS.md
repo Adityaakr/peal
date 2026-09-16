@@ -8,7 +8,8 @@ How to run, reset and inspect the local stack, and what each process is. Docker 
 |---|---|---|---|
 | anvil A (local chain A, chain id 31337) | `anvil --port 8545 --chain-id 31337 --block-time 1` | 8545 | in memory; reset on restart |
 | anvil B (local chain B, chain id 31338) | `anvil --port 8546 --chain-id 31338 --block-time 1` | 8546 | in memory |
-| Peal Links node | `target/release/peal-links-node --config config/peal-links.local.json` | 8790 | `.dev-state/peal-links/data/ledger-<ns>.sqlite` per namespace, `links.sqlite` for product data |
+| Peal Links node (single-node mode) | `target/release/peal-links-node --config config/peal-links.local.json` | 8790 | `.dev-state/peal-links/data/ledger-<ns>.sqlite` per namespace, `links.sqlite` for product data |
+| Peal Links validators (`PEAL_LINKS_VALIDATORS=3`) | `target/release/peal-links-node --config .dev-state/peal-links/config-<i>.json`, one process per validator | 8790, 8791, 8792 (API); 9790, 9791, 9792 (p2p) | `.dev-state/peal-links/data/v<i>/` per validator: the ledgers, `consensus.sqlite` (applied blocks and head), `consensus/` (the engine's journal), `links.sqlite` (that node's product data) |
 | explorer (vite dev) | `pnpm -C packages/explorer dev --port 5173` | 5173 | none |
 
 Proving keys: `.dev-params/` (`op.pk` 30 MB uncompressed, `op.vk`, `deposit.pk`, `deposit.vk`, `circuit-id`), generated on the node's first start in about a second, never committed. Deleting the directory regenerates a **different** setup, which invalidates every wallet and ledger made under the old circuit id: reset the data directory at the same time.
@@ -25,7 +26,10 @@ scripts/peal-links/stack.sh status   # pids and the node's status document
 scripts/peal-links/stack.sh logs     # tail every log under .dev-state/peal-links/logs
 scripts/peal-links/stack.sh down     # stop everything started here
 scripts/peal-links/stack.sh reset    # down, wipe ledger + product state, up
+scripts/peal-links/stack.sh consensus  # validator mode: height, head and state root per validator
 ```
+
+Validator mode (decision 0010): `PEAL_LINKS_VALIDATORS=3 scripts/peal-links/stack.sh reset` runs the ledger as a three-validator Commonware simplex set. The script generates one ed25519 key per validator (`peal-links-node --keygen`, kept under `.dev-state/peal-links/validators/`, never committed), writes one config per validator with the full validator set and p2p address book, gives each validator one of the three settlement keys (`signer_key_file`, `signer_addresses`, threshold 2), and starts the three processes. The explorer and the tests use validator 0; any validator serves the same ledger. `scripts/peal-links/stack.sh consensus` prints every validator's height, head digest and applied state root, which must agree. `GET /links/v1/consensus` on any validator returns its view with every ledger's summary. Withdrawals: the validator asked for a certificate signs with its own key and gathers the rest over the validator network; each peer re-checks the claim against its own replicated ledger and its own RPC before signing (`signer_mode: one-key-per-validator`). Both the fixture and this mode are local processes on one machine, not independent operators.
 
 Development fixture: `PEAL_LINKS_DEV_MINT=1 scripts/peal-links/stack.sh up` mounts `POST /links/v1/dev/mint`, which credits a registered deposit intent without a chain event. It is labelled in the node log, in `GET /links/v1/status` (`dev_mint: true`) and in the app ("Add test funds (dev mint)"), refuses to start with a mainnet namespace configured, and is replaced by the watcher in Phase D.
 
@@ -38,7 +42,8 @@ Development fixture: `PEAL_LINKS_DEV_MINT=1 scripts/peal-links/stack.sh up` moun
 ## Health and status
 
 - `GET /healthz` on the node: liveness.
-- `GET /links/v1/status`: version, circuit id, setup (`local-dev` or `ceremony`), ledger mode, namespaces with `available`, per-ledger `seq`, `receipt_count`, `state_root`, `receipt_root`.
+- `GET /links/v1/status`: version, circuit id, setup (`local-dev` or `ceremony`), ledger mode (`single-node` or `simplex-N-validators`), the validator's consensus view when replicated, signer mode, namespaces with `available`, per-ledger `seq`, `receipt_count`, `state_root`, `receipt_root`.
+- `GET /links/v1/consensus` (validator mode): validator id, validator set, height, head digest, applied state root, genesis, mempool size, and every ledger's summary.
 - `GET /links/v1/ledger/{ns}`: the recent-root window and minted total.
 - `GET /links/v1/ledger/{ns}/history?from=&limit=`: the public operation log, replayable.
 
@@ -47,6 +52,7 @@ Development fixture: `PEAL_LINKS_DEV_MINT=1 scripts/peal-links/stack.sh up` moun
 | What | Command | Needs |
 |---|---|---|
 | Core crate (Gate A) | `cargo test -p peal-bonsai --release` | nothing |
+| Consensus crate (four simulated validators on the deterministic runtime) | `cargo test -p peal-links-consensus` | nothing |
 | Node unit tests | `cargo test -p peal-links-node --release` | nothing |
 | SDK flow (two wallets, wasm proofs, live node) | `pnpm -C packages/links test` | stack up with `PEAL_LINKS_DEV_MINT=1` |
 | Browser flow (two contexts) | `pnpm -C packages/explorer test:e2e` | stack up with `PEAL_LINKS_DEV_MINT=1` |

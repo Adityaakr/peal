@@ -1,6 +1,6 @@
 # Peal Links architecture
 
-Updated through Phase D (2026-09-16).
+Updated through Phase F (2026-09-16).
 
 ## Components
 
@@ -14,7 +14,7 @@ Updated through Phase D (2026-09-16).
 | Gateway and test token | `contracts/src/links/` | Solidity 0.8.28, OpenZeppelin 5.1 | built, 10 Foundry tests |
 | Frontend: landing, app, checkout | `packages/explorer/src/pages/bonsai-*.ts`, `pay.ts`, `src/links/` | TypeScript (vanilla explorer) | built |
 | Local stack | `scripts/peal-links/stack.sh` | shell | built (no Docker on the build machine) |
-| Consensus (multi-node ordering) | Commonware `simplex` 2026.9.0 | Rust | **not started** (blocker in BUILD_STATUS.md) |
+| Consensus: blocks of ledger envelopes ordered by Commonware `simplex`, stateless voting, deterministic application at finalization, block backfill by digest, deposit pre-confirmation, validator-to-validator requests | `crates/peal-links-consensus` over `commonware-consensus`, `-p2p`, `-runtime`, `-cryptography` `=2026.9.0` | Rust | built (decision 0010); local three-validator stack, four-validator deterministic tests |
 
 ## Data flow (as built)
 
@@ -64,7 +64,7 @@ seal opening to enc key  ------------->  POST /inbox/<ns>/<acct>              --
 ## Trust model of the local demo
 
 - Proofs: real, pinned ZK-Pari, verified by the ledger STF.
-- Ledger: single node (development mode; consensus not started).
+- Ledger: single node by default; with `PEAL_LINKS_VALIDATORS=3`, three local validator processes running Commonware simplex over the same ledger code, each applying finalized blocks and reporting the same state root (`GET /links/v1/consensus`). Three validators tolerate no faults (2f+1 of 3f+1 with f=0); the deterministic tests run four and tolerate one. All on one machine: this is a working consensus path, not a decentralised deployment.
 - Setup: locally generated keys; no ceremony.
-- Bridge: committee-attested gateway; locally a single-process signer fixture with three of anvil's public keys (threshold 2), labelled in `GET /links/v1/status` as `signer_mode: single-process-fixture`.
+- Bridge: committee-attested gateway; locally three of anvil's public keys (threshold 2), either all in one process (`signer_mode: single-process-fixture`) or one per validator process with the others co-signing after checking their own replicated ledger (`signer_mode: one-key-per-validator`). Both are labelled in `GET /links/v1/status`.
 - Funds: `TestUSD` (6 decimals) minted from a faucet on two anvil chains; nothing has value.
