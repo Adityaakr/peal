@@ -1,0 +1,34 @@
+[package]
+name = "peal-links-consensus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Peal Links: Commonware simplex consensus over the Bonsai ledger state transition"
+
+[dependencies]
+peal-bonsai = { path = "../peal-bonsai", features = ["ledger"] }
+# Commonware consensus, networking and runtime, pinned to one published
+# release (docs/peal-links/research/commonware-simplex-api.md).
+commonware-consensus = "=2026.9.0"
+commonware-p2p = "=2026.9.0"
+commonware-runtime = "=2026.9.0"
+commonware-cryptography = "=2026.9.0"
+commonware-utils = "=2026.9.0"
+commonware-codec = "=2026.9.0"
+commonware-actor = "=2026.9.0"
+commonware-parallel = "=2026.9.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2.workspace = true
+hex.workspace = true
+anyhow.workspace = true
+tokio = { workspace = true }
+tracing.workspace = true
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+futures = "0.3"
+ark-std.workspace = true
+rand_chacha = "0.3"
+rand_core = { version = "0.10.1", default-features = false }
+
+[dev-dependencies]
+tempfile = "3"

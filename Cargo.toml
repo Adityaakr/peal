@@ -9,6 +9,7 @@ members = [
     "crates/peal-bonsai",
     "crates/peal-links-node",
     "crates/peal-links-wasm",
+    "crates/peal-links-consensus",
 ]
 
 [workspace.package]

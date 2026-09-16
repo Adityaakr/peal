@@ -390,6 +390,48 @@ impl Ledger {
         self.apply_verified(env, &current)
     }
 
+    /// Everything about an operation that can be checked without the
+    /// ledger's state: namespace, circuit, signature, encoding, and the
+    /// proof itself against the commitment the envelope claims to spend
+    /// from (`env.com`). Whether that commitment is the account's current
+    /// one, and whether the revealed root is recent, are decided when the
+    /// operation is applied. Used by a validator to vote on a proposed
+    /// block before it is final.
+    pub fn check_op(&self, env: &OpEnvelope) -> Result<()> {
+        let proof = self.admit(env)?;
+        if !ZkPari::<E>::verify(&proof, &self.vk.op, &Self::public_input(env, env.com)) {
+            return Err(Error::InvalidProof);
+        }
+        Ok(())
+    }
+
+    /// Stateless checks of a registration: namespace binding and signature.
+    pub fn check_register(&self, env: &RegisterEnvelope) -> Result<()> {
+        env.verify(&self.cfg.namespace).map(|_| ())
+    }
+
+    /// Stateless checks of a mint: namespace, circuit, deposit id shape and
+    /// the deposit proof. Whether the deposit id was already credited is
+    /// decided when the mint is applied.
+    pub fn check_mint(&self, env: &MintEnvelope) -> Result<()> {
+        let intent = &env.intent;
+        if intent.namespace != self.cfg.namespace {
+            return Err(Error::WrongNamespace);
+        }
+        if intent.circuit_id != self.cfg.circuit_id {
+            return Err(Error::Wire("deposit is for a different circuit".into()));
+        }
+        if env.deposit_id.is_empty() || env.deposit_id.len() > 200 {
+            return Err(Error::Wire("bad deposit id".into()));
+        }
+        let proof = proof_from_bytes(&intent.proof)?;
+        let input = DepositCircuit::public_input_for(intent.amount, intent.receipt);
+        if !ZkPari::<E>::verify(&proof, &self.vk.deposit, &input) {
+            return Err(Error::InvalidProof);
+        }
+        Ok(())
+    }
+
     /// Apply a batch. Proofs are batch-verified against the commitments the
     /// accounts hold *now*; if the batch check fails, every proof is verified
     /// alone so one bad proof only rejects itself. Operations then apply in
