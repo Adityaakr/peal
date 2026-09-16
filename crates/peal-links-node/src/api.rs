@@ -11,7 +11,7 @@ use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use peal_bonsai::account::{InboxAuth, KeyBinding, Namespace, OpEnvelope, RegisterEnvelope};
 use peal_bonsai::deposit::{DepositIntent, MintEnvelope};
@@ -53,6 +53,8 @@ pub struct AppState {
     pub committee: Option<crate::settlement::Committee>,
     /// Validator mode: the consensus handle (decision 0010).
     pub consensus: Option<peal_links_consensus::Handle>,
+    /// Directory lookups per session per minute (decision 0013).
+    pub directory_limits: Mutex<crate::directory::RateLimiter>,
 }
 
 impl AppState {
@@ -1037,6 +1039,161 @@ pub async fn credit_intent(
     Ok(applied_json(applied))
 }
 
+// ---- directory and backups (decisions 0011 to 0013) ------------------------
+
+const DIRECTORY_LOOKUPS_PER_MINUTE: u32 = 60;
+
+/// Publish a signed receiving profile for the signed-in wallet.
+async fn put_profile(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(profile): Json<crate::directory::Profile>,
+) -> Res<(StatusCode, Json<Value>)> {
+    let session = require_session(&app, &headers)?;
+    profile
+        .validate_fields()
+        .map_err(|e| Problem::bad_request("bad_profile", e))?;
+    if session.address.to_lowercase() != profile.wallet {
+        return Err(Problem::unauthorized(
+            "the profile's wallet must be the signed-in address",
+        ));
+    }
+    let id = parse_ns(&app, &profile.namespace)?;
+    let ns = app
+        .namespaces
+        .get(&id)
+        .ok_or_else(|| Problem::bad_request("unknown_namespace", "no such namespace"))?
+        .clone();
+    if profile.chain_id != ns.chain_id {
+        return Err(Problem::bad_request(
+            "wrong_chain",
+            "the profile's chain must be the namespace's chain",
+        ));
+    }
+    let now = product::now();
+    if profile.issued_at > now + 600 || profile.issued_at + 3600 < now {
+        return Err(Problem::bad_request("bad_profile", "issued_at must be close to now"));
+    }
+    if profile.expiry <= now {
+        return Err(Problem::bad_request("bad_profile", "already expired"));
+    }
+    // The profile key must be the key the account derives from, and the
+    // account must be registered, so a profile never points at an account
+    // nobody can open.
+    let account = fr_from_hex(&profile.account)?;
+    let pk_bytes: [u8; 32] = hex::decode(&profile.profile_key)
+        .ok()
+        .and_then(|v| v.try_into().ok())
+        .ok_or_else(|| Problem::bad_request("bad_profile", "profile_key"))?;
+    let pk = ed25519_dalek::VerifyingKey::from_bytes(&pk_bytes)
+        .map_err(|_| Problem::bad_request("bad_profile", "profile_key is not a valid key"))?;
+    if peal_bonsai::account::account_id(&id, &pk) != account {
+        return Err(Problem::bad_request(
+            "bad_profile",
+            "profile_key does not derive the account on this namespace",
+        ));
+    }
+    if ledger(&app, &id).account(account).await?.is_none() {
+        return Err(Problem::bad_request(
+            "unregistered_account",
+            "the account is not registered on the ledger",
+        ));
+    }
+    let rpc = if ns.rpc_url.is_empty() {
+        None
+    } else {
+        Some(crate::evm::Rpc::new(&ns.rpc_url))
+    };
+    let verified = crate::directory::verify(&profile, rpc.as_ref())
+        .await
+        .map_err(Problem::unauthorized)?;
+    let hash = hex::encode(profile.digest().map_err(Problem::internal)?);
+    let conn = app.product.lock().expect("product lock");
+    crate::directory::append(&conn, &hex::encode(id), &profile, &hash, &verified)
+        .map_err(|e| Problem::conflict("profile_rejected", e))?;
+    if profile.revoked {
+        db(conn.execute(
+            "UPDATE requests SET status = 'archived', updated_at = ?3 WHERE namespace = ?1 AND owner_address = ?2 AND status = 'active'",
+            params![hex::encode(id), session.address, now as i64],
+        ))?;
+    }
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "hash": hash, "version": profile.version, "verified": verified.method, "block": verified.block })),
+    ))
+}
+
+/// Resolve a wallet address to its receiving profile. Session-bound and
+/// rate-limited; the client verifies the signature itself.
+async fn get_profile(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((ns, address)): Path<(String, String)>,
+) -> Res<Json<Value>> {
+    require_session(&app, &headers)?;
+    let token = bearer(&headers).unwrap_or_default();
+    if !app
+        .directory_limits
+        .lock()
+        .expect("limits lock")
+        .allow(&token, DIRECTORY_LOOKUPS_PER_MINUTE)
+    {
+        return Err(Problem::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limited",
+            "too many directory lookups; try again in a minute",
+        ));
+    }
+    let id = parse_ns(&app, &ns)?;
+    let address = address.to_lowercase();
+    if !peal_bonsai::manifest::is_evm_address(&address) {
+        return Err(Problem::bad_request("malformed", "address must be a 0x address"));
+    }
+    let conn = app.product.lock().expect("product lock");
+    let stored = db(crate::directory::latest(&conn, &hex::encode(id), &address))?
+        .ok_or_else(|| {
+            Problem::not_found(
+                "not_registered",
+                "this address has not activated private receiving on Peal Links",
+            )
+        })?;
+    Ok(Json(json!({
+        "profile": stored.profile,
+        "hash": stored.hash,
+        "verified": stored.method,
+        "block": stored.block,
+        "log": stored.log,
+    })))
+}
+
+async fn put_backup(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(ns): Path<String>,
+    Json(b): Json<crate::directory::BackupUpload>,
+) -> Res<Json<Value>> {
+    let session = require_session(&app, &headers)?;
+    let id = parse_ns(&app, &ns)?;
+    let conn = app.product.lock().expect("product lock");
+    crate::directory::store_backup(&conn, &hex::encode(id), &session.address.to_lowercase(), &b)
+        .map_err(|e| Problem::conflict("backup_rejected", e))?;
+    Ok(Json(json!({ "seq": b.seq })))
+}
+
+async fn get_backup(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(ns): Path<String>,
+) -> Res<Json<Value>> {
+    let session = require_session(&app, &headers)?;
+    let id = parse_ns(&app, &ns)?;
+    let conn = app.product.lock().expect("product lock");
+    let (b, created_at) =
+        db(crate::directory::latest_backup(&conn, &hex::encode(id), &session.address.to_lowercase()))?
+            .ok_or_else(|| Problem::not_found("no_backup", "no backup is stored for this wallet"))?;
+    Ok(Json(json!({ "seq": b.seq, "mechanism": b.mechanism, "blob": b.blob, "created_at": created_at })))
+}
+
 // ---- withdrawals -----------------------------------------------------------
 
 async fn post_withdrawal(
@@ -1143,6 +1300,9 @@ pub fn router(app: App) -> Router {
         .route("/inbox/{ns}/{acct}", post(post_inbox).get(get_inbox))
         .route("/deposits/intents", post(register_intent))
         .route("/deposits/intents/{ns}/{receipt}", get(get_intent))
+        .route("/directory", put(put_profile))
+        .route("/directory/{ns}/{address}", get(get_profile))
+        .route("/backups/{ns}", put(put_backup).get(get_backup))
         .route("/withdrawals", post(post_withdrawal))
         .route("/withdrawals/{ns}/{position}", get(get_withdrawal))
         .route("/ledger/{ns}/accounting", get(ledger_accounting));

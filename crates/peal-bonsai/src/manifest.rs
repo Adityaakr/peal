@@ -15,7 +15,10 @@ use crate::encoding::{fr_hex, fr_to_bytes};
 use crate::{Error, Fr, Result};
 
 pub const MANIFEST_MAGIC: &[u8; 4] = b"PLKM";
-pub const MANIFEST_VERSION: u8 = 1;
+/// Version 2 (one-wallet addendum, decision 0011) names the receiver's
+/// wallet address so a checkout can show it and verify, through the
+/// directory, that the signing key is the one that wallet authorized.
+pub const MANIFEST_VERSION: u8 = 2;
 pub const MAX_TITLE: usize = 140;
 pub const MAX_DISPLAY_NAME: usize = 60;
 pub const MAX_REFERENCE: usize = 64;
@@ -23,6 +26,15 @@ pub const MAX_REFERENCE: usize = 64;
 /// Request ids: 24 characters of lowercase base32 (120 bits).
 pub fn is_request_id(s: &str) -> bool {
     s.len() == 24 && s.bytes().all(|b| matches!(b, b'a'..=b'z' | b'2'..=b'7'))
+}
+
+/// A lowercase `0x` + 40 hex digit EVM address.
+pub fn is_evm_address(s: &str) -> bool {
+    s.len() == 42
+        && s.starts_with("0x")
+        && s[2..]
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 pub fn new_request_id<R: ark_std::rand::RngCore>(rng: &mut R) -> String {
@@ -60,6 +72,8 @@ pub struct RequestManifest {
     pub amount: u64,
     pub title: String,
     pub display_name: String,
+    /// The receiver's 0x wallet address, lowercase (version 2).
+    pub receiver_address: String,
     pub reference: Option<String>,
     pub expires_at: Option<u64>,
     pub created_at: u64,
@@ -103,6 +117,7 @@ impl RequestManifest {
         m.extend_from_slice(&self.amount.to_le_bytes());
         push_str(&mut m, &self.title);
         push_str(&mut m, &self.display_name);
+        push_str(&mut m, &self.receiver_address);
         match &self.reference {
             Some(r) => {
                 m.push(1);
@@ -145,6 +160,11 @@ impl RequestManifest {
                 return Err(Error::Wire("reference too long".into()));
             }
         }
+        if !is_evm_address(&self.receiver_address) {
+            return Err(Error::Wire(
+                "receiver address must be a lowercase 0x address".into(),
+            ));
+        }
         if self.amount == 0 {
             return Err(Error::Wire("amount must be positive".into()));
         }
@@ -181,6 +201,7 @@ impl RequestManifest {
         amount: u64,
         title: String,
         display_name: String,
+        receiver_address: String,
         reference: Option<String>,
         expires_at: Option<u64>,
         created_at: u64,
@@ -194,6 +215,7 @@ impl RequestManifest {
             amount,
             title,
             display_name,
+            receiver_address: receiver_address.to_lowercase(),
             reference,
             expires_at,
             created_at,
@@ -292,6 +314,7 @@ mod tests {
             1_000,
             "Invoice".into(),
             "Mara".into(),
+            "0x70997970c51812dc3a010c7d01b50e0d17dc79c8".into(),
             Some("INV-1".into()),
             None,
             100,

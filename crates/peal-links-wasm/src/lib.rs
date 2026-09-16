@@ -361,6 +361,7 @@ impl Prover {
         amount: &str,
         title: &str,
         display_name: &str,
+        receiver_address: &str,
         reference: Option<String>,
         expires_at: Option<u64>,
     ) -> Result<String, JsError> {
@@ -373,6 +374,7 @@ impl Prover {
             parse_amount(amount)?,
             title.to_string(),
             display_name.to_string(),
+            receiver_address.to_string(),
             reference,
             expires_at,
             now(),

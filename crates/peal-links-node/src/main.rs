@@ -222,6 +222,7 @@ async fn main() -> Result<()> {
         availability: Mutex::new(HashMap::new()),
         committee,
         consensus,
+        directory_limits: Mutex::new(Default::default()),
     });
     signer_handler.bind(app.clone());
     for ns in enabled {

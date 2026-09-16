@@ -70,6 +70,7 @@ pub fn open(path: &std::path::Path) -> Result<Connection> {
     conn.execute_batch(SCHEMA)?;
     conn.execute_batch(crate::watcher::CURSOR_SCHEMA)?;
     conn.execute_batch(crate::settlement::WITHDRAWAL_SCHEMA)?;
+    conn.execute_batch(crate::directory::SCHEMA)?;
     Ok(conn)
 }
 
@@ -78,6 +79,7 @@ pub fn open_in_memory() -> Result<Connection> {
     conn.execute_batch(SCHEMA)?;
     conn.execute_batch(crate::watcher::CURSOR_SCHEMA)?;
     conn.execute_batch(crate::settlement::WITHDRAWAL_SCHEMA)?;
+    conn.execute_batch(crate::directory::SCHEMA)?;
     Ok(conn)
 }
 

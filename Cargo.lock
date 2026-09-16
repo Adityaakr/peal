@@ -3200,6 +3200,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "commonware-cryptography",
+ "ed25519-dalek",
  "futures",
  "hex",
  "k256",
