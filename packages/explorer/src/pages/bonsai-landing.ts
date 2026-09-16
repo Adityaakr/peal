@@ -22,57 +22,53 @@ const reduced = (): boolean =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---- the hero -------------------------------------------------------------
+//
+// The mempool landing's opening: a lowercase display line, one sub line, one
+// dark button, and the product's own stage right under it. Here the stage is
+// the checkout, stepping through request, proving and accepted, with what
+// the public ledger and the receiver see standing behind it.
+
+function fundsNote(status: LinksStatus | null): string {
+  const env = status?.namespaces.find((n) => n.available)?.environment ?? null;
+  if (env === 'mainnet') return '';
+  return env
+    ? `this deployment runs on ${esc(env)} funds. nothing here is real money.`
+    : 'no payment network is available until a Peal Links node is running. nothing here moves real money.';
+}
 
 function hero(status: LinksStatus | null): string {
-  const env = status?.namespaces.find((n) => n.available)?.environment ?? null;
-  const note =
-    env === 'mainnet'
-      ? ''
-      : env
-        ? `This deployment runs on ${esc(env)} funds. Nothing here is real money.`
-        : 'No payment network is available until a Peal Links node is running. Nothing here moves real money.';
+  const note = fundsNote(status);
   return `
-    <section class="pl-ld-hero" aria-labelledby="pl-ld-title">
-      <div class="pl-ld-hero-media">
-        <div class="pl-ld-hero-copy">
-          <p class="peal-eyebrow">Peal Links</p>
-          <h1 class="pl-ld-title" id="pl-ld-title">One link.<br>A private payment.</h1>
-          <p class="pl-ld-lead">Share a link, get paid from any wallet. The amount and the two parties stay inside a proof; the ledger only learns that it checked out.</p>
-          <div class="pl-ld-cta-row">
-            <a class="peal-hero-cta" href="#/bonsai/app"><span aria-hidden="true" class="peal-hero-cta-gloss"></span><span>Create a payment link</span></a>
-            <a class="pl-ld-cta-quiet" href="#pl-how">How it works</a>
-          </div>
-        </div>
-        <div class="pl-ld-hero-scene" aria-hidden="true">
-          <div class="pl-ld-link">
-            <span class="pl-ld-link-dot"></span>
-            <span class="pl-ld-link-url">peal.network/#/pay/8f3k…w2qx</span>
-            <span class="pl-ld-link-amt">1,250.00 USDC</span>
-          </div>
-          <div class="pl-ld-ghost pl-ld-ghost-a"><b>••••••</b><i>amount, sealed</i></div>
-          <div class="pl-ld-ghost pl-ld-ghost-b"><b>••••••</b><i>parties, sealed</i></div>
-          <div class="pl-ld-ghost pl-ld-ghost-c"><b>checked out</b><i>what the ledger learns</i></div>
-        </div>
-        ${note ? `<p class="pl-ld-hero-note">${note}</p>` : ''}
+    <section class="ml-hero pl-ld-hero" aria-labelledby="pl-ld-title">
+      <h1 class="ml-h1 scroll-reveal" id="pl-ld-title">one link. a private payment.</h1>
+      <p class="ml-sub scroll-reveal">share a link, get paid from any wallet. the amount and the two parties stay inside a proof; the ledger only learns that it checked out.</p>
+      <div class="ml-hero-ctas scroll-reveal">
+        <a class="ml-btn ml-btn-dark" href="#/bonsai/app">create a payment link</a>
+        <a class="ml-btn" href="#pl-how">how it works</a>
       </div>
+      <div class="scroll-reveal">
+        ${checkoutScene('request')}
+        <p class="pl-ld-flow-cap" id="pl-ld-flow-cap">step through the flow, or watch it run once</p>
+      </div>
+      ${note ? `<p class="ml-note pl-ld-note">${note}</p>` : ''}
     </section>`;
 }
 
 // ---- section scaffolding --------------------------------------------------
 
-function section(id: string, eyebrow: string, title: string, body: string, extra = ''): string {
+function section(id: string, kicker: string, title: string, body: string): string {
   return `
-    <section id="${id}" class="peal-sec${extra}">
-      <div class="peal-sec-inner scroll-reveal">
-        <p class="peal-eyebrow">${eyebrow}</p>
-        <h2 class="peal-h2">${title}</h2>
-        <div class="peal-prose">${body}</div>
+    <section id="${id}" class="ml-section">
+      <div class="ml-wrap scroll-reveal">
+        <p class="ml-sec-kicker pl-ld-kicker">${kicker}</p>
+        <h2 class="ml-story-h2 pl-ld-h2">${title}</h2>
+        <div class="pl-ld-body">${body}</div>
       </div>
     </section>`;
 }
 
 function tryRow(href: string, label: string, more: string, moreLabel: string): string {
-  return `<p class="peal-try"><a class="peal-try-go" href="${href}">${label}</a><a class="peal-try-more" href="${more}">${moreLabel}</a></p>`;
+  return `<p class="pl-ld-try"><a class="ml-btn ml-btn-dark" href="${href}">${label}</a><a class="pl-ld-more" href="${more}">${moreLabel}</a></p>`;
 }
 
 // ---- scenes ----------------------------------------------------------------
@@ -152,9 +148,9 @@ function checkoutScene(stage: Stage): string {
 /** Three moves, each nearer than the last: the landing's handshake pattern. */
 function stepsScene(): string {
   const steps = [
-    { n: 'request', r: 'one signed link', d: 'an exact amount in one asset, a title, an optional expiry. Your account signs it so a payer can check nothing changed on the way.' },
-    { n: 'pay', r: 'proved in the browser', d: 'the payer funds a private balance from their wallet if they have none, then their browser makes the proof. The ledger checks it; the amount and the receiver stay inside a commitment.' },
-    { n: 'receive', r: 'claimed when you are back', d: 'the receipt opening is encrypted to you and left in your inbox. You can be offline the whole time. Your client verifies it against the ledger and claims it.' },
+    { n: 'request', r: 'one signed link', d: 'an exact amount in one asset, a title, an optional expiry. your account signs it so a payer can check nothing changed on the way.' },
+    { n: 'pay', r: 'proved in the browser', d: 'the payer funds a private balance from their wallet if they have none, then their browser makes the proof. the ledger checks it; the amount and the receiver stay inside a commitment.' },
+    { n: 'receive', r: 'claimed when you are back', d: 'the receipt opening is encrypted to you and left in your inbox. you can be offline the whole time. your client verifies it against the ledger and claims it.' },
   ];
   return `
     <div class="peal-x4 pl-ld-x4" data-scene="steps" aria-hidden="true">
@@ -180,47 +176,35 @@ function walletScene(): string {
 function problem(): string {
   return section(
     'the-problem',
-    'The problem',
-    'On a public chain, getting paid is <em class="peal-em">publishing your income</em>.',
-    `<p>Every transfer carries both addresses and the amount, and it stays there. Send a client one address for the invoice and they can read what everyone else paid you, what you paid out, and what you keep.</p>
+    'the problem',
+    'on a public chain, getting paid is publishing your income.',
+    `<p class="ml-p">every transfer carries both addresses and the amount, and it stays there. send a client one address for the invoice and they can read what everyone else paid you, what you paid out, and what you keep.</p>
      ${ledgerScene()}
-     <p>The usual answer is a fresh address per invoice. It does not hold up: the moment funds move together, the addresses are one person again, and the record was public the whole time.</p>`,
+     <p class="ml-p">the usual answer is a fresh address per invoice. it does not hold up: the moment funds move together, the addresses are one person again, and the record was public the whole time.</p>`,
   );
 }
 
 function how(): string {
   return section(
     'pl-how',
-    'What Peal Links does',
-    'The payment happens inside a proof, and the chain <em class="peal-em">only learns it checked out</em>.',
-    `<p>A Peal Links payment moves value between private accounts on a small ledger built for it. The payer's browser proves that the amount left their account and reached yours, without saying what the amount was or which account is yours. The ledger checks the proof and records one commitment.</p>
-     ${checkoutScene('request')}
-     <p class="pl-ld-flow-cap" id="pl-ld-flow-cap">step through the flow, or watch it run once</p>
-     <p>Funds come in and go out through ordinary token transfers on the backing chain, which are as public as any other. Everything between them is not.</p>
-     ${tryRow('#/bonsai/app', 'Create a payment link', '#pl-visible', 'Exactly who sees what')}
-     <p class="peal-fine">The checkout above is an illustration with fictional data. The real one at <code>#/pay/…</code> is signed by the payee's account, verified in the payer's browser, and proves the payment with the pinned ZK-Pari circuits from the Bonsai construction; a proof takes a few seconds on a laptop.</p>`,
-  );
-}
-
-function steps(): string {
-  return section(
-    'three-steps',
-    'Three steps',
-    'Request, pay, <em class="peal-em">receive</em>. Nobody has to be online at the same time.',
-    `<p>The link is the whole hand-off. The payer needs nothing but a wallet, and you need nothing but to come back later.</p>
+    'what Peal Links does',
+    'the payment happens inside a proof. the chain only learns it checked out.',
+    `<p class="ml-p">a Peal Links payment moves value between private accounts on a small ledger built for it. the payer's browser proves that the amount left their account and reached yours, without saying what the amount was or which account is yours. the ledger checks the proof and records one commitment.</p>
      ${stepsScene()}
-     <p>A request can be paid once. While one payer is completing it, a second one is asked to wait, and the page updates by itself when the first payment lands.</p>`,
+     <p class="ml-p">funds come in and go out through ordinary token transfers on the backing chain, which are as public as any other. everything between them is not. a request can be paid once: while one payer is completing it, a second one is asked to wait, and the page updates by itself when the first payment lands.</p>
+     ${tryRow('#/bonsai/app', 'create a payment link', '#pl-visible', 'exactly who sees what')}
+     <p class="ml-foot pl-ld-fine">the checkout at the top of this page is an illustration with fictional data. the real one at <code>#/pay/…</code> is signed by the payee's account, verified in the payer's browser, and proves the payment with the pinned ZK-Pari circuits from the Bonsai construction; a proof takes a few seconds on a laptop.</p>`,
   );
 }
 
 function oneWallet(): string {
   return section(
     'one-wallet',
-    'One wallet',
-    'Your wallet is the only identity. The private account <em class="peal-em">stands behind it</em>.',
-    `<p>There is no second address to manage. On first use your wallet signs one authorization for a private account, and from then on it is the thing you connect, the thing people pay, and the thing that recovers you.</p>
+    'one wallet',
+    'your wallet is the only identity. the private account stands behind it.',
+    `<p class="ml-p">there is no second address to manage. on first use your wallet signs one authorization for a private account, and from then on it is the thing you connect, the thing people pay, and the thing that recovers you.</p>
      ${walletScene()}
-     <p>The account's state lives encrypted on your device and in a backup only your wallet can open. Wallets that sign deterministically open it with a signature; the rest get a recovery code, shown once. Lose the device, keep the wallet, and the account comes back.</p>`,
+     <p class="ml-p">the account's state lives encrypted on your device and in a backup only your wallet can open. wallets that sign deterministically open it with a signature; the rest get a recovery code, shown once. lose the device, keep the wallet, and the account comes back.</p>`,
   );
 }
 
@@ -228,9 +212,9 @@ function visible(): string {
   // Copied from THREAT_MODEL.md's observer matrix; keep the two in step.
   return section(
     'pl-visible',
-    'What is visible',
-    'Exactly who sees what, <em class="peal-em">and who does not</em>.',
-    `<p>Every account on the ledger is one commitment. A payment changes two commitments and appends one receipt, and the proof that it was done correctly is 128 bytes. This is the honest list, not the brochure version.</p>
+    'what is visible',
+    'exactly who sees what, and who does not.',
+    `<p class="ml-p">every account on the ledger is one commitment. a payment changes two commitments and appends one receipt, and the proof that it was done correctly is 128 bytes. this is the honest list, not the brochure version.</p>
      <div class="pl-table-wrap pl-ld-table">
        <table class="pl-table">
          <thead><tr><th>who</th><th>sees</th><th>does not see</th></tr></thead>
@@ -244,22 +228,22 @@ function visible(): string {
          </tbody>
        </table>
      </div>
-     <p class="peal-fine">Not hidden: that your account was active, the timing of your submissions, and the metadata of the connection you submit over. Peal's directory links your wallet to your private account so others can pay your address; that is a service that knows the link, not cryptographic unlinkability. Peal Links does not claim anonymity or metadata privacy. Withdrawals are released by a committee of signers rather than verified by a proof on the chain, and the product says so wherever it appears. The full observer matrix is in the repository under <code>docs/peal-links/THREAT_MODEL.md</code>.</p>`,
+     <p class="ml-foot pl-ld-fine">not hidden: that your account was active, the timing of your submissions, and the metadata of the connection you submit over. Peal's directory links your wallet to your private account so others can pay your address; that is a service that knows the link, not cryptographic unlinkability. Peal Links does not claim anonymity or metadata privacy. Withdrawals are released by a committee of signers rather than verified by a proof on the chain, and the product says so wherever it appears. The full observer matrix is in the repository under <code>docs/peal-links/THREAT_MODEL.md</code>.</p>`,
   );
 }
 
 function uses(): string {
   const cases = [
-    ['independent work', 'one link per invoice. The client pays it from a wallet; you receive it in a balance that does not publish your income to the chain.'],
-    ['business invoices', 'a reference on the request, an exact amount, and a receipt you can export when your books need it. Nothing exported unless you choose to.'],
-    ['contributions', 'a fixed-amount link for a workshop seat, a membership or a collection. Everyone pays the same; nobody learns who else paid.'],
+    ['independent work', 'one link per invoice. the client pays it from a wallet; you receive it in a balance that does not publish your income to the chain.'],
+    ['business invoices', 'a reference on the request, an exact amount, and a receipt you can export when your books need it. nothing exported unless you choose to.'],
+    ['contributions', 'a fixed-amount link for a workshop seat, a membership or a collection. everyone pays the same; nobody learns who else paid.'],
     ['paying an address', 'no link at all: send to a wallet address that has activated private receiving, and the amount stays between the two of you.'],
   ];
   return section(
     'what-it-is-for',
-    'What it is for',
-    'Payments that are <em class="peal-em">yours to disclose</em>.',
-    `<p>The receipts are yours. Export them for your accountant, show one to a client, or show nobody. The chain does not get a copy.</p>
+    'what it is for',
+    'payments that are yours to disclose.',
+    `<p class="ml-p">the receipts are yours. export them for your accountant, show one to a client, or show nobody. the chain does not get a copy.</p>
      <ul class="pl-ld-uses">${cases.map(([t, d]) => `<li><b>${t}</b><span>${d}</span></li>`).join('')}</ul>`,
   );
 }
@@ -280,12 +264,12 @@ await bob.syncInbox();
 await bob.claimAll();`;
   return section(
     'for-developers',
-    'For developers',
-    'A wallet, a ledger, and <em class="peal-em">a proof between them</em>.',
-    `<p>The core is a Rust crate over the pinned upstream ZK-Pari circuits, compiled to WebAssembly and driven by a typed TypeScript SDK. A wallet holds the account opening and its private list of claimed receipts; the ledger holds one commitment per account and verifies every operation. Amounts are integer base units everywhere.</p>
+    'for developers',
+    'a wallet, a ledger, and a proof between them.',
+    `<p class="ml-p">the core is a Rust crate over the pinned upstream ZK-Pari circuits, compiled to WebAssembly and driven by a typed TypeScript SDK. a wallet holds the account opening and its private list of claimed receipts; the ledger holds one commitment per account and verifies every operation. amounts are integer base units everywhere.</p>
      <pre class="pl-code pl-ld-code">${code}</pre>
-     ${tryRow('#/bonsai/app', 'Open the app', '#pl-visible', 'What the ledger learns')}
-     <p class="peal-fine">The ledger is replicated by Commonware <code>simplex</code> consensus in this build. The proving keys come from a local setup rather than a ceremony, the upstream circuits are a pinned prototype revision, and settlement is committee-attested. All of it is recorded in the repository under <code>docs/peal-links/MAINNET_READINESS.md</code>.</p>`,
+     ${tryRow('#/bonsai/app', 'open the app', '#pl-visible', 'what the ledger learns')}
+     <p class="ml-foot pl-ld-fine">the ledger is replicated by Commonware <code>simplex</code> consensus in this build. The proving keys come from a local setup rather than a ceremony, the upstream circuits are a pinned prototype revision, and settlement is committee-attested. All of it is recorded in the repository under <code>docs/peal-links/MAINNET_READINESS.md</code>.</p>`,
   );
 }
 
@@ -306,37 +290,36 @@ function faq(status: LinksStatus | null): string {
   ];
   return section(
     'questions',
-    'Questions',
-    'The <em class="peal-em">short answers</em>.',
+    'questions',
+    'the short answers.',
     `<div class="pl-faq pl-ld-faq">${qa.map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join('')}</div>
-     <p class="peal-fine">Peal Links is built on the Bonsai private payment construction and its ZK-Pari proof system, published by Commonware. Peal is not affiliated with or endorsed by Commonware. The upstream implementation is pinned by revision in this repository; the trusted setup used here is a local development setup, and the security proofs the construction relies on are stated in the repository's research notes, including what remains unproven.</p>`,
+     <p class="ml-foot pl-ld-fine">Peal Links is built on the Bonsai private payment construction and its ZK-Pari proof system, published by Commonware. Peal is not affiliated with or endorsed by Commonware. The upstream implementation is pinned by revision in this repository; the trusted setup used here is a local development setup, and the security proofs the construction relies on are stated in the repository's research notes, including what remains unproven.</p>`,
   );
 }
 
 function close(status: LinksStatus | null): string {
-  const env = status?.namespaces.find((n) => n.available)?.environment ?? null;
-  const note = env === 'mainnet' ? 'One wallet signature to set up, and the link is ready to share.' : env ? `One wallet signature to set up, and the link is ready to share. This deployment runs on ${esc(env)} funds.` : 'One wallet signature to set up, and the link is ready to share, once a Peal Links node is running.';
+  const note = fundsNote(status);
   return `
-    <section class="peal-sec peal-close">
-      <div class="peal-sec-inner scroll-reveal">
-        <h2 class="peal-h2">Create a link and get paid privately.</h2>
-        <div class="peal-cta-row">
-          <a class="peal-cta" href="#/bonsai/app">Create a payment link</a>
-          <a class="peal-cta peal-cta-quiet" href="#pl-visible">See who sees what</a>
+    <section class="ml-section pl-ld-close">
+      <div class="ml-wrap scroll-reveal">
+        <h2 class="ml-story-h2 pl-ld-h2">create a link and get paid privately.</h2>
+        <p class="ml-story-sub">one wallet signature to set up, and the link is ready to share.</p>
+        <div class="ml-hero-ctas">
+          <a class="ml-btn ml-btn-dark" href="#/bonsai/app">create a payment link</a>
+          <a class="ml-btn" href="#pl-visible">see who sees what</a>
         </div>
-        <p class="peal-close-note">${note}</p>
+        ${note ? `<p class="ml-note">${note}</p>` : ''}
       </div>
     </section>`;
 }
 
 export function bonsaiLandingHtml(status: LinksStatus | null): string {
   return `
-    <div class="pl pl-ld">
+    <div class="pl pl-ld ml">
       ${hero(status)}
       <div class="pl-ld-main">
         ${problem()}
         ${how()}
-        ${steps()}
         ${oneWallet()}
         ${visible()}
         ${uses()}
@@ -350,7 +333,6 @@ export function bonsaiLandingHtml(status: LinksStatus | null): string {
 export function renderBonsaiLanding(root: HTMLElement): () => void {
   const previousTitle = document.title;
   document.title = 'Peal Links. One link, a private payment.';
-  document.body.classList.add('pl-landing-page');
   let stale = false;
   let cleanupReveal: (() => void) | null = null;
   let observer: IntersectionObserver | null = null;
@@ -441,7 +423,6 @@ export function renderBonsaiLanding(root: HTMLElement): () => void {
     clearTimers();
     observer?.disconnect();
     cleanupReveal?.();
-    document.body.classList.remove('pl-landing-page');
     document.title = previousTitle;
   };
 }
