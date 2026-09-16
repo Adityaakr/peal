@@ -25,6 +25,7 @@ step "tooling"
 for tool in cargo pnpm forge anvil cast node; do
   command -v "$tool" >/dev/null || { echo "missing: $tool" >&2; exit 1; }
 done
+[ -f contracts/lib/forge-std/src/Test.sol ] || git submodule update --init --recursive
 [ -d node_modules ] || pnpm install --frozen-lockfile
 [ -d packages/links/src/generated ] || node packages/links/scripts/build-wasm.mjs
 [ -d "$HOME/Library/Caches/ms-playwright" ] || [ -d "$HOME/.cache/ms-playwright" ] || pnpm -C packages/explorer exec playwright install chromium
