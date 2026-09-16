@@ -11,7 +11,7 @@ import { depositOnChain, LinksApiError, tokenBalance, withdrawOnChain } from 'pe
 import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, injectedProvider, onAuthChange, session } from '../auth';
 import { esc } from '../util';
-import { formatUnits, fmtTime, parseUnits, shortHex } from '../links/format';
+import { describeError, formatUnits, fmtTime, parseUnits, shortHex } from '../links/format';
 import {
   client,
   createAccount,
@@ -496,7 +496,8 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     try {
       await f();
     } catch (e) {
-      page.error = e instanceof Error ? e.message : String(e);
+      const ns = links().namespace;
+      page.error = describeError(e, ns?.chain_name, ns?.chain_id);
     } finally {
       page.busy = null;
       await refresh().catch(() => {});

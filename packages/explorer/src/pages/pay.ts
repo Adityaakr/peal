@@ -11,7 +11,7 @@ import { depositOnChain, LinksApiError, newIntentId, tokenBalance } from 'peal-l
 import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, injectedProvider, onAuthChange, session } from '../auth';
 import { esc } from '../util';
-import { formatUnits, fmtTime, parseUnits, shortHex } from '../links/format';
+import { describeError, formatUnits, fmtTime, parseUnits, shortHex } from '../links/format';
 import { client, createAccount, links, loadStatus, onLinksChange, openAccount } from '../links/session';
 import '../links.css';
 
@@ -215,6 +215,10 @@ function html(s: PayState): string {
 }
 
 export function renderPay(root: HTMLElement, requestId: string): () => void {
+  const l0Namespace = () => {
+    const l = links();
+    return l.status?.namespaces.find((n) => n.id === s.request?.manifest.namespace) ?? null;
+  };
   const previousTitle = document.title;
   document.title = 'Peal Links. payment request';
   const unmeta = [setMeta('robots', 'noindex, nofollow'), setMeta('referrer', 'no-referrer')];
@@ -267,7 +271,8 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     try {
       await f();
     } catch (e) {
-      s.error = e instanceof LinksApiError && e.code === 'reserved' ? 'Someone else is completing this payment right now. Try again in a few minutes.' : e instanceof Error ? e.message : String(e);
+      const ns = l0Namespace();
+      s.error = e instanceof LinksApiError && e.code === 'reserved' ? 'Someone else is completing this payment right now. Try again in a few minutes.' : describeError(e, ns?.chain_name, ns?.chain_id);
       if (s.stage !== 'accepted' && s.stage !== 'delivered' && s.stage !== 'delivery_pending') s.stage = 'idle';
     } finally {
       s.busy = null;
@@ -351,7 +356,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
           s.fundingNote = null;
         } catch (e) {
           s.fundingNote = null;
-          s.error = e instanceof Error ? e.message : String(e);
+          s.error = describeError(e, ns.chain_name, ns.chain_id);
         }
         await refreshBalance().catch(() => {});
         await refreshWalletBalance();
@@ -366,7 +371,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     const l = links();
     if (btn.id === 'pay-now' && l.account) void pay(l.account);
     else if (btn.id === 'pay-login') session().login();
-    else if (btn.id === 'pay-login-injected') void connectInjected().then(refreshWalletBalance).then(paint).catch((e) => { s.error = e instanceof Error ? e.message : String(e); paint(); });
+    else if (btn.id === 'pay-login-injected') void connectInjected().then(refreshWalletBalance).then(paint).catch((e) => { s.error = describeError(e); paint(); });
     else if (btn.id === 'pay-dev-mint' && l.account && s.request) {
       const account = l.account;
       const m = s.request.manifest;

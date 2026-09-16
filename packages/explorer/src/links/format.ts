@@ -41,3 +41,19 @@ export function fmtTime(unixSeconds: number): string {
     timeStyle: 'short',
   });
 }
+
+/** A short, human sentence for an error from the wallet, the chain or the
+ * node. Raw library errors carry calldata and stack-like detail that a
+ * person cannot act on; the first line and a few known cases are enough. */
+export function describeError(e: unknown, chainName?: string, chainId?: number): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  const first = raw.split('\n')[0]?.trim() ?? raw;
+  if (/rejected|denied/i.test(raw)) return 'You declined the request in your wallet. Nothing was sent.';
+  const mismatch = /current chain of the wallet \(id: (\d+)\)/i.exec(raw);
+  if (mismatch) {
+    return `Your wallet is on chain ${mismatch[1]}. Switch it to ${chainName ?? 'the request\u2019s chain'}${chainId ? ` (id ${chainId})` : ''} and try again.`;
+  }
+  if (/insufficient funds|InsufficientBalance|exceeds the balance/i.test(raw)) return 'Your wallet does not hold enough tokens (or gas) for this transaction.';
+  if (/not reachable/i.test(raw)) return 'The Peal Links node is not reachable. Try again in a moment.';
+  return first.length > 200 ? `${first.slice(0, 200)}\u2026` : first;
+}

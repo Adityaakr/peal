@@ -143,7 +143,7 @@ test('wallet rejection and wrong network are recoverable, not silent', async ({ 
   await app.goto('/#/bonsai/app');
   await app.getByRole('button', { name: 'Use browser wallet' }).click();
   await app.getByRole('button', { name: 'Sign in' }).click();
-  await expect(app.getByRole('alert')).toContainText(/rejected/i, { timeout: 30_000 });
+  await expect(app.getByRole('alert')).toContainText(/declined/i, { timeout: 30_000 });
   await expect(app.getByRole('button', { name: 'Sign in' })).toBeVisible();
   await shot(app, 'edge-signin-rejected');
   // Deposit rejected in the wallet: the private account keeps no pending
@@ -156,7 +156,7 @@ test('wallet rejection and wrong network are recoverable, not silent', async ({ 
   await pay.getByRole('button', { name: 'Use browser wallet' }).click();
   await pay.locator('#pay-fund-form input[name="amount"]').fill('5');
   await pay.getByRole('button', { name: 'Deposit from wallet' }).click();
-  await expect(pay.getByRole('alert')).toContainText(/rejected/i, { timeout: 60_000 });
+  await expect(pay.getByRole('alert')).toContainText(/declined/i, { timeout: 60_000 });
   await expect(pay.getByRole('button', { name: 'Deposit from wallet' })).toBeEnabled();
   await shot(pay, 'edge-deposit-rejected');
   await rej.close();
@@ -275,8 +275,9 @@ test('backup export restores an account in a fresh browser with its balance and 
   d1.once('dialog', (dialog) => dialog.accept('backup passphrase 2'));
   await d1.getByRole('button', { name: 'Export encrypted backup' }).click();
   const file = await download;
-  const path = await file.path();
-  expect(path).toBeTruthy();
+  // Downloads are deleted with their context: keep a copy first.
+  const path = join(OUT, 'edge-backup.json');
+  await file.saveAs(path);
   await shot(d1, 'edge-backup-exported');
   await one.close();
 
@@ -284,7 +285,7 @@ test('backup export restores an account in a fresh browser with its balance and 
   const d2 = await two.newPage();
   await d2.goto('/#/bonsai/app');
   await d2.getByRole('button', { name: 'Restore from backup' }).click();
-  await d2.locator('#pl-restore input[name="file"]').setInputFiles(path!);
+  await d2.locator('#pl-restore input[name="file"]').setInputFiles(path);
   await d2.locator('#pl-restore input[name="bpass"]').fill('backup passphrase 2');
   await d2.locator('#pl-restore input[name="pass"]').fill(PASS);
   await d2.locator('#pl-restore').getByRole('button', { name: 'Restore' }).click();

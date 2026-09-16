@@ -2,7 +2,7 @@
 
 Living log. Read this first every session. Spec: `SPEC.md`.
 
-## Current phase: E (product integration)
+## Current phase: F (production preparation and QA)
 
 ### Smoke command
 ```
@@ -32,7 +32,7 @@ Expected: 7 passed, 0 failed (encoding 2, gate_a 3, parity 2), about 12 s includ
 | B | PASSED | (see record) | evidence/phase-b/*.png |
 | C | PASSED | (see record) | evidence/phase-c/ |
 | D | PASSED | (see record) | evidence/phase-d/ |
-| E | OPEN | | |
+| E | PASSED | (see record) | evidence/phase-e/ |
 | F | OPEN | | |
 
 ### Blockers
@@ -177,5 +177,22 @@ Residual risks: committee-attested bridge with a single-process signer fixture (
 3. **Existing Peal routes**: the screenshot spec captures home, the mempool landing and the developer docs at three widths with no page errors; `pnpm -C packages/explorer build` succeeds (17 prerendered pages, 247 assets) with the new pages included; `cargo test --workspace` and `forge test` run in Phase F.
 4. **Gate evidence matches commits**: Gate A `06703bf`; Gates B, C, D recorded in the commits that added them; every artifact path listed exists under `docs/peal-links/evidence/`.
 
+### Gate E: product integration  [PASSED]
+Commit: see the commit that adds this record (peal-links(phase-e): gate E)
+Commands:
+- `pnpm -C packages/explorer test:e2e e2e/links-flow.spec.ts` -> exit 0 (1 passed, 50 s; evidence/phase-e/links-flow-playwright.log): create link, deposit from wallet, pay, reload keeps "paid from this device", receiver claims and acknowledges, receiver withdraws from the dashboard and the tokens land on chain A, privacy assertions on every captured request
+- `pnpm -C packages/explorer test:e2e e2e/links-edge.spec.ts` -> exit 0 (5 passed, 1.5 min; evidence/phase-e/links-edge-playwright.log): archived, expired, unknown and malformed request screens; sign-in declined and deposit declined in the wallet; wrong network; reload in the middle of proving with exactly one payment afterwards; concurrent payer held off by the reservation; backup exported from the UI and restored in a fresh browser with balance and claimed receipt; checkout reachable by keyboard
+- `pnpm -C packages/links test` -> exit 0 (2 passed: e2e with a real deposit, bridge)
+- `pnpm -C packages/explorer build` -> exit 0 (17 prerendered pages, 247 assets)
+- `pnpm -C packages/explorer exec tsc --noEmit`, `pnpm -C packages/links typecheck` -> exit 0
+Tests: explorer Playwright 6/0/0; peal-links vitest 2/0/0; screenshots 21/0/0 (Phase B spec, re-run in Phase F)
+Artifacts: evidence/phase-e/edge-*.png (inspected: the raw wallet and chain errors overflowed the card and were replaced by one-sentence messages, then re-captured), evidence/phase-e/*.log
+Residual risks: the one-time request is a ten-minute soft lock, not ledger admission (a second payer after expiry pays again and the receiver holds a duplicate to refund; SPEC section 8 disclosure in decision 0004 and the checkout copy); no Playwright coverage of quote expiry mid-checkout beyond the request expiry screen; the inbox is public-write (bounded by size, not identity); export of a receipt or CSV from the dashboard is not implemented (history is shown, not exported); notifications outside the app are not implemented.
+
+### Phase F plan
+1. Workspace-wide checks: `cargo test --workspace --release`, `cargo clippy --workspace`, `forge test`, `pnpm -r typecheck`, screenshot spec re-run with the node up.
+2. Clean-checkout run: `git clone` the branch into a temporary directory and run `scripts/peal-links/demo.sh` there (ports shared with the running stack: stop it first).
+3. Handoff block in this file per SPEC section 15; MAINNET_READINESS.md final pass.
+
 ### Next step
-Finish the Phase E edge tests (reload during proving, backup restore in a fresh browser), record Gate E, then Phase F: workspace-wide tests, clean-checkout run of `scripts/peal-links/demo.sh`, handoff.
+Run the workspace-wide checks, then the clean-checkout demo.
