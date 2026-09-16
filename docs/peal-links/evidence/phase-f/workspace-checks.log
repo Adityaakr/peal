@@ -1,0 +1,48 @@
+     Running unittests src/main.rs (target/release/deps/bte_cli-45f75c031d85a0da)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/release/deps/bte_coordinator-2c09e0d02df2a21e)
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/main.rs (target/release/deps/bte_coordinator-c6fcaed54c313739)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/integration.rs (target/release/deps/integration-5640677a7b20a25e)
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.31s
+     Running tests/intents_v1.rs (target/release/deps/intents_v1-3b8952d700654691)
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+     Running unittests src/lib.rs (target/release/deps/bte_crypto-8daed9f77e707714)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/api.rs (target/release/deps/api-7f797940b1bb097a)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running unittests src/lib.rs (target/release/deps/bte_node-ef4de382668bf57a)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+     Running unittests src/main.rs (target/release/deps/bte_node-e184b0f329552f70)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/release/deps/bte_wasm-dbfb4d3effc590c0)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/release/deps/peal_bonsai-e23cbfa4d6386753)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+     Running tests/gate_a.rs (target/release/deps/gate_a-d6a04d1ed141e7bb)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.19s
+     Running tests/parity.rs (target/release/deps/parity-520cdd75cd5813c1)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+     Running unittests src/lib.rs (target/release/deps/peal_links_node-9ce589b1c15b9b23)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/main.rs (target/release/deps/peal_links_node-461b77fa18c0b8c8)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/release/deps/peal_links_wasm-ccb4584d7bc04f85)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+cargo exit 0
+Suite result: ok. 18 passed; 0 failed; 0 skipped; finished in 18.36ms (49.93ms CPU time)
+
+Ran 14 test suites in 23.16ms (141.12ms CPU time): 125 tests passed, 0 failed, 0 skipped (125 total tests)
+packages/sealbid-settler typecheck$ tsc --noEmit
+packages/live typecheck: Done
+packages/actions typecheck: Done
+packages/sealbid-settler typecheck: Done
+clippy exit 0

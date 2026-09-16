@@ -194,5 +194,10 @@ Residual risks: the one-time request is a ten-minute soft lock, not ledger admis
 2. Clean-checkout run: `git clone` the branch into a temporary directory and run `scripts/peal-links/demo.sh` there (ports shared with the running stack: stop it first).
 3. Handoff block in this file per SPEC section 15; MAINNET_READINESS.md final pass.
 
+### Phase F progress
+- Workspace checks (evidence/phase-f/workspace-checks.log): `cargo test --workspace --release` exit 0 (bte-coordinator 30 + 50 + 17, bte-crypto 9, bte-node 1, peal-bonsai 12, peal-links-node 6); `forge test` 125 passed; `pnpm -r typecheck` clean; `cargo clippy --workspace --all-targets -- -D warnings` exit 0.
+- Deployment artifacts: `docker/Dockerfile.links`, `docker/docker-compose.links.yml` (prepared, not exercised: no Docker here), `/links/*` routes in both Caddyfiles, `config/peal-links.profiles.example.json` (Ethereum, Base, Arbitrum mainnet and testnet namespaces, all disabled; validated by the node's config loader), `.env.example` entries, README section.
+- Clean-checkout run: in progress (`git clone` of `feat/peal-links` into a scratch directory, `scripts/peal-links/demo.sh`).
+
 ### Next step
-Run the workspace-wide checks, then the clean-checkout demo.
+Read the clean-checkout demo result; if it passed, record Gate F and write the Handoff block.
