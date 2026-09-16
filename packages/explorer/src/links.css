@@ -1585,14 +1585,13 @@
 }
 
 /* ---------- the app (#/bonsai/app): a product shell ----------
-   A sidebar with the sections and the wallet, a main column with a page
-   head and white cards, forms as pages. Light, quiet, the explorer's own
-   tokens; motion only where a state changes. Prefix .pla-. */
+   A sidebar with the sections and the wallet, a top bar with the breadcrumb,
+   the network and the wallet chip, a main column with a page head and
+   white cards, forms as pages, a details drawer on the right. Light, quiet,
+   the explorer's own tokens; motion where a state changes. Prefix .pla-. */
 
-/* The app takes the whole window: no site header, no clamped main, the
-   shell edge to edge with the sidebar the full height of the viewport. */
 body.pla-page {
-  background: #fff;
+  background: #f6f7f9;
 }
 
 body.pla-page .site-header {
@@ -1609,15 +1608,16 @@ body.pla-page main {
   --pla-radius: 14px;
   --pla-dark: #111827;
   --pla-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --pla-canvas: #f6f7f9;
   color: var(--text);
 }
 
 .pla-shell {
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: 252px minmax(0, 1fr);
   min-width: 0;
   min-height: 100vh;
-  background: #fff;
+  background: var(--pla-canvas);
 }
 
 /* ---- sidebar ---- */
@@ -1629,84 +1629,34 @@ body.pla-page main {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
-  padding: 22px 16px 16px;
+  padding: 20px 14px 14px;
   border-right: 1px solid var(--border);
-  background: #fbfcfd;
+  background: #fff;
   overflow-y: auto;
-}
-
-.pla-home {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  font-size: 12.5px;
-  color: var(--muted);
-  text-decoration: none;
-  transition: background 140ms ease, color 140ms ease;
-}
-
-.pla-home:hover {
-  background: #f3f4f6;
-  color: var(--text);
 }
 
 .pla-brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px 18px;
+  padding: 6px 10px 20px;
   font-family: var(--pl-display);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 500;
   color: var(--text);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .pla-brand-dot {
   width: 30px;
   height: 30px;
+  flex: none;
   border-radius: 10px;
   background: linear-gradient(135deg, #2563eb, #60a5fa);
   box-shadow: inset 0 -3px 6px rgb(255 255 255 / 35%);
-}
-
-.pla-ns {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: #fff;
-}
-
-.pla-ns-label {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.pla-ns-one {
-  font-size: 13.5px;
-  font-weight: 500;
-}
-
-.pla-select {
-  font: inherit;
-  font-size: 13.5px;
-  font-weight: 500;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--text);
-  cursor: pointer;
 }
 
 .pla-nav {
@@ -1729,6 +1679,7 @@ body.pla-page main {
   font-weight: 500;
   color: #374151;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
   transition:
     background 140ms ease,
@@ -1738,6 +1689,7 @@ body.pla-page main {
 .pla-nav-item:hover {
   background: #f3f4f6;
   color: var(--text);
+  text-decoration: none;
 }
 
 .pla-nav-item.is-active {
@@ -1759,7 +1711,7 @@ body.pla-page main {
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #fff;
+  background: #fbfcfd;
 }
 
 .pla-wallet-off {
@@ -1789,37 +1741,227 @@ body.pla-page main {
   flex-wrap: wrap;
 }
 
+.pla-home {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-decoration: none;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.pla-home:hover {
+  background: #f3f4f6;
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* ---- top bar ---- */
+
+.pla-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pla-top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 32px;
+  border-bottom: 1px solid var(--border);
+  background: rgb(255 255 255 / 85%);
+  backdrop-filter: blur(10px);
+}
+
+.pla-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13.5px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pla-crumb {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.pla-crumb:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.pla-crumb.is-here {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.pla-crumb-sep {
+  display: inline-flex;
+  color: #c4c9d2;
+}
+
+.pla-crumb-sep .pla-ic {
+  width: 14px;
+  height: 14px;
+}
+
+.pla-top-r {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.pla-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.pla-chip:hover {
+  border-color: #d1d5db;
+  text-decoration: none;
+}
+
+.pla-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d1d5db;
+}
+
+.pla-chip-dot.is-live {
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgb(22 163 74 / 15%);
+}
+
+.pla-select {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pla-chip-wallet {
+  padding: 0 12px 0 4px;
+}
+
+.pla-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.pla-chip-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.pla-chip-text b {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pla-chip-text i {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.pla-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.pla-iconbtn:hover {
+  background: #f3f4f6;
+  color: var(--text);
+  text-decoration: none;
+}
+
 /* ---- main column ---- */
 
 .pla-main {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 30px 40px 48px;
+  gap: 18px;
+  padding: 28px 32px 56px;
   min-width: 0;
-  max-width: 1240px;
+  max-width: 1180px;
+  width: 100%;
 }
 
 .pla-enter > * {
-  animation: pla-in 280ms var(--pla-ease) both;
+  animation: pla-in 320ms var(--pla-ease) both;
 }
 
 .pla-enter > *:nth-child(2) {
-  animation-delay: 30ms;
+  animation-delay: 40ms;
 }
 
 .pla-enter > *:nth-child(3) {
-  animation-delay: 60ms;
+  animation-delay: 80ms;
 }
 
 .pla-enter > *:nth-child(4) {
-  animation-delay: 90ms;
+  animation-delay: 120ms;
+}
+
+.pla-enter > *:nth-child(5) {
+  animation-delay: 160ms;
 }
 
 @keyframes pla-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -1830,15 +1972,15 @@ body.pla-page main {
 .pla-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .pla-head-l {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   min-width: 0;
 }
@@ -1854,28 +1996,29 @@ body.pla-page main {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   flex: none;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 50%;
   background: #fff;
   color: var(--text);
   cursor: pointer;
-  transition: background 140ms ease;
+  transition: background 140ms ease, transform 140ms ease;
 }
 
 .pla-back:hover {
   background: #f3f4f6;
+  transform: translateX(-1px);
 }
 
 .pla-title {
   margin: 0;
   font-family: var(--pl-body);
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  line-height: 1.3;
+  line-height: 1.25;
 }
 
 .pla-sub {
@@ -1899,15 +2042,19 @@ body.pla-page main {
 }
 
 .pla-foot {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   font-size: 12.5px;
   line-height: 1.6;
   color: var(--muted);
 }
 
 .pla-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font: inherit;
   font-size: inherit;
+  font-weight: 500;
   padding: 0;
   border: 0;
   background: none;
@@ -1916,8 +2063,32 @@ body.pla-page main {
   cursor: pointer;
 }
 
+.pla-link .pla-ic {
+  width: 15px;
+  height: 15px;
+}
+
 .pla-link:hover {
   text-decoration: underline;
+}
+
+.pla-link-quiet {
+  color: var(--muted);
+  text-decoration: underline;
+}
+
+.pla-unit {
+  font-size: 0.8em;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.pla-pos {
+  color: #047857;
+}
+
+.pla-neg {
+  color: var(--text);
 }
 
 /* ---- buttons ---- */
@@ -1948,15 +2119,18 @@ body.pla-page main {
 .pla-btn:hover {
   background: #f9fafb;
   border-color: #d1d5db;
+  text-decoration: none;
 }
 
 .pla-btn:active {
   transform: translateY(1px);
 }
 
-.pla-btn:disabled {
+.pla-btn:disabled,
+.pla-btn[aria-disabled='true'] {
   opacity: 0.5;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .pla-btn-dark {
@@ -1987,6 +2161,244 @@ body.pla-page main {
   width: 100%;
 }
 
+/* ---- the balance block ---- */
+
+.pla-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px 40px;
+  align-items: end;
+  padding: 26px 28px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background:
+    radial-gradient(80% 120% at 100% 0%, #eff6ff 0%, rgb(239 246 255 / 0) 60%),
+    #fff;
+}
+
+.pla-hero-l {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 260px;
+}
+
+.pla-hero-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.pla-hero-amount {
+  font-family: var(--pl-display);
+  font-size: clamp(40px, 5vw, 56px);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pla-hero-amount .pl-amount-unit {
+  margin-left: 10px;
+  font-family: var(--pl-body);
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.pla-hero-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.pla-hero-r {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 18px;
+}
+
+.pla-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.pla-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.pla-pill:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+
+.pla-pill[aria-disabled='true'] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.pla-pill-dark {
+  background: var(--pla-dark);
+  border-color: var(--pla-dark);
+  color: #fff;
+}
+
+.pla-pill-dark:hover {
+  background: #1f2937;
+  border-color: #1f2937;
+  box-shadow: 0 10px 24px -14px rgb(17 24 39 / 60%);
+}
+
+.pla-pill-round {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+  font: inherit;
+}
+
+.pla-more {
+  position: relative;
+}
+
+.pla-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 6;
+  min-width: 240px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 20px 40px -20px rgb(15 23 42 / 30%), 0 2px 6px rgb(15 23 42 / 6%);
+  animation: pla-pop 160ms var(--pla-ease) both;
+}
+
+@keyframes pla-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pla-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pla-menu-item:hover {
+  background: #f3f4f6;
+  text-decoration: none;
+}
+
+.pla-menu-item .pla-ic {
+  color: #6b7280;
+}
+
+.pla-hero-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.pla-ministat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 170px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 80%);
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+a.pla-ministat:hover {
+  border-color: var(--accent-border);
+  box-shadow: 0 10px 22px -18px rgb(37 99 235 / 45%);
+  text-decoration: none;
+}
+
+.pla-ministat span {
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pla-ministat b {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pla-ministat i {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pla-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
 /* ---- cards ---- */
 
 .pla-card {
@@ -1996,7 +2408,7 @@ body.pla-page main {
 }
 
 .pla-card-narrow {
-  max-width: 640px;
+  max-width: 660px;
 }
 
 .pla-card-head {
@@ -2011,7 +2423,7 @@ body.pla-page main {
 .pla-card-title {
   margin: 0;
   font-family: var(--pl-body);
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 600;
 }
 
@@ -2034,23 +2446,42 @@ body.pla-page main {
 }
 
 .pla-empty {
-  padding: 22px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 44px 20px;
   font-size: 14px;
   line-height: 1.55;
   color: var(--muted);
   text-align: center;
 }
 
-.pla-empty-tall {
-  padding: 48px 20px;
+.pla-empty-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 6px;
+  border-radius: 14px;
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.pla-empty-ic .pla-ic {
+  width: 20px;
+  height: 20px;
 }
 
 .pla-empty b {
-  display: block;
-  margin-bottom: 4px;
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
+}
+
+.pla-empty .pla-btn {
+  margin-top: 12px;
 }
 
 /* ---- stats ---- */
@@ -2058,23 +2489,17 @@ body.pla-page main {
 .pla-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 
 .pla-stat {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 18px 20px;
+  gap: 4px;
+  padding: 16px 20px;
   border: 1px solid var(--border);
   border-radius: var(--pla-radius);
   background: #fff;
-  transition: box-shadow 160ms ease, transform 160ms ease;
-}
-
-.pla-stat:hover {
-  box-shadow: 0 10px 24px -20px rgb(15 35 70 / 40%);
-  transform: translateY(-1px);
 }
 
 .pla-stat-primary {
@@ -2083,105 +2508,120 @@ body.pla-page main {
 }
 
 .pla-stat-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--muted);
 }
 
-.pla-stat-amount {
+.pla-stat-n {
   font-family: var(--pl-display);
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 400;
+  line-height: 1.1;
   letter-spacing: -0.01em;
   color: var(--text);
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
 }
 
-.pla-stat-amount .pl-amount-unit {
-  margin-left: 8px;
+.pla-stat-text {
   font-family: var(--pl-body);
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.pla-stat-sub {
-  font-size: 12.5px;
-  color: var(--muted);
-}
-
-.pla-badge {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid #fde68a;
-  background: #fffbeb;
-  color: #92400e;
-}
-
-/* ---- quick actions ---- */
-
-.pla-quick {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.pla-quick-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--pla-radius);
-  background: #fff;
-  font: inherit;
-  text-align: left;
-  color: var(--text);
-  cursor: pointer;
-  transition:
-    border-color 140ms ease,
-    box-shadow 160ms ease,
-    transform 160ms ease;
-}
-
-.pla-quick-item:hover:not(:disabled) {
-  border-color: var(--accent-border);
-  box-shadow: 0 12px 28px -22px rgb(37 99 235 / 45%);
-  transform: translateY(-1px);
-}
-
-.pla-quick-item:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.pla-quick-item .pla-ic {
-  width: 20px;
-  height: 20px;
-  color: var(--accent);
-}
-
-.pla-quick-item b {
-  font-size: 14px;
+  font-size: 20px;
   font-weight: 600;
 }
 
-.pla-quick-item i {
+.pla-stat i {
   font-style: normal;
   font-size: 12.5px;
-  line-height: 1.45;
   color: var(--muted);
+}
+
+/* ---- toolbar: search and filters ---- */
+
+.pla-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pla-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 260px;
+  max-width: 420px;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--muted);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.pla-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 12%);
+}
+
+.pla-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+}
+
+.pla-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pla-filter {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: #374151;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.pla-filter:hover {
+  background: #f3f4f6;
+}
+
+.pla-filter.is-on {
+  background: var(--pla-dark);
+  border-color: var(--pla-dark);
+  color: #fff;
 }
 
 /* ---- lists ---- */
+
+.pla-group + .pla-group {
+  border-top: 1px solid var(--border);
+}
+
+.pla-group-label {
+  margin: 0;
+  padding: 12px 20px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 
 .pla-list {
   list-style: none;
@@ -2191,24 +2631,41 @@ body.pla-page main {
 
 .pla-row {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
+  grid-template-columns: 38px minmax(0, 1fr) auto 18px;
   align-items: center;
   gap: 14px;
-  padding: 14px 20px;
+  width: 100%;
+  padding: 13px 20px;
+  border: 0;
   border-top: 1px solid var(--border);
+  background: transparent;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
 }
 
-.pla-list .pla-row:first-child {
+.pla-list li:first-child .pla-row {
   border-top: 0;
+}
+
+.pla-row:hover {
+  background: #f9fafb;
+}
+
+.pla-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent-border);
 }
 
 .pla-row-ic {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
   background: #f3f4f6;
   color: #4b5563;
 }
@@ -2231,7 +2688,7 @@ body.pla-page main {
 }
 
 .pla-row-main b {
-  font-size: 14px;
+  font-size: 14.5px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2257,20 +2714,21 @@ body.pla-page main {
 }
 
 .pla-row-side b {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.pla-neg {
-  color: #4b5563;
+.pla-row-chev {
+  display: inline-flex;
+  color: #c4c9d2;
+  transition: transform 140ms ease, color 140ms ease;
 }
 
-.pla-row-tools {
-  display: flex;
-  gap: 10px;
-  font-size: 12.5px;
+.pla-row:hover .pla-row-chev {
+  color: var(--text);
+  transform: translateX(2px);
 }
 
 /* ---- forms ---- */
@@ -2569,10 +3027,270 @@ body.pla-page main {
   box-shadow: 0 0 0 4px rgb(37 99 235 / 15%);
 }
 
-/* ---- notices sit in the main column's rhythm ---- */
+/* ---- the details drawer ---- */
+
+.pla-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgb(15 23 42 / 28%);
+  animation: pla-fade 200ms ease both;
+}
+
+@keyframes pla-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pla-drawer {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 21;
+  width: min(480px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 30px 80px -30px rgb(15 23 42 / 45%);
+  transform: translateX(calc(100% + 24px));
+  transition: transform 320ms var(--pla-ease);
+}
+
+.pla-drawer.is-open {
+  transform: none;
+}
+
+.pla-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 22px 14px;
+}
+
+.pla-drawer-head h2 {
+  margin: 0;
+  font-family: var(--pl-body);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.pla-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 22px 22px;
+}
+
+.pla-drawer-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.pla-drawer-amount {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 0 16px;
+}
+
+.pla-drawer-amount > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.pla-drawer-amount span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.pla-drawer-amount b {
+  font-family: var(--pl-display);
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.pla-drawer-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.pla-drawer-ic .pla-ic {
+  width: 22px;
+  height: 22px;
+}
+
+.pla-urlbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f9fafb;
+  margin-bottom: 18px;
+}
+
+.pla-urlbox .pla-input {
+  flex: 1;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 13.5px;
+  box-shadow: none;
+}
+
+.pla-urlbox .pla-link {
+  flex: none;
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+
+.pla-drawer-h {
+  margin: 18px 0 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-family: var(--pl-body);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pla-drawer-amount + .pla-urlbox + .pla-drawer-h,
+.pla-drawer-amount + .pla-drawer-h {
+  margin-top: 0;
+}
+
+.pla-kv {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pla-kv > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid #f1f2f4;
+}
+
+.pla-kv dt {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.pla-kv dd {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.pla-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 4px;
+}
+
+.pla-timeline li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 0 18px 26px;
+}
+
+.pla-timeline li::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 18px;
+  bottom: -2px;
+  width: 2px;
+  background: #e5e7eb;
+}
+
+.pla-timeline li:last-child::before {
+  display: none;
+}
+
+.pla-tl-dot {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #fff;
+}
+
+.pla-tl-dot .pla-ic {
+  width: 10px;
+  height: 10px;
+  stroke-width: 3;
+}
+
+.pla-timeline li.is-done .pla-tl-dot {
+  background: #16a34a;
+}
+
+.pla-timeline li.is-now .pla-tl-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 15%);
+}
+
+.pla-timeline li b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pla-timeline li.is-todo b {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.pla-timeline li i {
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ---- notices ---- */
 
 .pla-main .pl-notice {
   margin: 0;
+}
+
+.pla-notice-ok {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
 }
 
 .pla .pl-share-link .pla-input {
@@ -2581,11 +3299,23 @@ body.pla-page main {
 
 /* ---- narrow ---- */
 
-@media (max-width: 960px) {
-  .pla-quick {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 1100px) {
+  .pla-hero {
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 
+  .pla-hero-r {
+    align-items: flex-start;
+  }
+
+  .pla-pills,
+  .pla-hero-stats {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 960px) {
   .pla-stats {
     grid-template-columns: 1fr;
   }
@@ -2604,17 +3334,6 @@ body.pla-page main {
     position: static;
     height: auto;
     overflow: visible;
-  }
-
-  .pla-home {
-    margin-top: 0;
-  }
-
-  .pla-wallet-line .pl-mono {
-    width: auto;
-  }
-
-  .pla-side {
     padding: 14px 12px 12px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
@@ -2642,16 +3361,28 @@ body.pla-page main {
     padding: 8px 12px;
   }
 
-  .pla-ns {
-    margin-bottom: 0;
-  }
-
   .pla-wallet {
     margin-top: 0;
   }
 
+  .pla-wallet-line .pl-mono {
+    width: auto;
+  }
+
+  .pla-home {
+    margin-top: 0;
+  }
+
+  .pla-top {
+    padding: 10px 16px;
+  }
+
+  .pla-chip-text i {
+    display: none;
+  }
+
   .pla-main {
-    padding: 18px 16px 28px;
+    padding: 18px 16px 32px;
   }
 
   .pla-choices {
@@ -2659,7 +3390,7 @@ body.pla-page main {
   }
 
   .pla-row {
-    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-columns: 38px minmax(0, 1fr) 18px;
   }
 
   .pla-row-side {
@@ -2680,16 +3411,32 @@ body.pla-page main {
   .pla-form-foot .pla-btn {
     width: 100%;
   }
-}
 
-@media (max-width: 600px) {
-  .pla-quick {
-    grid-template-columns: 1fr;
+  .pla-pill {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .pla-drawer {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-height: 88vh;
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pla-enter > * {
+  .pla-enter > *,
+  .pla-menu,
+  .pla-scrim {
     animation: none;
+  }
+
+  .pla-drawer {
+    transition: none;
   }
 }

@@ -2,7 +2,7 @@
 # Peal Links on a public testnet. One network per invocation, chosen with
 # NETWORK (default sepolia):
 #
-#   NETWORK=sepolia scripts/peal-links/testnet.sh deploy|up|down|status   Ethereum Sepolia (node :8795, explorer :5174)
+#   NETWORK=sepolia scripts/peal-links/testnet.sh deploy|up|down|status   Ethereum Sepolia (node :8795, explorer :5173, the default)
 #   NETWORK=tempo   scripts/peal-links/testnet.sh deploy|up|down|status   Tempo Moderato   (node :8796, explorer :5175)
 #
 #   deploy   put the gateway and the faucet test token on the chain (once; needs a funded deployer)
@@ -27,7 +27,7 @@ case "$NETWORK" in
     CHAIN_ID=11155111
     RPC="${SEPOLIA_RPC:-https://ethereum-sepolia-rpc.publicnode.com}"
     NODE_PORT="${TESTNET_NODE_PORT:-8795}"
-    EXPLORER_PORT="${TESTNET_EXPLORER_PORT:-5174}"
+    EXPLORER_PORT="${TESTNET_EXPLORER_PORT:-5173}"
     FORGE_EXTRA=(--slow)
     ;;
   tempo)

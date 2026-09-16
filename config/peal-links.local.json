@@ -2,7 +2,7 @@
   "listen": "127.0.0.1:8790",
   "data_dir": ".dev-state/peal-links/data",
   "params_dir": ".dev-params",
-  "auth_domains": ["localhost:5173", "localhost", "127.0.0.1:5173"],
+  "auth_domains": ["localhost:5176", "localhost", "127.0.0.1:5176", "localhost:5173", "127.0.0.1:5173"],
   "root_window": 1024,
   "namespaces": [
     {

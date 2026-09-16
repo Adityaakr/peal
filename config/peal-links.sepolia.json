@@ -2,17 +2,23 @@
   "listen": "127.0.0.1:8795",
   "data_dir": ".dev-state/peal-links/sepolia/data",
   "params_dir": ".dev-params",
-  "auth_domains": ["localhost:5174", "localhost", "127.0.0.1:5174", "localhost:5173"],
+  "auth_domains": [
+    "localhost:5173",
+    "localhost",
+    "127.0.0.1:5173",
+    "localhost:5174",
+    "127.0.0.1:5174"
+  ],
   "root_window": 1024,
   "watch_interval_ms": 6000,
   "namespaces": [
     {
-      "label": "sepolia/tUSD",
+      "label": "sepolia/USDC",
       "chain_id": 11155111,
       "chain_name": "Ethereum Sepolia",
       "rpc_url": "https://ethereum-sepolia-rpc.publicnode.com",
-      "token_address": "",
-      "token_symbol": "tUSD",
+      "token_address": "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238",
+      "token_symbol": "USDC",
       "decimals": 6,
       "gateway": "",
       "confirmations": 2,
@@ -21,12 +27,12 @@
       "explorer_url": "https://sepolia.etherscan.io"
     },
     {
-      "label": "sepolia/USDC",
+      "label": "sepolia/tUSD",
       "chain_id": 11155111,
       "chain_name": "Ethereum Sepolia",
       "rpc_url": "https://ethereum-sepolia-rpc.publicnode.com",
-      "token_address": "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238",
-      "token_symbol": "USDC",
+      "token_address": "",
+      "token_symbol": "tUSD",
       "decimals": 6,
       "gateway": "",
       "confirmations": 2,
