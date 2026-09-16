@@ -51,6 +51,28 @@ export interface Session {
   switchChain: (chainId: number) => Promise<void>;
 }
 
+// Privy's own logout, kept out of `state` on purpose. `usePrivy()` hands the
+// bridge a fresh `logout` function on many re-renders; publishing it straight
+// into `state.logout` used to overwrite the browser wallet's disconnect a
+// moment after the wallet connected - so Disconnect ran Privy's logout, which
+// does nothing for an injected wallet, and the wallet never went away.
+let privyLogout: () => void = () => {};
+
+/** Disconnect whatever is connected: forget an injected browser wallet, or
+ * log out of Privy. Stable identity; never replaced. */
+function logout(): void {
+  if (state.source === 'injected') {
+    try {
+      localStorage.removeItem(INJECTED_FLAG);
+    } catch {
+      /* storage unavailable */
+    }
+    publish({ source: null, address: null, provider: null, chainId: null, switchChain: async () => {} });
+    return;
+  }
+  privyLogout();
+}
+
 let state: Session = {
   ready: false,
   source: null,
@@ -58,7 +80,7 @@ let state: Session = {
   provider: null,
   chainId: null,
   login: () => {},
-  logout: () => {},
+  logout,
   switchChain: async () => {},
 };
 
@@ -121,14 +143,6 @@ export async function connectInjected(method: 'eth_requestAccounts' | 'eth_accou
     address,
     provider,
     chainId: Number.parseInt(chainHex, 16),
-    logout: () => {
-      try {
-        localStorage.removeItem(INJECTED_FLAG);
-      } catch {
-        /* storage unavailable */
-      }
-      publish({ source: null, address: null, provider: null, chainId: null });
-    },
     switchChain: async (id: number) => {
       await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${id.toString(16)}` }] });
       publish({ chainId: id });
@@ -154,7 +168,8 @@ function Bridge(): null {
   const { wallets } = useWallets();
 
   useEffect(() => {
-    publish({ ready, login, logout });
+    privyLogout = logout;
+    publish({ ready, login });
   }, [ready, login, logout]);
 
   useEffect(() => {
