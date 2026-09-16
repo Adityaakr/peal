@@ -434,24 +434,24 @@ function balanceBlock(): string {
   const canSettle = nsAvail && l.status?.signer_mode !== 'none';
   const wallet = page.walletTokenBalance !== null ? formatUnits(page.walletTokenBalance, ns.decimals) : null;
   const fund = nsAvail
-    ? `<a class="pla-pill" href="${hashFor('fund')}" ${hasWallet ? '' : 'aria-disabled="true"'}>${icon('down')} Add funds</a>`
+    ? `<button type="button" class="pla-pill" data-tab="fund" ${hasWallet ? '' : 'disabled'}>${icon('down')} Add funds</button>`
     : devMint
-      ? `<a class="pla-pill" href="${hashFor('mint')}">${icon('down')} Add test funds</a>`
-      : `<span class="pla-pill" aria-disabled="true" title="deposits are not available on this network">${icon('down')} Add funds</span>`;
+      ? `<button type="button" class="pla-pill" data-tab="mint">${icon('down')} Add test funds</button>`
+      : `<button type="button" class="pla-pill" disabled title="deposits are not available on this network">${icon('down')} Add funds</button>`;
   const withdraw = canSettle
-    ? `<a class="pla-pill" href="${hashFor('withdraw')}" ${hasWallet ? '' : 'aria-disabled="true"'}>${icon('up')} Withdraw</a>`
-    : `<span class="pla-pill" aria-disabled="true" title="withdrawals are not available on this network">${icon('up')} Withdraw</span>`;
+    ? `<button type="button" class="pla-pill" data-tab="withdraw" ${hasWallet ? '' : 'disabled'}>${icon('up')} Withdraw</button>`
+    : `<button type="button" class="pla-pill" disabled title="withdrawals are not available on this network">${icon('up')} Withdraw</button>`;
   return `
-    <section class="pla-hero pl-balance">
-      <div class="pla-hero-l">
+    <section class="pla-hero">
+      <div class="pla-hero-l pl-balance">
         <span class="pla-hero-label">Private balance · ${esc(ns.token_symbol)} on ${esc(ns.chain_name)}${demo ? ` <span class="pla-badge">${esc(ns.environment)} funds</span>` : ''}</span>
         <span class="pla-hero-amount pl-balance-amount">${formatUnits(v?.balance ?? '0', ns.decimals)}<span class="pl-amount-unit">${esc(ns.token_symbol)}</span></span>
         <span class="pla-hero-sub">as of now · only you can see it${v?.pending ? ` · <span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(v.pending)} pending</span>` : ''}</span>
       </div>
       <div class="pla-hero-r">
         <div class="pla-pills">
-          <a class="pla-pill pla-pill-dark" href="${hashFor('send')}">${icon('send')} Send to an address</a>
-          <a class="pla-pill pla-pill-dark" href="${hashFor('new-link')}">${icon('plus')} New payment link</a>
+          <button type="button" class="pla-pill pla-pill-dark" data-tab="send">${icon('send')} Send to an address</button>
+          <button type="button" class="pla-pill pla-pill-dark" data-tab="new-link">${icon('plus')} New payment link</button>
           ${fund}
           ${withdraw}
           <span class="pla-more">
@@ -470,8 +470,8 @@ function balanceBlock(): string {
           </span>
         </div>
         <div class="pla-hero-stats">
-          <a class="pla-ministat" href="${hashFor('incoming')}"><span>incoming</span><b>${money(v?.unclaimed ?? '0', ns)}</b><i>verified, not yet claimed</i></a>
-          <span class="pla-ministat"><span>wallet</span><b>${wallet !== null ? `${wallet} <span class="pla-unit">${esc(ns.token_symbol)}</span>` : '—'}</b><i>public on ${esc(ns.chain_name)}</i></span>
+          <a class="pla-ministat pl-balance" href="${hashFor('incoming')}"><span>incoming</span><b class="pl-balance-amount">${money(v?.unclaimed ?? '0', ns)}</b><i>verified, not yet claimed</i></a>
+          <span class="pla-ministat pl-balance"><span>wallet</span><b class="pl-balance-amount">${wallet !== null ? `${wallet} <span class="pla-unit">${esc(ns.token_symbol)}</span>` : '—'}</b><i>public on ${esc(ns.chain_name)}</i></span>
         </div>
       </div>
     </section>`;
@@ -584,7 +584,7 @@ function linksPage(): string {
   const paid = page.requests.filter((r) => r.status === 'fulfilled');
   const total = paid.reduce((a, r) => a + BigInt(r.manifest.amount), 0n).toString();
   return `
-    ${head('Payment links', `A link is a fixed amount in ${esc(ns.token_symbol)} that anyone can pay you privately, once.`, `<a class="pla-btn pla-btn-dark" href="${hashFor('new-link')}">${icon('plus')} New payment link</a>`)}
+    ${head('Payment links', `A link is a fixed amount in ${esc(ns.token_symbol)} that anyone can pay you privately, once.`, `<button type="button" class="pla-btn pla-btn-dark" data-tab="new-link">${icon('plus')} New payment link</button>`)}
     ${notices()}
     <div class="pla-stats">
       <div class="pla-stat"><span class="pla-stat-label">links</span><b class="pla-stat-n">${page.requests.length}</b><i>${page.requests.filter((r) => r.status === 'active').length} awaiting payment</i></div>
@@ -596,7 +596,7 @@ function linksPage(): string {
       <div class="pla-filters" role="group" aria-label="filter">${filters.map(([v, t]) => `<button type="button" class="pla-filter${page.filter === v ? ' is-on' : ''}" data-filter="${v}">${t}</button>`).join('')}</div>
     </div>
     <div class="pla-card">
-      ${list.length ? grouped(list, (r) => r.manifest.created_at, linkRow) : emptyState('link', page.requests.length ? 'Nothing matches' : 'No payment links yet', page.requests.length ? 'Try another word or filter.' : 'Create one, share it, and the payment arrives in your private balance.', page.requests.length ? '' : `<a class="pla-btn pla-btn-dark" href="${hashFor('new-link')}">${icon('plus')} New payment link</a>`)}
+      ${list.length ? grouped(list, (r) => r.manifest.created_at, linkRow) : emptyState('link', page.requests.length ? 'Nothing matches' : 'No payment links yet', page.requests.length ? 'Try another word or filter.' : 'Create one, share it, and the payment arrives in your private balance.', page.requests.length ? '' : `<button type="button" class="pla-btn pla-btn-dark" data-tab="new-link">${icon('plus')} New payment link</button>`)}
     </div>`;
 }
 
@@ -1244,6 +1244,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       page.drawer = null;
       paint(true);
     } else if (btn.dataset.back) back(btn.dataset.back as Tab);
+    else if (btn.dataset.tab) go(btn.dataset.tab as Tab);
     else if (btn.hasAttribute('data-done')) {
       page.lastLink = null;
       go('links');

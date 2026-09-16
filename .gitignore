@@ -38,3 +38,4 @@ packages/explorer/public/skill/
 # Peal Links: generated proving material and local stack state
 .dev-params/
 .dev-state/peal-links/
+packages/explorer/test-results/

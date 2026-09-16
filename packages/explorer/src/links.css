@@ -2262,9 +2262,15 @@ body.pla-page main {
   text-decoration: none;
 }
 
+.pla-pill:disabled,
 .pla-pill[aria-disabled='true'] {
   opacity: 0.5;
+  cursor: not-allowed;
   pointer-events: none;
+}
+
+button.pla-pill {
+  font-family: inherit;
 }
 
 .pla-pill-dark {
