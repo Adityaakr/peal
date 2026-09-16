@@ -56,13 +56,13 @@ Account-based private payments. The validator holds, per account, one 32-byte co
 | Wallet state, witness construction, two-phase journal, crash reconcile | `wallet.rs` |
 | Ledger state transition function, durable store, replay, batch isolation | `ledger.rs` (feature `ledger`) |
 | Strict wire decoding (canonical field elements, subgroup checks) | `encoding.rs` |
-| Deposits (R_dep relation, intents, dedup by event identity) | `deposit.rs` (decision 0004); EVM gateway and watcher in Phase D |
-| Withdrawals (burn identifier, consumed openings, committee certificates, gateway contract) | Phase D (decision 0005) |
+| Deposits (R_dep relation, intents, dedup by event identity) | `deposit.rs` (decision 0004); `crates/peal-links-node/src/watcher.rs`, `evm.rs`; gateway `deposit` |
+| Withdrawals (burn identifier, consumed openings, committee certificates, gateway contract) | `withdrawal.rs` (core), `crates/peal-links-node/src/settlement.rs`, `contracts/src/links/PealLinksGateway.sol` (decision 0005) |
 | Key management (generation, digests, circuit id, distribution) | `params.rs` |
-| Receipt delivery (encrypted inbox), recipient encryption keys, backups, recovery | Phase C (SDK + wasm) |
-| Browser proving (single-threaded wasm, Web Worker) | Phase C (decision 0006) |
-| Consensus and multi-node ordering | Phase C (Commonware `simplex`, `2026.9.0`) |
-| Product API, request manifests, checkout, dashboard | Phases B, E |
+| Receipt delivery (encrypted inbox), recipient encryption keys, backups, recovery | `envelope.rs` (x25519 + XChaCha20-Poly1305, argon2id backups), node inbox routes, `packages/links/src/account.ts` |
+| Browser proving (single-threaded wasm, Web Worker) | `crates/peal-links-wasm`, `packages/links/src/worker.ts` (decision 0006) |
+| Consensus and multi-node ordering | **not started** (Commonware `simplex` `2026.9.0`; blocker in BUILD_STATUS.md) |
+| Product API, request manifests, checkout, dashboard | `manifest.rs`, node `api.rs`, `packages/explorer/src/pages/{bonsai-landing,bonsai-app,pay}.ts` |
 
 ## Security assumptions and open obligations
 

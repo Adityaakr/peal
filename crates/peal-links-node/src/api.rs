@@ -423,10 +423,12 @@ struct RequestOut {
     reserved: bool,
 }
 
-fn request_row(
-    r: &rusqlite::Row<'_>,
-) -> rusqlite::Result<(String, String, Option<i64>, Option<i64>)> {
-    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+type RequestRow = (String, String, Option<i64>, Option<i64>, Option<String>);
+
+const REQUEST_COLS: &str = "manifest, status, fulfilled_at, reserved_until, reserved_by";
+
+fn request_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<RequestRow> {
+    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
 }
 
 fn request_out(
@@ -434,6 +436,8 @@ fn request_out(
     status: &str,
     fulfilled_at: Option<i64>,
     reserved_until: Option<i64>,
+    reserved_by: Option<String>,
+    caller_intent: Option<&str>,
 ) -> Res<RequestOut> {
     let manifest: RequestManifest = serde_json::from_str(manifest_json)
         .map_err(|e| Problem::internal(format!("stored manifest: {e}")))?;
@@ -506,14 +510,17 @@ async fn create_request(
         .optional())?;
     if let Some(existing) = existing {
         if existing == json {
-            let (mj, st, fa, ru) = db(conn.query_row(
-                "SELECT manifest, status, fulfilled_at, reserved_until FROM requests WHERE request_id = ?1",
+            let (mj, st, fa, ru, rb) = db(conn.query_row(
+                &format!("SELECT {REQUEST_COLS} FROM requests WHERE request_id = ?1"),
                 params![m.request_id],
                 request_row,
             ))?;
             return Ok((
                 StatusCode::OK,
-                Json(serde_json::to_value(request_out(&mj, &st, fa, ru)?).expect("serializes")),
+                Json(
+                    serde_json::to_value(request_out(&mj, &st, fa, ru, rb, None)?)
+                        .expect("serializes"),
+                ),
             ));
         }
         return Err(Problem::conflict(
@@ -560,20 +567,32 @@ fn check_request_id(id: &str) -> Res<()> {
     }
 }
 
-async fn get_request(State(app): State<App>, Path(id): Path<String>) -> Res<Json<Value>> {
+#[derive(Deserialize)]
+struct GetRequestQuery {
+    /// The caller's payer intent id, so its own reservation is not reported
+    /// as someone else's.
+    intent: Option<String>,
+}
+
+async fn get_request(
+    State(app): State<App>,
+    Path(id): Path<String>,
+    Query(q): Query<GetRequestQuery>,
+) -> Res<Json<Value>> {
     check_request_id(&id)?;
     let conn = app.product.lock().expect("product lock");
     let row = db(conn
         .query_row(
-            "SELECT manifest, status, fulfilled_at, reserved_until FROM requests WHERE request_id = ?1",
+            &format!("SELECT {REQUEST_COLS} FROM requests WHERE request_id = ?1"),
             params![id],
             request_row,
         )
         .optional())?;
-    let (mj, st, fa, ru) =
+    let (mj, st, fa, ru, rb) =
         row.ok_or_else(|| Problem::not_found("unknown_request", "no such request"))?;
     Ok(Json(
-        serde_json::to_value(request_out(&mj, &st, fa, ru)?).expect("serializes"),
+        serde_json::to_value(request_out(&mj, &st, fa, ru, rb, q.intent.as_deref())?)
+            .expect("serializes"),
     ))
 }
 
