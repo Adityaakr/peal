@@ -99,6 +99,8 @@ export interface AsyncProver {
   verifyReceipt(wallet: string, idx: number, pathJson: string): Promise<{ wallet: string; value: boolean }>;
   send(wallet: string, amount: string, to: string, root: string, reference: string | null): Promise<{ wallet: string; envelope: OpEnvelope; opening: ReceiptOpening }>;
   receive(wallet: string, idx: number, pathJson: string): Promise<{ wallet: string; value: OpEnvelope }>;
+  withdraw(wallet: string, amount: string, recipient: string, root: string): Promise<{ wallet: string; envelope: OpEnvelope; opening: ReceiptOpening }>;
+  withdrawalClaim(wallet: string, position: number): Promise<string>;
   commitPending(wallet: string, position: number): Promise<string>;
   abortPending(wallet: string): Promise<string>;
   reconcile(wallet: string, ledgerCom: string, position: number | null): Promise<{ wallet: string; value: 'in_sync' | 'committed' | 'aborted' | 'conflict' }>;
@@ -135,6 +137,8 @@ export const PROVER_METHODS = {
   verifyReceipt: 'verify_receipt',
   send: 'send',
   receive: 'receive',
+  withdraw: 'withdraw',
+  withdrawalClaim: 'withdrawal_claim',
   commitPending: 'commit_pending',
   abortPending: 'abort_pending',
   reconcile: 'reconcile',
@@ -160,6 +164,7 @@ const BIGINT_ARGS: Partial<Record<keyof typeof PROVER_METHODS, number[]>> = {
   depositMinted: [2],
   addReceipt: [1],
   commitPending: [1],
+  withdrawalClaim: [1],
   reconcile: [2],
   signRequest: [6],
   fulfillmentAck: [2],

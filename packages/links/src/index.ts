@@ -18,6 +18,7 @@ export * from './prover.js';
 export * from './remote.js';
 export * from './account.js';
 export * from './storage.js';
+export * from './chain.js';
 
 import { NodeClient } from './client.js';
 import type { AsyncProver, KeyInfo } from './prover.js';

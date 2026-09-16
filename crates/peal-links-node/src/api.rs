@@ -45,6 +45,22 @@ pub struct AppState {
     pub namespaces: HashMap<Namespace, NamespaceConfig>,
     pub params: HashMap<&'static str, ParamFile>,
     pub product: Mutex<rusqlite::Connection>,
+    /// Set by the watcher once a namespace's chain configuration has been
+    /// verified against the chain. Never true for a disabled namespace.
+    pub availability: Mutex<HashMap<Namespace, bool>>,
+    /// The settlement committee (local single-process fixture), if any.
+    pub committee: Option<crate::settlement::Committee>,
+}
+
+impl AppState {
+    pub fn available(&self, ns: &Namespace) -> bool {
+        *self
+            .availability
+            .lock()
+            .expect("availability lock")
+            .get(ns)
+            .unwrap_or(&false)
+    }
 }
 
 pub type App = Arc<AppState>;
@@ -100,7 +116,7 @@ struct NamespaceOut {
     explorer_url: String,
 }
 
-fn namespace_out(ns: &NamespaceConfig) -> NamespaceOut {
+fn namespace_out(app: &AppState, ns: &NamespaceConfig) -> NamespaceOut {
     NamespaceOut {
         id: hex::encode(ns.id()),
         label: ns.label.clone(),
@@ -110,7 +126,7 @@ fn namespace_out(ns: &NamespaceConfig) -> NamespaceOut {
         token_address: ns.token_address.clone(),
         decimals: ns.decimals,
         gateway: ns.gateway.clone(),
-        available: ns.enabled,
+        available: ns.enabled && app.available(&ns.id()),
         confirmations: ns.confirmations,
         environment: ns.environment.clone(),
         explorer_url: ns.explorer_url.clone(),
@@ -136,7 +152,10 @@ async fn status(State(app): State<App>) -> Res<Json<Value>> {
         "setup": "local-dev",
         "ledger_mode": "single-node",
         "dev_mint": app.cfg.dev_mint,
-        "namespaces": app.cfg.namespaces.iter().map(namespace_out).collect::<Vec<_>>(),
+        "signer_mode": if app.committee.is_some() { "single-process-fixture" } else { "none" },
+        "signers": app.committee.as_ref().map(|c| c.addresses()).unwrap_or_default(),
+        "signer_threshold": app.committee.as_ref().map(|c| c.threshold).unwrap_or(0),
+        "namespaces": app.cfg.namespaces.iter().map(|n| namespace_out(&app, n)).collect::<Vec<_>>(),
         "ledgers": ledgers,
     })))
 }
@@ -944,6 +963,69 @@ pub async fn credit_intent(
     Ok(applied_json(applied))
 }
 
+// ---- withdrawals -----------------------------------------------------------
+
+async fn post_withdrawal(
+    State(app): State<App>,
+    Json(claim): Json<peal_bonsai::withdrawal::WithdrawalClaim>,
+) -> Res<(StatusCode, Json<Value>)> {
+    let cert = crate::settlement::settle(&app, claim).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::to_value(cert).expect("serializes")),
+    ))
+}
+
+async fn get_withdrawal(
+    State(app): State<App>,
+    Path((ns, position)): Path<(String, u64)>,
+) -> Res<Json<Value>> {
+    let id = parse_ns(&app, &ns)?;
+    let conn = app.product.lock().expect("product lock");
+    let row: Option<(String, String, String, Option<String>, String, String)> = db(conn
+        .query_row(
+            "SELECT message, signatures, status, tx_hash, recipient, amount FROM withdrawals WHERE namespace = ?1 AND position = ?2",
+            params![hex::encode(id), position as i64],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+        )
+        .optional())?;
+    let (message, signatures, status, tx_hash, recipient, amount) = row.ok_or_else(|| {
+        Problem::not_found(
+            "unknown_withdrawal",
+            "no settled withdrawal at that position",
+        )
+    })?;
+    Ok(Json(json!({
+        "position": position,
+        "status": status,
+        "tx_hash": tx_hash,
+        "recipient": recipient,
+        "amount": amount,
+        "message": serde_json::from_str::<Value>(&message).unwrap_or(Value::Null),
+        "signatures": serde_json::from_str::<Value>(&signatures).unwrap_or(Value::Null),
+        "signers": app.committee.as_ref().map(|c| c.addresses()).unwrap_or_default(),
+        "threshold": app.committee.as_ref().map(|c| c.threshold).unwrap_or(0),
+    })))
+}
+
+/// Per-namespace accounting: what the gateway holds versus what the ledger
+/// owes. `minted - withdrawn` must equal balances plus unclaimed receipts;
+/// user balances are proof-enforced, this is the aggregate for operators.
+async fn ledger_accounting(State(app): State<App>, Path(ns): Path<String>) -> Res<Json<Value>> {
+    let id = parse_ns(&app, &ns)?;
+    let s = ledger(&app, &id).summary().await;
+    let conn = app.product.lock().expect("product lock");
+    let withdrawn = db(crate::settlement::withdrawn_total(&conn, &id))?;
+    let minted: u128 = s.minted_total.parse().unwrap_or(0);
+    Ok(Json(json!({
+        "namespace": ns,
+        "minted_total": minted.to_string(),
+        "withdrawn_total": withdrawn.to_string(),
+        "outstanding_liability": (minted - withdrawn).to_string(),
+        "receipt_count": s.receipt_count,
+    })))
+}
+
 #[derive(Deserialize)]
 struct DevMintIn {
     namespace: String,
@@ -985,7 +1067,10 @@ pub fn router(app: App) -> Router {
         .route("/inbox/keys/{ns}/{acct}", get(get_key))
         .route("/inbox/{ns}/{acct}", post(post_inbox).get(get_inbox))
         .route("/deposits/intents", post(register_intent))
-        .route("/deposits/intents/{ns}/{receipt}", get(get_intent));
+        .route("/deposits/intents/{ns}/{receipt}", get(get_intent))
+        .route("/withdrawals", post(post_withdrawal))
+        .route("/withdrawals/{ns}/{position}", get(get_withdrawal))
+        .route("/ledger/{ns}/accounting", get(ledger_accounting));
     if app.cfg.dev_mint {
         tracing::warn!("dev_mint is ON: /links/v1/dev/mint credits deposit intents without a chain event (development fixture)");
         api = api.route("/dev/mint", post(dev_mint));

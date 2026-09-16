@@ -13,6 +13,7 @@ path = "src/main.rs"
 peal-bonsai = { path = "../peal-bonsai", features = ["ledger"] }
 zkpari = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

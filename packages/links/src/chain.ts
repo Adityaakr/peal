@@ -1,0 +1,120 @@
+// The backing chain, through the person's own wallet: token balance and
+// allowance reads, the deposit (approve + gateway.deposit), and submitting a
+// certified withdrawal. Every write is a transaction the wallet confirms;
+// the SDK never holds a chain key.
+
+import {
+  createPublicClient,
+  createWalletClient,
+  custom,
+  http,
+  parseAbi,
+  type Address,
+  type EIP1193Provider,
+  type Hex,
+} from 'viem';
+import type { NamespaceInfo, WithdrawalCertificate } from './client.js';
+
+export const GATEWAY_ABI = parseAbi([
+  'function deposit(address token, uint256 amount, bytes32 receipt) returns (uint256 id)',
+  'function withdraw((uint256 chainId,address gateway,address token,address recipient,uint256 amount,bytes32 withdrawalId,uint64 epoch) w, bytes[] signatures)',
+  'function epoch() view returns (uint64)',
+  'function consumed(bytes32 id) view returns (bool)',
+  'function paused() view returns (bool)',
+  'event Deposit(uint256 indexed id, address indexed token, address indexed from, uint256 amount, bytes32 receipt)',
+  'event Withdrawn(bytes32 indexed withdrawalId, address indexed token, address indexed recipient, uint256 amount, uint64 epoch)',
+]);
+
+export const ERC20_ABI = parseAbi([
+  'function balanceOf(address owner) view returns (uint256)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function decimals() view returns (uint8)',
+  'function faucet(address to, uint256 amount)',
+]);
+
+function chainFor(ns: NamespaceInfo) {
+  return {
+    id: ns.chain_id,
+    name: ns.chain_name,
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    rpcUrls: { default: { http: [] as string[] } },
+  };
+}
+
+/** Read-only access through the wallet's provider (or an RPC URL). */
+export function publicClientFor(ns: NamespaceInfo, provider?: EIP1193Provider, rpcUrl?: string) {
+  return createPublicClient({
+    chain: chainFor(ns),
+    transport: provider ? custom(provider) : http(rpcUrl),
+  });
+}
+
+export async function tokenBalance(ns: NamespaceInfo, owner: Address, provider?: EIP1193Provider, rpcUrl?: string): Promise<bigint> {
+  const pc = publicClientFor(ns, provider, rpcUrl);
+  return pc.readContract({ address: ns.token_address as Address, abi: ERC20_ABI, functionName: 'balanceOf', args: [owner] });
+}
+
+export interface DepositTx {
+  approveHash: Hex | null;
+  depositHash: Hex;
+}
+
+/** Approve (if needed) and deposit `amount` base units for `receipt`. The
+ * receipt is the ledger's canonical 32-byte encoding, carried as bytes32. */
+export async function depositOnChain(ns: NamespaceInfo, provider: EIP1193Provider, from: Address, amount: bigint, receiptHex: string): Promise<DepositTx> {
+  const chain = chainFor(ns);
+  const wc = createWalletClient({ account: from, chain, transport: custom(provider) });
+  const pc = createPublicClient({ chain, transport: custom(provider) });
+  const token = ns.token_address as Address;
+  const gateway = ns.gateway as Address;
+  const allowance = await pc.readContract({ address: token, abi: ERC20_ABI, functionName: 'allowance', args: [from, gateway] });
+  let approveHash: Hex | null = null;
+  if (allowance < amount) {
+    approveHash = await wc.writeContract({ address: token, abi: ERC20_ABI, functionName: 'approve', args: [gateway, amount] });
+    await pc.waitForTransactionReceipt({ hash: approveHash });
+  }
+  const receipt = `0x${receiptHex}` as Hex;
+  const depositHash = await wc.writeContract({ address: gateway, abi: GATEWAY_ABI, functionName: 'deposit', args: [token, amount, receipt] });
+  await pc.waitForTransactionReceipt({ hash: depositHash });
+  return { approveHash, depositHash };
+}
+
+/** Submit a certified withdrawal to the gateway. Anyone may submit; the
+ * tokens go to the certificate's recipient regardless of who pays gas. */
+export async function withdrawOnChain(ns: NamespaceInfo, provider: EIP1193Provider, from: Address, cert: WithdrawalCertificate): Promise<Hex> {
+  const chain = chainFor(ns);
+  const wc = createWalletClient({ account: from, chain, transport: custom(provider) });
+  const pc = createPublicClient({ chain, transport: custom(provider) });
+  const m = cert.message;
+  const hash = await wc.writeContract({
+    address: ns.gateway as Address,
+    abi: GATEWAY_ABI,
+    functionName: 'withdraw',
+    args: [
+      {
+        chainId: BigInt(m.chain_id),
+        gateway: m.gateway as Address,
+        token: m.token as Address,
+        recipient: m.recipient as Address,
+        amount: BigInt(m.amount),
+        withdrawalId: `0x${m.withdrawal_id}` as Hex,
+        epoch: BigInt(m.epoch),
+      },
+      cert.signatures as Hex[],
+    ],
+  });
+  await pc.waitForTransactionReceipt({ hash });
+  return hash;
+}
+
+/** Local and test chains only: mint test tokens from the faucet. */
+export async function faucet(ns: NamespaceInfo, provider: EIP1193Provider, from: Address, to: Address, amount: bigint): Promise<Hex> {
+  if (ns.environment === 'mainnet') throw new Error('no faucet on a mainnet namespace');
+  const chain = chainFor(ns);
+  const wc = createWalletClient({ account: from, chain, transport: custom(provider) });
+  const pc = createPublicClient({ chain, transport: custom(provider) });
+  const hash = await wc.writeContract({ address: ns.token_address as Address, abi: ERC20_ABI, functionName: 'faucet', args: [to, amount] });
+  await pc.waitForTransactionReceipt({ hash });
+  return hash;
+}

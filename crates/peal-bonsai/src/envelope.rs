@@ -293,14 +293,28 @@ pub struct Sealed {
 
 const SEALED_AAD: &[u8] = b"PLKS\x01";
 
-pub fn seal_with_key<R: ark_std::rand::CryptoRng + ark_std::rand::RngCore>(key: &[u8; 32], plaintext: &[u8], rng: &mut R) -> Result<Sealed> {
+pub fn seal_with_key<R: ark_std::rand::CryptoRng + ark_std::rand::RngCore>(
+    key: &[u8; 32],
+    plaintext: &[u8],
+    rng: &mut R,
+) -> Result<Sealed> {
     let mut nonce = [0u8; 24];
     rng.fill_bytes(&mut nonce);
     let cipher = XChaCha20Poly1305::new(key.into());
     let ciphertext = cipher
-        .encrypt(XNonce::from_slice(&nonce), Payload { msg: plaintext, aad: SEALED_AAD })
+        .encrypt(
+            XNonce::from_slice(&nonce),
+            Payload {
+                msg: plaintext,
+                aad: SEALED_AAD,
+            },
+        )
         .map_err(|_| Error::Wallet("storage encryption failed".into()))?;
-    Ok(Sealed { version: 1, nonce: nonce.to_vec(), ciphertext })
+    Ok(Sealed {
+        version: 1,
+        nonce: nonce.to_vec(),
+        ciphertext,
+    })
 }
 
 pub fn open_with_key(key: &[u8; 32], s: &Sealed) -> Result<Vec<u8>> {
@@ -309,7 +323,13 @@ pub fn open_with_key(key: &[u8; 32], s: &Sealed) -> Result<Vec<u8>> {
     }
     let cipher = XChaCha20Poly1305::new(key.into());
     cipher
-        .decrypt(XNonce::from_slice(&s.nonce), Payload { msg: &s.ciphertext, aad: SEALED_AAD })
+        .decrypt(
+            XNonce::from_slice(&s.nonce),
+            Payload {
+                msg: &s.ciphertext,
+                aad: SEALED_AAD,
+            },
+        )
         .map_err(|_| Error::Wallet("wrong storage key or corrupted data".into()))
 }
 

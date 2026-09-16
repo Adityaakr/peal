@@ -7,7 +7,8 @@
 // is formatted for a human.
 import QRCode from 'qrcode';
 import type { LinksAccount, PaymentRequest, WalletView } from 'peal-links';
-import { LinksApiError } from 'peal-links';
+import { depositOnChain, LinksApiError, tokenBalance, withdrawOnChain } from 'peal-links';
+import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, injectedProvider, onAuthChange, session } from '../auth';
 import { esc } from '../util';
 import { formatUnits, fmtTime, parseUnits, shortHex } from '../links/format';
@@ -38,9 +39,11 @@ interface PageState {
   error: string | null;
   notice: string | null;
   lastLink: { request: PaymentRequest; url: string; qr: string } | null;
+  walletTokenBalance: string | null;
+  withdrawals: Array<{ position: number; amount: string; recipient: string; status: string; tx_hash: string | null }>;
 }
 
-let page: PageState = { view: null, requests: [], busy: null, error: null, notice: null, lastLink: null };
+let page: PageState = { view: null, requests: [], busy: null, error: null, notice: null, lastLink: null, walletTokenBalance: null, withdrawals: [] };
 
 function requestUrl(id: string): string {
   return `${location.origin}/pay/${id}`;
@@ -168,17 +171,22 @@ function actions(): string {
   const canRequest = unlocked && !!l.signedIn;
   const devMint = !!l.status?.dev_mint;
   const nsAvail = !!l.namespace?.available;
+  const hasWallet = !!session().address;
   return `
     <div class="pl-actions">
       <button type="button" class="pl-btn pl-btn-primary" id="pl-new-request" ${canRequest ? '' : 'disabled'} title="${canRequest ? '' : unlocked ? 'sign in with your wallet to publish requests' : 'unlock your private account first'}">New payment link</button>
       ${
         nsAvail
-          ? `<button type="button" class="pl-btn" id="pl-add-funds" ${unlocked ? '' : 'disabled'}>Add funds</button>`
+          ? `<button type="button" class="pl-btn" id="pl-add-funds" ${unlocked && hasWallet ? '' : 'disabled'} title="${hasWallet ? '' : 'connect a wallet to deposit from'}">Add funds</button>`
           : devMint
             ? `<button type="button" class="pl-btn" id="pl-dev-mint" ${unlocked ? '' : 'disabled'} title="development fixture: credits test funds without a chain deposit">Add test funds (dev mint)</button>`
-            : `<button type="button" class="pl-btn" disabled title="deposits arrive with the chain gateway (Phase D)">Add funds</button>`
+            : `<button type="button" class="pl-btn" disabled title="deposits are not available on this namespace">Add funds</button>`
       }
-      <button type="button" class="pl-btn" disabled title="withdrawals arrive with the chain gateway (Phase D)">Withdraw</button>
+      ${
+        nsAvail && l.status?.signer_mode !== 'none'
+          ? `<button type="button" class="pl-btn" id="pl-withdraw" ${unlocked && hasWallet ? '' : 'disabled'} title="${hasWallet ? '' : 'connect a wallet to submit the release'}">Withdraw</button>`
+          : `<button type="button" class="pl-btn" disabled title="withdrawals are not available on this namespace">Withdraw</button>`
+      }
     </div>`;
 }
 
@@ -298,6 +306,52 @@ function linkDialog(): string {
     </dialog>`;
 }
 
+function fundDialog(): string {
+  const ns = links().namespace!;
+  const evm = session();
+  return `
+    <dialog class="pl-dialog" id="pl-fund-dialog">
+      <form class="pl-dialog-body" id="pl-fund-form" method="dialog">
+        <h3 class="pl-dialog-title">add funds</h3>
+        <p class="pl-small">A public deposit of ${esc(ns.token_symbol)} from your wallet <span class="pl-mono">${esc(shortHex(evm.address ?? '', 6, 4))}</span> into the gateway on ${esc(ns.chain_name)}${page.walletTokenBalance !== null ? ` (wallet holds ${formatUnits(page.walletTokenBalance, ns.decimals)} ${esc(ns.token_symbol)})` : ''}. Two wallet confirmations: approve, then deposit. Credited to your private balance after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}; the amount and your address are visible on the chain, the private account is not.</p>
+        <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)})</span><input class="pl-input" name="amount" inputmode="decimal" required placeholder="0.00"></label>
+        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Deposit from wallet</button></div>
+      </form>
+    </dialog>`;
+}
+
+function withdrawDialog(): string {
+  const ns = links().namespace!;
+  const s = links().status!;
+  const v = page.view;
+  return `
+    <dialog class="pl-dialog" id="pl-withdraw-dialog">
+      <form class="pl-dialog-body" id="pl-withdraw-form" method="dialog">
+        <h3 class="pl-dialog-title">withdraw to ${esc(ns.chain_name)}</h3>
+        <p class="pl-small">The amount is burned on the private ledger with a proof, then ${s.signer_threshold} of ${s.signers.length} settlement signers attest to its release and the gateway pays the recipient. This is a committee-attested bridge${s.signer_mode === 'single-process-fixture' ? ' and, on this node, the signers are a single-process fixture' : ''}: a compromised committee could release funds wrongly. The withdrawal is public on the chain.</p>
+        <label class="pl-field"><span class="pl-label">amount (${esc(ns.token_symbol)}${v ? `, available ${formatUnits(v.balance, ns.decimals)}` : ''})</span><input class="pl-input" name="amount" inputmode="decimal" required placeholder="0.00"></label>
+        <label class="pl-field"><span class="pl-label">recipient address on ${esc(ns.chain_name)}</span><input class="pl-input pl-mono" name="recipient" required pattern="0x[0-9a-fA-F]{40}" value="${esc(session().address ?? '')}"></label>
+        <div class="pl-dialog-actions"><button type="button" class="pl-btn" data-close>Cancel</button><button type="submit" class="pl-btn pl-btn-primary">Withdraw</button></div>
+      </form>
+    </dialog>`;
+}
+
+function withdrawalsPanel(): string {
+  const ns = links().namespace!;
+  if (!page.withdrawals.length) return '';
+  return `
+    <div class="pl-panel">
+      <div class="pl-panel-head"><h2 class="pl-panel-title">withdrawals</h2></div>
+      <ul class="pl-list">
+        ${page.withdrawals
+          .map(
+            (w) => `<li><span class="pl-list-main">to ${esc(shortHex(w.recipient, 6, 4))}</span><span class="pl-list-sub">${w.status === 'confirmed' ? `<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>confirmed on chain</span>` : `<span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(w.status.replace('_', ' '))}</span>`}${w.tx_hash ? ` · tx <span class="pl-mono">${esc(shortHex(w.tx_hash, 8, 6))}</span>` : ''} · burn #${w.position}</span><span class="pl-list-side">${formatUnits(w.amount, ns.decimals)} ${esc(ns.token_symbol)}</span></li>`,
+          )
+          .join('')}
+      </ul>
+    </div>`;
+}
+
 function devMintDialog(): string {
   const ns = links().namespace!;
   return `
@@ -340,10 +394,13 @@ function html(): string {
         ${actions()}
         ${requestsPanel()}
         ${receiptsPanel()}
+        ${withdrawalsPanel()}
         ${activityPanel()}
         ${ledgerPanel()}
         ${restoreDialog()}
         ${newRequestDialog()}
+        ${fundDialog()}
+        ${withdrawDialog()}
         ${devMintDialog()}
         ${linkDialog()}
       </div>
@@ -358,7 +415,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
   let stale = false;
   let syncTimer = 0;
   let claiming = false;
-  page = { view: null, requests: [], busy: null, error: null, notice: null, lastLink: null };
+  page = { view: null, requests: [], busy: null, error: null, notice: null, lastLink: null, walletTokenBalance: null, withdrawals: [] };
   MINT_SENDER = localStorage.getItem(MINT_SENDER_KEY) ?? '';
 
   const paint = () => {
@@ -378,6 +435,20 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     }
   };
 
+  const refreshWalletBalance = async () => {
+    const l = links();
+    const evm = session();
+    if (!l.namespace?.available || !evm.address || !evm.provider) {
+      page.walletTokenBalance = null;
+      return;
+    }
+    try {
+      page.walletTokenBalance = (await tokenBalance(l.namespace, evm.address as Address, evm.provider as unknown as EIP1193Provider)).toString();
+    } catch {
+      page.walletTokenBalance = null;
+    }
+  };
+
   const refresh = async () => {
     const l = links();
     if (!l.account) {
@@ -385,6 +456,18 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       return;
     }
     page.view = await l.account.view();
+    // Withdrawals: every send whose reference is a withdraw marker.
+    const burns = page.view.history.filter((h) => h.kind === 'send' && h.reference?.startsWith('withdraw:') && h.position !== null);
+    const withdrawals = [];
+    for (const b of burns) {
+      try {
+        const w = await client.withdrawal(l.namespace!.id, b.position!);
+        withdrawals.push({ position: b.position!, amount: w.amount, recipient: w.recipient, status: w.status, tx_hash: w.tx_hash });
+      } catch {
+        withdrawals.push({ position: b.position!, amount: b.amount, recipient: b.reference!.slice('withdraw:'.length), status: 'burned, not yet settled', tx_hash: null });
+      }
+    }
+    page.withdrawals = withdrawals;
     if (l.signedIn) {
       try {
         // Requests are owned by the signed-in wallet on the API; show only
@@ -460,6 +543,8 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     } else if (btn.id === 'pl-show-restore') root.querySelector<HTMLDialogElement>('#pl-restore-dialog')?.showModal();
     else if (btn.id === 'pl-new-request') root.querySelector<HTMLDialogElement>('#pl-request-dialog')?.showModal();
     else if (btn.id === 'pl-dev-mint') root.querySelector<HTMLDialogElement>('#pl-mint-dialog')?.showModal();
+    else if (btn.id === 'pl-add-funds') root.querySelector<HTMLDialogElement>('#pl-fund-dialog')?.showModal();
+    else if (btn.id === 'pl-withdraw') root.querySelector<HTMLDialogElement>('#pl-withdraw-dialog')?.showModal();
     else if (btn.id === 'pl-backup') {
       const pass = prompt('Passphrase for the backup file (at least 10 characters). You will need it to restore.');
       if (!pass) return;
@@ -568,6 +653,37 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
         const qr = await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
         page.lastLink = { request, url, qr };
       });
+    } else if (form.id === 'pl-fund-form') {
+      const ns = l.namespace!;
+      const evm = session();
+      const amount = parseUnits(String(data.get('amount') ?? ''), ns.decimals);
+      if (!amount || amount === '0' || !evm.address || !evm.provider) {
+        page.error = 'enter an amount and connect a wallet';
+        paint();
+        return;
+      }
+      form.closest('dialog')?.close();
+      void run('deposit: proving the intent, then confirm the approval and the deposit in your wallet', async () => {
+        const { receipt } = await l.account!.prepareDeposit(amount);
+        const tx = await depositOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, BigInt(amount), receipt);
+        page.notice = `Deposit confirmed on ${ns.chain_name} (tx ${shortHex(tx.depositHash, 8, 6)}). It is credited as an incoming receipt after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}; claim it to make it spendable.`;
+      });
+    } else if (form.id === 'pl-withdraw-form') {
+      const ns = l.namespace!;
+      const evm = session();
+      const amount = parseUnits(String(data.get('amount') ?? ''), ns.decimals);
+      const recipient = String(data.get('recipient') ?? '').trim();
+      if (!amount || amount === '0' || !/^0x[0-9a-fA-F]{40}$/.test(recipient) || !evm.address || !evm.provider) {
+        page.error = 'enter an amount, a recipient address, and connect a wallet';
+        paint();
+        return;
+      }
+      form.closest('dialog')?.close();
+      void run('withdrawal: proving the burn on this device (about 7 s), then the committee certificate, then confirm the release in your wallet', async () => {
+        const { certificate } = await l.account!.withdraw(amount, recipient);
+        const hash = await withdrawOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, certificate);
+        page.notice = `Withdrawal released on ${ns.chain_name} (tx ${shortHex(hash, 8, 6)}) to ${shortHex(recipient, 6, 4)}.`;
+      });
     } else if (form.id === 'pl-mint-form') {
       const ns = l.namespace!;
       const amount = parseUnits(String(data.get('amount') ?? ''), ns.decimals);
@@ -592,7 +708,9 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     }
   });
 
-  const unsubAuth = onAuthChange(paint);
+  const unsubAuth = onAuthChange(() => {
+    void refreshWalletBalance().then(paint);
+  });
   const unsubLinks = onLinksChange(() => {
     void refresh().then(paint);
   });
@@ -602,6 +720,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     await loadStatus();
     await resumeSignIn();
     await refresh();
+    await refreshWalletBalance();
     paint();
     syncTimer = window.setInterval(() => void syncOnce(), 5000);
   })();

@@ -36,6 +36,9 @@ pub struct NamespaceConfig {
     /// Optional explorer base URL for links.
     #[serde(default)]
     pub explorer_url: String,
+    /// First block the watcher scans (the gateway's deployment block).
+    #[serde(default)]
+    pub start_block: u64,
 }
 
 fn default_confirmations() -> u64 {
@@ -104,6 +107,24 @@ pub struct NodeConfig {
     pub batch_window_ms: u64,
     #[serde(default = "default_batch_max")]
     pub batch_max: usize,
+    /// Settlement committee for withdrawals. `signer_keys_file` points at a
+    /// JSON array of hex private keys held by THIS process: the local
+    /// single-process fixture, never a production committee. Refused with a
+    /// mainnet namespace.
+    #[serde(default)]
+    pub signer_keys_file: Option<PathBuf>,
+    #[serde(default = "default_threshold")]
+    pub signer_threshold: usize,
+    /// Watcher polling interval in milliseconds.
+    #[serde(default = "default_watch_ms")]
+    pub watch_interval_ms: u64,
+}
+
+fn default_threshold() -> usize {
+    2
+}
+fn default_watch_ms() -> u64 {
+    1500
 }
 
 fn default_listen() -> String {
@@ -151,8 +172,14 @@ impl NodeConfig {
         {
             cfg.dev_mint = true;
         }
-        if cfg.dev_mint && cfg.namespaces.iter().any(|n| n.environment == "mainnet") {
+        let has_mainnet = cfg.namespaces.iter().any(|n| n.environment == "mainnet");
+        if cfg.dev_mint && has_mainnet {
             anyhow::bail!("dev_mint cannot be enabled with a mainnet namespace configured");
+        }
+        if cfg.signer_keys_file.is_some() && has_mainnet {
+            anyhow::bail!(
+                "a single-process signer fixture cannot be used with a mainnet namespace"
+            );
         }
         Ok(cfg)
     }

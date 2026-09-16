@@ -104,7 +104,31 @@ async fn main() -> Result<()> {
     }
 
     let product = product::open(&cfg.data_dir.join("links.sqlite")).context("product store")?;
+    let committee = match &cfg.signer_keys_file {
+        Some(path) => {
+            let keys: Vec<String> =
+                serde_json::from_str(&std::fs::read_to_string(path).context("signer keys file")?)
+                    .context("signer keys file is a JSON array of hex keys")?;
+            let c =
+                peal_links_node::settlement::Committee::from_config(&keys, cfg.signer_threshold)
+                    .map_err(|e| anyhow::anyhow!("committee: {e}"))?;
+            tracing::warn!(
+                signers = ?c.addresses(),
+                threshold = c.threshold,
+                "settlement committee is a SINGLE-PROCESS FIXTURE: every signer key is held by this node"
+            );
+            Some(c)
+        }
+        None => None,
+    };
     let listen = cfg.listen.clone();
+    let watch_interval = Duration::from_millis(cfg.watch_interval_ms);
+    let enabled: Vec<_> = cfg
+        .namespaces
+        .iter()
+        .filter(|n| n.enabled)
+        .cloned()
+        .collect();
     let app: api::App = Arc::new(AppState {
         cfg,
         circuit_id: keys.circuit_id,
@@ -112,7 +136,16 @@ async fn main() -> Result<()> {
         namespaces,
         params,
         product: Mutex::new(product),
+        availability: Mutex::new(HashMap::new()),
+        committee,
     });
+    for ns in enabled {
+        tokio::spawn(peal_links_node::watcher::run(
+            app.clone(),
+            ns,
+            watch_interval,
+        ));
+    }
 
     let listener = tokio::net::TcpListener::bind(&listen).await?;
     info!(%listen, "peal-links-node listening");

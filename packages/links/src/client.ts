@@ -35,6 +35,11 @@ export interface LinksStatus {
   setup: 'local-dev' | 'ceremony';
   ledger_mode: 'single-node' | 'multi-node';
   dev_mint: boolean;
+  /** `single-process-fixture`: every settlement signer key is held by the
+   * node (local demo). `none`: no withdrawals. */
+  signer_mode: 'single-process-fixture' | 'none';
+  signers: string[];
+  signer_threshold: number;
   namespaces: NamespaceInfo[];
   ledgers: LedgerInfo[];
 }
@@ -110,6 +115,29 @@ export interface InboxItem {
   envelope: unknown;
   request_id: string | null;
   posted_at: number;
+}
+
+export interface WithdrawalCertificate {
+  message: {
+    chain_id: number;
+    gateway: string;
+    token: string;
+    recipient: string;
+    amount: string;
+    withdrawal_id: string;
+    epoch: number;
+  };
+  signatures: string[];
+  signers: string[];
+  threshold: number;
+}
+
+export interface WithdrawalStatus extends WithdrawalCertificate {
+  position: number;
+  status: 'certificate_ready' | 'confirmed';
+  tx_hash: string | null;
+  recipient: string;
+  amount: string;
 }
 
 export interface SessionInfo {
@@ -299,6 +327,21 @@ export class NodeClient {
 
   depositIntent(ns: string, receipt: string): Promise<{ receipt: string; status: string; deposit_id: string | null; position: number | null }> {
     return this.call(`/deposits/intents/${ns}/${receipt}`);
+  }
+
+  // ---- withdrawals
+
+  /** Submit a signed withdrawal disclosure; returns the committee certificate. */
+  settleWithdrawal(claim: unknown): Promise<WithdrawalCertificate> {
+    return this.post('/withdrawals', claim);
+  }
+
+  withdrawal(ns: string, position: number): Promise<WithdrawalStatus> {
+    return this.call(`/withdrawals/${ns}/${position}`);
+  }
+
+  accounting(ns: string): Promise<{ minted_total: string; withdrawn_total: string; outstanding_liability: string; receipt_count: number }> {
+    return this.call(`/ledger/${ns}/accounting`);
   }
 
   /** DEVELOPMENT FIXTURE: only exists when the node runs with dev_mint. */

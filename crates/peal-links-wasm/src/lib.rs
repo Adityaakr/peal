@@ -12,7 +12,9 @@
 
 use peal_bonsai::account::InboxAuth;
 use peal_bonsai::encoding::{fr_from_hex, fr_to_hex};
-use peal_bonsai::envelope::{open_backup, open_receipt, open_with_key, seal_backup, seal_receipt, seal_with_key};
+use peal_bonsai::envelope::{
+    open_backup, open_receipt, open_with_key, seal_backup, seal_receipt, seal_with_key,
+};
 use peal_bonsai::manifest::{new_request_id, FulfillmentAck, RequestManifest};
 use peal_bonsai::params::{pk_from_bytes_with, vk_from_bytes, CircuitKeys, Instance, Keys};
 use peal_bonsai::trees::ReceiptOpening;
@@ -72,11 +74,19 @@ impl Prover {
         deposit_vk: &[u8],
         expected_circuit_id: &str,
     ) -> Result<JsValue, JsError> {
-        let op = CircuitKeys::from_parts(pk_from_bytes_with(op_pk, false).map_err(err)?, vk_from_bytes(op_vk).map_err(err)?);
-        let deposit = CircuitKeys::from_parts(pk_from_bytes_with(deposit_pk, false).map_err(err)?, vk_from_bytes(deposit_vk).map_err(err)?);
+        let op = CircuitKeys::from_parts(
+            pk_from_bytes_with(op_pk, false).map_err(err)?,
+            vk_from_bytes(op_vk).map_err(err)?,
+        );
+        let deposit = CircuitKeys::from_parts(
+            pk_from_bytes_with(deposit_pk, false).map_err(err)?,
+            vk_from_bytes(deposit_vk).map_err(err)?,
+        );
         let keys = Keys::from_circuits(&self.inst, op, deposit);
         if hex::encode(keys.circuit_id) != expected_circuit_id {
-            return Err(JsError::new("parameter files do not match the node's circuit id"));
+            return Err(JsError::new(
+                "parameter files do not match the node's circuit id",
+            ));
         }
         let info = KeyInfo {
             circuit_id: hex::encode(keys.circuit_id),
@@ -92,7 +102,9 @@ impl Prover {
     }
 
     fn keys(&self) -> Result<&Keys, JsError> {
-        self.keys.as_ref().ok_or_else(|| JsError::new("proving keys not loaded"))
+        self.keys
+            .as_ref()
+            .ok_or_else(|| JsError::new("proving keys not loaded"))
     }
 
     // ---- wallet lifecycle ------------------------------------------------
@@ -139,7 +151,12 @@ impl Prover {
 
     /// Prepare a deposit intent: returns `{ wallet, intent }`. The wallet JSON
     /// must be persisted before the on-chain transfer is signed.
-    pub fn prepare_deposit(&self, wallet_json: &str, amount: &str, reference: Option<String>) -> Result<JsValue, JsError> {
+    pub fn prepare_deposit(
+        &self,
+        wallet_json: &str,
+        amount: &str,
+        reference: Option<String>,
+    ) -> Result<JsValue, JsError> {
         let keys = self.keys()?;
         let mut w = Wallet::from_json(wallet_json).map_err(err)?;
         let amount = parse_amount(amount)?;
@@ -147,11 +164,19 @@ impl Prover {
         let (intent, _opening) = w
             .prepare_deposit(&self.inst, keys, amount, reference, now(), &mut rng)
             .map_err(err)?;
-        to_js(&WalletAnd { wallet: w.to_json(), value: intent })
+        to_js(&WalletAnd {
+            wallet: w.to_json(),
+            value: intent,
+        })
     }
 
     /// The ledger minted the intent's receipt at `position`.
-    pub fn deposit_minted(&self, wallet_json: &str, receipt: &str, position: u64) -> Result<String, JsError> {
+    pub fn deposit_minted(
+        &self,
+        wallet_json: &str,
+        receipt: &str,
+        position: u64,
+    ) -> Result<String, JsError> {
         let mut w = Wallet::from_json(wallet_json).map_err(err)?;
         let r = fr_from_hex(receipt).map_err(err)?;
         w.deposit_minted(&self.inst, r, position, now())
@@ -162,7 +187,13 @@ impl Prover {
     // ---- receipts ----------------------------------------------------------
 
     /// Record an incoming receipt opening (decrypted from the inbox).
-    pub fn add_receipt(&self, wallet_json: &str, position: u64, opening_json: &str, reference: Option<String>) -> Result<String, JsError> {
+    pub fn add_receipt(
+        &self,
+        wallet_json: &str,
+        position: u64,
+        opening_json: &str,
+        reference: Option<String>,
+    ) -> Result<String, JsError> {
         let mut w = Wallet::from_json(wallet_json).map_err(err)?;
         let opening: ReceiptOpening = serde_json::from_str(opening_json).map_err(err)?;
         w.add_receipt(&self.inst, position, opening, reference, now());
@@ -171,18 +202,33 @@ impl Prover {
 
     /// Verify held receipt `idx` against a served path. Returns the updated
     /// wallet JSON; the receipt's status becomes `Unclaimed` or `Invalid`.
-    pub fn verify_receipt(&self, wallet_json: &str, idx: usize, path_json: &str) -> Result<JsValue, JsError> {
+    pub fn verify_receipt(
+        &self,
+        wallet_json: &str,
+        idx: usize,
+        path_json: &str,
+    ) -> Result<JsValue, JsError> {
         let mut w = Wallet::from_json(wallet_json).map_err(err)?;
         let witness = parse_witness(path_json)?;
         let ok = w.verify_receipt(&self.inst, idx, &witness).map_err(err)?;
-        to_js(&WalletAnd { wallet: w.to_json(), value: ok })
+        to_js(&WalletAnd {
+            wallet: w.to_json(),
+            value: ok,
+        })
     }
 
     // ---- operations --------------------------------------------------------
 
     /// Prepare and prove a send. Returns `{ wallet, envelope, opening }`; the
     /// wallet is now pending and must be persisted before submission.
-    pub fn send(&self, wallet_json: &str, amount: &str, to: &str, root: &str, reference: Option<String>) -> Result<JsValue, JsError> {
+    pub fn send(
+        &self,
+        wallet_json: &str,
+        amount: &str,
+        to: &str,
+        root: &str,
+        reference: Option<String>,
+    ) -> Result<JsValue, JsError> {
         let keys = self.keys()?;
         let mut w = Wallet::from_json(wallet_json).map_err(err)?;
         let amount = parse_amount(amount)?;
@@ -197,18 +243,67 @@ impl Prover {
             _ => unreachable!(),
         };
         let envelope = w.prove_pending(keys, circuit, &mut rng).map_err(err)?;
-        to_js(&SendOut { wallet: w.to_json(), envelope, opening })
+        to_js(&SendOut {
+            wallet: w.to_json(),
+            envelope,
+            opening,
+        })
+    }
+
+    /// Prepare and prove a withdrawal of `amount` to the EVM `recipient`: a
+    /// send to the burn identifier. Returns `{ wallet, envelope, opening }`.
+    pub fn withdraw(
+        &self,
+        wallet_json: &str,
+        amount: &str,
+        recipient: &str,
+        root: &str,
+    ) -> Result<JsValue, JsError> {
+        let keys = self.keys()?;
+        let mut w = Wallet::from_json(wallet_json).map_err(err)?;
+        let amount = parse_amount(amount)?;
+        let root = fr_from_hex(root).map_err(err)?;
+        let mut rng = peal_bonsai::os_rng();
+        let circuit = w
+            .prepare_withdrawal(&self.inst, amount, root, recipient, now(), &mut rng)
+            .map_err(err)?;
+        let opening = match &w.pending.as_ref().expect("prepared").kind {
+            peal_bonsai::wallet::PendingKind::Send { opening, .. } => opening.clone(),
+            _ => unreachable!(),
+        };
+        let envelope = w.prove_pending(keys, circuit, &mut rng).map_err(err)?;
+        to_js(&SendOut {
+            wallet: w.to_json(),
+            envelope,
+            opening,
+        })
+    }
+
+    /// The signed disclosure for the withdrawal committed at `position`.
+    pub fn withdrawal_claim(&self, wallet_json: &str, position: u64) -> Result<String, JsError> {
+        let w = Wallet::from_json(wallet_json).map_err(err)?;
+        serde_json::to_string(&w.withdrawal_claim(position).map_err(err)?).map_err(err)
     }
 
     /// Prepare and prove the claim of held receipt `idx`.
-    pub fn receive(&self, wallet_json: &str, idx: usize, path_json: &str) -> Result<JsValue, JsError> {
+    pub fn receive(
+        &self,
+        wallet_json: &str,
+        idx: usize,
+        path_json: &str,
+    ) -> Result<JsValue, JsError> {
         let keys = self.keys()?;
         let mut w = Wallet::from_json(wallet_json).map_err(err)?;
         let witness = parse_witness(path_json)?;
         let mut rng = peal_bonsai::os_rng();
-        let circuit = w.prepare_receive(&self.inst, idx, &witness, now(), &mut rng).map_err(err)?;
+        let circuit = w
+            .prepare_receive(&self.inst, idx, &witness, now(), &mut rng)
+            .map_err(err)?;
         let envelope = w.prove_pending(keys, circuit, &mut rng).map_err(err)?;
-        to_js(&WalletAnd { wallet: w.to_json(), value: envelope })
+        to_js(&WalletAnd {
+            wallet: w.to_json(),
+            value: envelope,
+        })
     }
 
     pub fn commit_pending(&self, wallet_json: &str, position: u64) -> Result<String, JsError> {
@@ -225,7 +320,12 @@ impl Prover {
 
     /// Resolve an unknown outcome from the ledger's commitment. Returns
     /// `{ wallet, value: "in_sync" | "committed" | "aborted" | "conflict" }`.
-    pub fn reconcile(&self, wallet_json: &str, ledger_com: &str, position: Option<u64>) -> Result<JsValue, JsError> {
+    pub fn reconcile(
+        &self,
+        wallet_json: &str,
+        ledger_com: &str,
+        position: Option<u64>,
+    ) -> Result<JsValue, JsError> {
         let mut w = Wallet::from_json(wallet_json).map_err(err)?;
         let com = fr_from_hex(ledger_com).map_err(err)?;
         let r = w.reconcile(&self.inst, com, position, now()).map_err(err)?;
@@ -235,7 +335,10 @@ impl Prover {
             peal_bonsai::wallet::Reconciled::Aborted => "aborted",
             peal_bonsai::wallet::Reconciled::Conflict => "conflict",
         };
-        to_js(&WalletAnd { wallet: w.to_json(), value: label })
+        to_js(&WalletAnd {
+            wallet: w.to_json(),
+            value: label,
+        })
     }
 
     /// The wallet's current commitment (to compare with the ledger's).
@@ -285,20 +388,43 @@ impl Prover {
         m.verify().map_err(err)
     }
 
-    pub fn fulfillment_ack(&self, wallet_json: &str, request_id: &str, position: u64) -> Result<String, JsError> {
+    pub fn fulfillment_ack(
+        &self,
+        wallet_json: &str,
+        request_id: &str,
+        position: u64,
+    ) -> Result<String, JsError> {
         let w = Wallet::from_json(wallet_json).map_err(err)?;
-        serde_json::to_string(&FulfillmentAck::sign(&w.spend_key(), w.namespace, request_id.to_string(), position, now())).map_err(err)
+        serde_json::to_string(&FulfillmentAck::sign(
+            &w.spend_key(),
+            w.namespace,
+            request_id.to_string(),
+            position,
+            now(),
+        ))
+        .map_err(err)
     }
 
     // ---- envelopes and backups ---------------------------------------------
 
     /// Seal a receipt opening (plus position and reference) to a recipient's
     /// encryption key. Returns the envelope JSON to post to the inbox.
-    pub fn seal_receipt(&self, namespace: &str, recipient_enc_key: &str, opening_json: &str, position: u64, reference: Option<String>) -> Result<String, JsError> {
+    pub fn seal_receipt(
+        &self,
+        namespace: &str,
+        recipient_enc_key: &str,
+        opening_json: &str,
+        position: u64,
+        reference: Option<String>,
+    ) -> Result<String, JsError> {
         let ns = parse32(namespace)?;
         let recipient = parse32(recipient_enc_key)?;
         let opening: ReceiptOpening = serde_json::from_str(opening_json).map_err(err)?;
-        let payload = Delivery { opening, position, reference };
+        let payload = Delivery {
+            opening,
+            position,
+            reference,
+        };
         let bytes = serde_json::to_vec(&payload).map_err(err)?;
         let mut rng = peal_bonsai::os_rng();
         let env = seal_receipt(ns, recipient, &bytes, &mut rng).map_err(err)?;
@@ -360,7 +486,8 @@ impl Prover {
         Wallet::from_json(wallet_json).map_err(err)?;
         let key = parse32(key_hex)?;
         let mut rng = peal_bonsai::os_rng();
-        serde_json::to_string(&seal_with_key(&key, wallet_json.as_bytes(), &mut rng).map_err(err)?).map_err(err)
+        serde_json::to_string(&seal_with_key(&key, wallet_json.as_bytes(), &mut rng).map_err(err)?)
+            .map_err(err)
     }
 
     pub fn unlock_wallet(&self, locked_json: &str, key_hex: &str) -> Result<String, JsError> {
@@ -388,9 +515,12 @@ fn parse32(hex_str: &str) -> Result<[u8; 32], JsError> {
 
 fn parse_amount(s: &str) -> Result<u64, JsError> {
     if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(JsError::new("amount must be a decimal integer string of base units"));
+        return Err(JsError::new(
+            "amount must be a decimal integer string of base units",
+        ));
     }
-    s.parse::<u64>().map_err(|_| JsError::new("amount exceeds 2^64"))
+    s.parse::<u64>()
+        .map_err(|_| JsError::new("amount exceeds 2^64"))
 }
 
 #[derive(Deserialize)]
@@ -412,7 +542,10 @@ fn parse_witness(path_json: &str) -> Result<ReceiptWitness, JsError> {
         return Err(JsError::new("path siblings and bits differ in length"));
     }
     Ok(ReceiptWitness {
-        path: MerklePath { siblings, index_bits: p.index_bits },
+        path: MerklePath {
+            siblings,
+            index_bits: p.index_bits,
+        },
         root: fr_from_hex(&p.root).map_err(err)?,
     })
 }
@@ -495,7 +628,11 @@ impl WalletView {
                 peal_bonsai::wallet::PendingKind::Send { .. } => "send".to_string(),
                 peal_bonsai::wallet::PendingKind::Receive { .. } => "receive".to_string(),
             }),
-            pending_deposits: w.pending_deposits.iter().map(|d| fr_to_hex(&d.receipt)).collect(),
+            pending_deposits: w
+                .pending_deposits
+                .iter()
+                .map(|d| fr_to_hex(&d.receipt))
+                .collect(),
             receipts: w
                 .receipts
                 .iter()
@@ -526,4 +663,3 @@ impl WalletView {
         }
     }
 }
-

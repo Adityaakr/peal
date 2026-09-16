@@ -79,9 +79,10 @@ impl LedgerHandle {
             // No tracing subscriber on this thread: proof verification runs
             // arkworks code that would otherwise open a span per operation.
             .spawn(move || {
-                tracing::subscriber::with_default(tracing::subscriber::NoSubscriber::default(), || {
-                    run(&mut ledger, rx, window, max)
-                })
+                tracing::subscriber::with_default(
+                    tracing::subscriber::NoSubscriber::default(),
+                    || run(&mut ledger, rx, window, max),
+                )
             })
             .expect("spawn ledger actor");
         Self { tx }

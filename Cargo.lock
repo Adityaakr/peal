@@ -2139,6 +2139,7 @@ dependencies = [
  "sha2",
  "sha3",
  "tempfile",
+ "thiserror",
  "tokio",
  "tower-http",
  "tracing",

@@ -15,6 +15,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { privateKeyToAccount } from 'viem/accounts';
+import { createWalletClient, http } from 'viem';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.SHOTS_DIR ?? join(here, '..', '..', '..', 'docs', 'peal-links', 'evidence', 'phase-c');
@@ -27,11 +28,33 @@ const KEYS = {
   alice: '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
 } as const;
 
+const RPC_BY_CHAIN: Record<number, string> = { 31337: 'http://127.0.0.1:8545', 31338: 'http://127.0.0.1:8546' };
+
 async function injectWallet(context: BrowserContext, key: `0x${string}`, chainId: number): Promise<string> {
   const account = privateKeyToAccount(key);
+  const rpc = RPC_BY_CHAIN[chainId] ?? 'http://127.0.0.1:8545';
+  const chain = { id: chainId, name: 'local', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpc] } } };
+  const wallet = createWalletClient({ account, chain, transport: http(rpc) });
   await context.exposeFunction('__pealSign', async (hex: string) => {
     const bytes = Buffer.from(hex.replace(/^0x/, ''), 'hex');
     return account.signMessage({ message: { raw: bytes } });
+  });
+  // Transactions are signed here, in the test process, like a wallet
+  // extension would, and broadcast to anvil.
+  await context.exposeFunction('__pealSendTx', async (tx: { to?: string; data?: string; value?: string; gas?: string }) => {
+    return wallet.sendTransaction({
+      to: tx.to as `0x${string}`,
+      data: tx.data as `0x${string}`,
+      value: tx.value ? BigInt(tx.value) : undefined,
+      gas: tx.gas ? BigInt(tx.gas) : undefined,
+    });
+  });
+  // Everything else (reads, receipts) goes straight to the chain.
+  await context.exposeFunction('__pealRpc', async (method: string, params: unknown[]) => {
+    const res = await fetch(rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+    const body = (await res.json()) as { result?: unknown; error?: { message: string } };
+    if (body.error) throw new Error(body.error.message);
+    return body.result;
   });
   await context.addInitScript(
     ({ address, chainHex }) => {
@@ -50,8 +73,12 @@ async function injectWallet(context: BrowserContext, key: `0x${string}`, chainId
             }
             case 'wallet_switchEthereumChain':
               return null;
+            case 'eth_sendTransaction': {
+              const [tx] = params as [{ to?: string; data?: string; value?: string; gas?: string }];
+              return (window as unknown as { __pealSendTx: (t: unknown) => Promise<string> }).__pealSendTx(tx);
+            }
             default:
-              throw new Error(`test wallet: unsupported method ${method}`);
+              return (window as unknown as { __pealRpc: (m: string, p: unknown[]) => Promise<unknown> }).__pealRpc(method, params ?? []);
           }
         },
         on() {},
@@ -73,7 +100,7 @@ test.beforeAll(() => mkdirSync(OUT, { recursive: true }));
 test('receiver creates a link, payer pays with a real proof, receiver claims later', async ({ browser }) => {
   test.setTimeout(420_000);
   const status = await (await fetch(`${NODE}/links/v1/status`)).json();
-  expect(status.dev_mint, 'run the stack with PEAL_LINKS_DEV_MINT=1').toBe(true);
+  expect(status.namespaces[0].available, 'chain A gateway must be verified by the node').toBe(true);
   const chainId = status.namespaces[0].chain_id as number;
 
   // ---- Bob (receiver) creates a private account and a payment link.
@@ -119,8 +146,14 @@ test('receiver creates a link, payer pays with a real proof, receiver claims lat
   await alice.getByRole('button', { name: 'Create private account and continue' }).click();
   await expect(alice.getByText('Not enough balance')).toBeVisible({ timeout: 120_000 });
   await shot(alice, '04-payer-needs-funds');
-  await alice.getByRole('button', { name: /Add test funds/ }).click();
-  await expect(alice.getByRole('button', { name: /^Pay 12\.50/ })).toBeVisible({ timeout: 120_000 });
+  // A real deposit from the payer's wallet: approve, deposit with the
+  // receipt commitment, credited by the watcher after confirmations.
+  await alice.getByRole('button', { name: 'Use browser wallet' }).click();
+  await alice.getByRole('button', { name: 'Add funds' }).click();
+  await alice.locator('#pay-fund-form input[name="amount"]').fill('20');
+  await alice.getByRole('button', { name: 'Deposit from wallet' }).click();
+  await expect(alice.getByText(/deposit confirmed on chain/)).toBeVisible({ timeout: 120_000 });
+  await expect(alice.getByRole('button', { name: /^Pay 12\.50/ })).toBeVisible({ timeout: 180_000 });
   await shot(alice, '05-payer-funded');
   await alice.getByRole('button', { name: /^Pay 12\.50/ }).click();
   await expect(alice.locator('.pl-status', { hasText: 'proving the payment on this device' })).toBeVisible({ timeout: 10_000 });

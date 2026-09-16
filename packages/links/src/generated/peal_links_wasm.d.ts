@@ -106,6 +106,15 @@ export class Prover {
      */
     wallet_view(wallet_json: string): any;
     /**
+     * Prepare and prove a withdrawal of `amount` to the EVM `recipient`: a
+     * send to the burn identifier. Returns `{ wallet, envelope, opening }`.
+     */
+    withdraw(wallet_json: string, amount: string, recipient: string, root: string): any;
+    /**
+     * The signed disclosure for the withdrawal committed at `position`.
+     */
+    withdrawal_claim(wallet_json: string, position: bigint): string;
+    /**
      * Wrap the storage key under a passphrase (argon2id, once per setup).
      */
     wrap_key(key_hex: string, passphrase: string): string;
@@ -149,6 +158,8 @@ export interface InitOutput {
     readonly prover_verify_receipt: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
     readonly prover_verify_request: (a: number, b: number, c: number) => [number, number];
     readonly prover_wallet_view: (a: number, b: number, c: number) => [number, number, number];
+    readonly prover_withdraw: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number];
+    readonly prover_withdrawal_claim: (a: number, b: number, c: number, d: bigint) => [number, number, number, number];
     readonly prover_wrap_key: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly start: () => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

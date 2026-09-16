@@ -7,9 +7,11 @@
 // page says so instead of hiding the dependency. Every terminal state is
 // its own honest screen.
 import type { LinksAccount, PaymentRequest } from 'peal-links';
-import { LinksApiError, newIntentId } from 'peal-links';
+import { depositOnChain, LinksApiError, newIntentId, tokenBalance } from 'peal-links';
+import type { Address, EIP1193Provider } from 'viem';
+import { connectInjected, injectedProvider, onAuthChange, session } from '../auth';
 import { esc } from '../util';
-import { formatUnits, fmtTime, shortHex } from '../links/format';
+import { formatUnits, fmtTime, parseUnits, shortHex } from '../links/format';
 import { client, createAccount, links, loadStatus, onLinksChange, openAccount } from '../links/session';
 import '../links.css';
 
@@ -51,6 +53,10 @@ interface PayState {
   balance: string | null;
   position: number | null;
   intentId: string;
+  /** Funding dialog open, and the chain-side progress line. */
+  funding: boolean;
+  fundingNote: string | null;
+  walletTokenBalance: string | null;
 }
 
 const REQUEST_ID = /^[a-z2-7]{24}$/;
@@ -156,15 +162,24 @@ function html(s: PayState): string {
            <p class="pl-small" style="text-align:center;margin:8px 0 0">Already have one? <a href="#/bonsai/app">Restore it from your backup</a>, then come back to this link.</p>`;
     } else if (s.balance !== null && BigInt(s.balance) < BigInt(m.amount)) {
       const short = ns ? formatUnits((BigInt(m.amount) - BigInt(s.balance)).toString(), ns.decimals) : '';
+      const evm = session();
+      const suggested = ns ? formatUnits(((BigInt(m.amount) - BigInt(s.balance) + 10n ** BigInt(ns.decimals) - 1n) / 10n ** BigInt(ns.decimals) * 10n ** BigInt(ns.decimals)).toString(), ns.decimals, 0) : '';
+      const fundForm = ns?.available
+        ? evm.address
+          ? `<form id="pay-fund-form" class="pl-notice" style="margin:0">
+               <div class="pl-small" style="margin-bottom:8px">wallet <span class="pl-mono">${esc(shortHex(evm.address, 6, 4))}</span>${s.walletTokenBalance !== null ? ` · ${formatUnits(s.walletTokenBalance, ns.decimals)} ${esc(symbol)} on ${esc(ns.chain_name)}` : ''}</div>
+               <label class="pl-field"><span class="pl-label">deposit (${esc(symbol)})</span><div class="pl-amount-input"><input class="pl-input" name="amount" inputmode="decimal" required value="${esc(suggested)}"></div><div class="pl-hint">two wallet confirmations: approve, then deposit. Credited after ${ns.confirmations} block${ns.confirmations === 1 ? '' : 's'}; the deposit is public on ${esc(ns.chain_name)}.</div></label>
+               ${s.fundingNote ? `<div class="pl-small" role="status" style="margin-bottom:8px"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(s.fundingNote)}</span></div>` : ''}
+               <button type="submit" class="pl-btn pl-btn-primary pl-btn-block" ${s.fundingNote ? 'disabled' : ''}>Deposit from wallet</button>
+             </form>`
+          : `<div class="pl-actions" style="margin:0"><button type="button" class="pl-btn pl-btn-primary" id="pay-login">Connect wallet</button>${injectedProvider() ? `<button type="button" class="pl-btn" id="pay-login-injected">Use browser wallet</button>` : ''}</div>
+             <p class="pl-small" style="margin:8px 0 0">Funds come from your own wallet on ${esc(ns.chain_name)} as a public deposit into the gateway.</p>`
+        : l.status.dev_mint
+          ? `<button type="button" class="pl-btn pl-btn-block" id="pay-dev-mint" title="development fixture">Add test funds (dev mint) and continue</button>`
+          : `<div class="pl-small" style="text-align:center">Deposits on ${esc(ns?.chain_name ?? 'this chain')} are not available on this node.</div>`;
       action = `
         <div class="pl-notice pl-notice-warn"><strong>Not enough balance.</strong> Available ${ns ? formatUnits(s.balance, ns.decimals) : s.balance} ${esc(symbol)}; this request needs ${short} ${esc(symbol)} more.</div>
-        ${
-          ns?.available
-            ? `<button type="button" class="pl-btn pl-btn-primary pl-btn-block" id="pay-fund">Add funds</button>`
-            : l.status.dev_mint
-              ? `<button type="button" class="pl-btn pl-btn-block" id="pay-dev-mint" title="development fixture">Add test funds (dev mint) and continue</button>`
-              : `<div class="pl-small" style="text-align:center">Deposits on ${esc(ns?.chain_name ?? 'this chain')} arrive with the chain gateway (Phase D).</div>`
-        }`;
+        ${fundForm}`;
     } else {
       action = `<button type="button" class="pl-btn pl-btn-primary pl-btn-block" id="pay-now">Pay ${esc(amount)} ${esc(symbol)}</button>
         <p class="pl-small" style="text-align:center;margin:0">Proving takes about seven seconds on this device. Nothing leaves your browser except the proof and an encrypted receipt.</p>`;
@@ -202,7 +217,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
   document.title = 'Peal Links. payment request';
   const unmeta = [setMeta('robots', 'noindex, nofollow'), setMeta('referrer', 'no-referrer')];
   let stale = false;
-  const s: PayState = { request: null, manifestOk: null, stage: 'idle', error: null, busy: null, balance: null, position: null, intentId: intentFor(requestId) };
+  const s: PayState = { request: null, manifestOk: null, stage: 'idle', error: null, busy: null, balance: null, position: null, intentId: intentFor(requestId), funding: false, fundingNote: null, walletTokenBalance: null };
   const cleanups: Array<() => void> = [];
   const paint = () => {
     if (stale) return;
@@ -274,12 +289,73 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     });
   };
 
+  const refreshWalletBalance = async () => {
+    const l = links();
+    const evm = session();
+    const ns = l.status?.namespaces.find((n) => n.id === s.request?.manifest.namespace);
+    if (!ns || !evm.address || !evm.provider || !ns.available) {
+      s.walletTokenBalance = null;
+      return;
+    }
+    try {
+      s.walletTokenBalance = (await tokenBalance(ns, evm.address as Address, evm.provider as unknown as EIP1193Provider)).toString();
+    } catch {
+      s.walletTokenBalance = null;
+    }
+  };
+
   root.addEventListener('submit', (ev) => {
     ev.preventDefault();
     const form = ev.target as HTMLFormElement;
-    const pass = String(new FormData(form).get('pass') ?? '');
+    const data = new FormData(form);
+    const pass = String(data.get('pass') ?? '');
+    const l = links();
     if (form.id === 'pay-unlock') void run('unlocking', null, async () => void (await openAccount(pass)));
     else if (form.id === 'pay-create') void run('creating your private account and registering it', null, async () => void (await createAccount(pass)));
+    else if (form.id === 'pay-fund-form' && l.account && s.request) {
+      const ns = l.status!.namespaces.find((n) => n.id === s.request!.manifest.namespace)!;
+      const amount = parseUnits(String(data.get('amount') ?? ''), ns.decimals);
+      const evm = session();
+      if (!amount || amount === '0' || !evm.address || !evm.provider) {
+        s.error = 'enter an amount and connect a wallet';
+        paint();
+        return;
+      }
+      const account = l.account;
+      void (async () => {
+        s.error = null;
+        try {
+          s.fundingNote = 'proving the deposit intent';
+          paint();
+          const { receipt } = await account.prepareDeposit(amount);
+          s.fundingNote = 'confirm the approval and the deposit in your wallet';
+          paint();
+          const tx = await depositOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, BigInt(amount), receipt);
+          s.fundingNote = `deposit confirmed on chain (${shortHex(tx.depositHash, 8, 6)}); waiting for ${ns.confirmations} confirmation${ns.confirmations === 1 ? '' : 's'} and the ledger credit`;
+          paint();
+          // Poll until the watcher credits the intent, then claim it.
+          for (let i = 0; i < 120; i++) {
+            const credited = await account.syncDeposits();
+            if (credited.length) break;
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+          await account.verifyReceipts();
+          const v = await account.view();
+          const idx = v.receipts.findIndex((r) => r.receipt === receipt && r.status === 'unclaimed');
+          if (idx < 0) throw new Error('the deposit was not credited in time; it will appear under incoming receipts once the watcher sees it');
+          s.fundingNote = 'claiming the deposit: proving on this device (about 7 s)';
+          paint();
+          await account.claim(idx);
+          s.fundingNote = null;
+        } catch (e) {
+          s.fundingNote = null;
+          s.error = e instanceof Error ? e.message : String(e);
+        }
+        await refreshBalance().catch(() => {});
+        await refreshWalletBalance();
+        paint();
+      })();
+    }
   });
 
   root.addEventListener('click', (ev) => {
@@ -287,6 +363,8 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     if (!btn) return;
     const l = links();
     if (btn.id === 'pay-now' && l.account) void pay(l.account);
+    else if (btn.id === 'pay-login') session().login();
+    else if (btn.id === 'pay-login-injected') void connectInjected().then(refreshWalletBalance).then(paint).catch((e) => { s.error = e instanceof Error ? e.message : String(e); paint(); });
     else if (btn.id === 'pay-dev-mint' && l.account && s.request) {
       const account = l.account;
       const m = s.request.manifest;
@@ -311,6 +389,9 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
 
   const unsub = onLinksChange(() => {
     void refreshBalance().then(paint);
+  });
+  const unsubAuth = onAuthChange(() => {
+    void refreshWalletBalance().then(paint);
   });
 
   void (async () => {
@@ -355,6 +436,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
   return () => {
     stale = true;
     unsub();
+    unsubAuth();
     for (const f of cleanups) f();
     for (const f of unmeta) f();
     document.title = previousTitle;

@@ -755,6 +755,56 @@ export class Prover {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * Prepare and prove a withdrawal of `amount` to the EVM `recipient`: a
+     * send to the burn identifier. Returns `{ wallet, envelope, opening }`.
+     * @param {string} wallet_json
+     * @param {string} amount
+     * @param {string} recipient
+     * @param {string} root
+     * @returns {any}
+     */
+    withdraw(wallet_json, amount, recipient, root) {
+        const ptr0 = passStringToWasm0(wallet_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(amount, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(recipient, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passStringToWasm0(root, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ret = wasm.prover_withdraw(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * The signed disclosure for the withdrawal committed at `position`.
+     * @param {string} wallet_json
+     * @param {bigint} position
+     * @returns {string}
+     */
+    withdrawal_claim(wallet_json, position) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passStringToWasm0(wallet_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.prover_withdrawal_claim(this.__wbg_ptr, ptr0, len0, position);
+            var ptr2 = ret[0];
+            var len2 = ret[1];
+            if (ret[3]) {
+                ptr2 = 0; len2 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
      * Wrap the storage key under a passphrase (argon2id, once per setup).
      * @param {string} key_hex
      * @param {string} passphrase

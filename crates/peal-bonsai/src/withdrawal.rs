@@ -47,7 +47,14 @@ pub struct WithdrawalClaim {
 }
 
 impl WithdrawalClaim {
-    fn signing_bytes(namespace: &Namespace, account: &Fr, position: u64, opening: &ReceiptOpening, recipient: &str, pubkey: &[u8; 32]) -> Vec<u8> {
+    fn signing_bytes(
+        namespace: &Namespace,
+        account: &Fr,
+        position: u64,
+        opening: &ReceiptOpening,
+        recipient: &str,
+        pubkey: &[u8; 32],
+    ) -> Vec<u8> {
         let mut m = Vec::with_capacity(256);
         m.extend_from_slice(crate::account::ENVELOPE_MAGIC);
         m.push(ENVELOPE_WITHDRAWAL);
@@ -64,11 +71,19 @@ impl WithdrawalClaim {
         m
     }
 
-    pub fn sign(key: &SpendKey, namespace: Namespace, position: u64, opening: ReceiptOpening, recipient: String) -> Self {
+    pub fn sign(
+        key: &SpendKey,
+        namespace: Namespace,
+        position: u64,
+        opening: ReceiptOpening,
+        recipient: String,
+    ) -> Self {
         let account = key.account_id(&namespace);
         let pubkey = key.public().to_bytes();
         let recipient = recipient.to_lowercase();
-        let signature = key.sign(&Self::signing_bytes(&namespace, &account, position, &opening, &recipient, &pubkey));
+        let signature = key.sign(&Self::signing_bytes(
+            &namespace, &account, position, &opening, &recipient, &pubkey,
+        ));
         Self {
             namespace,
             account,
@@ -84,7 +99,9 @@ impl WithdrawalClaim {
     /// withdrawal receipt sent by that account.
     pub fn verify(&self) -> Result<()> {
         if self.opening.sender != self.account || self.opening.receiver != withdraw_receiver() {
-            return Err(Error::Wire("opening is not a withdrawal receipt of this account".into()));
+            return Err(Error::Wire(
+                "opening is not a withdrawal receipt of this account".into(),
+            ));
         }
         if !is_evm_address(&self.recipient) {
             return Err(Error::Wire("recipient is not an EVM address".into()));
@@ -94,7 +111,14 @@ impl WithdrawalClaim {
             return Err(Error::BadSignature);
         }
         pk.verify(
-            &Self::signing_bytes(&self.namespace, &self.account, self.position, &self.opening, &self.recipient, &self.pubkey),
+            &Self::signing_bytes(
+                &self.namespace,
+                &self.account,
+                self.position,
+                &self.opening,
+                &self.recipient,
+                &self.pubkey,
+            ),
             &Signature::from_bytes(&self.signature),
         )
         .map_err(|_| Error::BadSignature)

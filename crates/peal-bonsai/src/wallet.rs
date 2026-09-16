@@ -649,7 +649,13 @@ impl Wallet {
             .find(|(p, _)| *p == position)
             .map(|(_, o)| o.clone())
             .ok_or_else(|| Error::Wallet("opening for that send is not held".into()))?;
-        Ok(crate::withdrawal::WithdrawalClaim::sign(&self.spend_key(), self.namespace, position, opening, recipient))
+        Ok(crate::withdrawal::WithdrawalClaim::sign(
+            &self.spend_key(),
+            self.namespace,
+            position,
+            opening,
+            recipient,
+        ))
     }
 
     /// Build a deposit intent for `amount` into this account: a fresh mint

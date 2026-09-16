@@ -12,7 +12,7 @@
 //   local outbox and is retried on the next sync; the send is never reported
 //   as failed.
 
-import { LinksApiError, NodeClient, type PaymentRequest, type ReceiptPath } from './client.js';
+import { LinksApiError, NodeClient, type PaymentRequest, type ReceiptPath, type WithdrawalCertificate } from './client.js';
 import type { AsyncProver, Delivery, WalletView } from './prover.js';
 
 export interface WalletStore {
@@ -333,6 +333,33 @@ export class LinksAccount {
     }
     await this.store.set(k, JSON.stringify(remaining));
     return remaining.length;
+  }
+
+  // ---- withdrawals -------------------------------------------------------------
+
+  /** Burn `amount` on the ledger (a send to the withdraw identifier) and
+   * obtain the committee certificate releasing it to `recipient` on the
+   * backing chain. The caller submits the certificate to the gateway with
+   * a wallet (`withdrawOnChain`). Returns the burn position and the
+   * certificate. */
+  async withdraw(amount: string, recipient: string): Promise<{ position: number; certificate: WithdrawalCertificate }> {
+    const v = await this.view();
+    if (v.pending) throw new Error('an operation is pending; reconcile first');
+    if (BigInt(v.balance) < BigInt(amount)) throw new Error('insufficient balance');
+    const summary = await this.client.ledger(this.namespace);
+    const out = await this.prover.withdraw(this.wallet, amount, recipient, summary.receipt_root);
+    this.wallet = out.wallet;
+    await this.save();
+    const position = await this.submitPending(out.envelope);
+    const certificate = await this.settle(position);
+    return { position, certificate };
+  }
+
+  /** Ask the settlement path for the certificate of a burn at `position`.
+   * Idempotent: a certificate already issued is returned again. */
+  async settle(position: number): Promise<WithdrawalCertificate> {
+    const claim = JSON.parse(await this.prover.withdrawalClaim(this.wallet, position));
+    return this.client.settleWithdrawal(claim);
   }
 
   // ---- requests --------------------------------------------------------------

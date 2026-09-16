@@ -68,12 +68,16 @@ pub fn open(path: &std::path::Path) -> Result<Connection> {
         "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;",
     )?;
     conn.execute_batch(SCHEMA)?;
+    conn.execute_batch(crate::watcher::CURSOR_SCHEMA)?;
+    conn.execute_batch(crate::settlement::WITHDRAWAL_SCHEMA)?;
     Ok(conn)
 }
 
 pub fn open_in_memory() -> Result<Connection> {
     let conn = Connection::open_in_memory()?;
     conn.execute_batch(SCHEMA)?;
+    conn.execute_batch(crate::watcher::CURSOR_SCHEMA)?;
+    conn.execute_batch(crate::settlement::WITHDRAWAL_SCHEMA)?;
     Ok(conn)
 }
 

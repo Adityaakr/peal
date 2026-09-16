@@ -183,7 +183,11 @@ pub fn pk_from_bytes(bytes: &[u8]) -> Result<ProvingKey<E>> {
 /// a wrong key cannot harm the client beyond producing proofs the ledger
 /// rejects. Verifying keys are always validated.
 pub fn pk_from_bytes_with(bytes: &[u8], validate: bool) -> Result<ProvingKey<E>> {
-    let mode = if validate { Validate::Yes } else { Validate::No };
+    let mode = if validate {
+        Validate::Yes
+    } else {
+        Validate::No
+    };
     ProvingKey::<E>::deserialize_with_mode(bytes, Compress::No, mode)
         .map_err(|e| Error::Wire(format!("proving key: {e}")))
 }
