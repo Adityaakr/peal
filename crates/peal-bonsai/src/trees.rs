@@ -317,7 +317,9 @@ impl ClaimedSet {
 /// encrypted to the receiver (see the inbox), never on the ledger.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReceiptOpening {
-    /// Amount in base units.
+    /// Amount in base units (a decimal string on the wire, so JavaScript
+    /// never sees it as a float).
+    #[serde(with = "crate::manifest::u64_string")]
     pub amount: u64,
     #[serde(with = "fr_hex")]
     pub sender: Fr,

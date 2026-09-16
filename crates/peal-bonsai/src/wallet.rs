@@ -123,6 +123,9 @@ pub struct Wallet {
     pub namespace: Namespace,
     #[serde(with = "hex_32")]
     spend_seed: [u8; 32],
+    /// x25519 seed for receipt envelopes. Separate from spend authority.
+    #[serde(with = "hex_32")]
+    enc_seed: [u8; 32],
     #[serde(with = "fr_hex")]
     pub account: Fr,
     pub balance: u64,
@@ -168,11 +171,13 @@ impl Wallet {
     ) -> Self {
         let key = SpendKey::generate(rng);
         let account = key.account_id(&namespace);
+        let enc = crate::envelope::EncryptionKey::generate(rng);
         Self {
             version: WALLET_FORMAT_VERSION,
             circuit_id,
             namespace,
             spend_seed: key.seed(),
+            enc_seed: enc.seed(),
             account,
             balance: 0,
             randomness: random_fr(rng),
@@ -189,6 +194,21 @@ impl Wallet {
 
     pub fn spend_key(&self) -> SpendKey {
         SpendKey::from_seed(&self.spend_seed)
+    }
+
+    pub fn encryption_key(&self) -> crate::envelope::EncryptionKey {
+        crate::envelope::EncryptionKey::from_seed(self.enc_seed)
+    }
+
+    /// The signed binding of this wallet's encryption key to its account,
+    /// for the inbox directory.
+    pub fn key_binding(&self, seq: u64) -> crate::account::KeyBinding {
+        crate::account::KeyBinding::sign(
+            &self.spend_key(),
+            self.namespace,
+            self.encryption_key().public(),
+            seq,
+        )
     }
 
     pub fn to_json(&self) -> String {

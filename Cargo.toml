@@ -7,6 +7,8 @@ members = [
     "crates/bte-cli",
     "crates/bte-wasm",
     "crates/peal-bonsai",
+    "crates/peal-links-node",
+    "crates/peal-links-wasm",
 ]
 
 [workspace.package]

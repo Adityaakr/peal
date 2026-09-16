@@ -82,6 +82,12 @@ pub struct CircuitKeys {
 }
 
 impl CircuitKeys {
+    /// Assemble from decoded keys (e.g. downloaded by digest), recomputing
+    /// the digests.
+    pub fn from_parts(pk: ProvingKey<E>, vk: VerifyingKey<E>) -> Self {
+        Self::assemble(pk, vk)
+    }
+
     fn assemble(pk: ProvingKey<E>, vk: VerifyingKey<E>) -> Self {
         let vk_digest = sha256(&vk_to_bytes(&vk));
         let pk_digest = sha256(&pk_to_bytes(&pk));
@@ -155,9 +161,12 @@ pub fn vk_from_bytes(bytes: &[u8]) -> Result<VerifyingKey<E>> {
         .map_err(|e| Error::Wire(format!("verifying key: {e}")))
 }
 
+/// Proving keys are stored and served uncompressed: decompressing ~300k
+/// points costs a square root each, which in single-threaded wasm is longer
+/// than downloading the extra bytes once (the file is cached by digest).
 pub fn pk_to_bytes(pk: &ProvingKey<E>) -> Vec<u8> {
     let mut out = Vec::new();
-    pk.serialize_with_mode(&mut out, Compress::Yes)
+    pk.serialize_with_mode(&mut out, Compress::No)
         .expect("in-memory serialization cannot fail");
     out
 }
@@ -165,11 +174,26 @@ pub fn pk_to_bytes(pk: &ProvingKey<E>) -> Vec<u8> {
 pub fn pk_from_bytes(bytes: &[u8]) -> Result<ProvingKey<E>> {
     // A corrupted proving key would only ever produce proofs that fail to
     // verify; validating on load turns that into an immediate error instead.
-    ProvingKey::<E>::deserialize_with_mode(bytes, Compress::Yes, Validate::Yes)
+    pk_from_bytes_with(bytes, true)
+}
+
+/// Decode a proving key, optionally skipping point validation. A client
+/// that downloaded the key by digest may skip it: the key is ~300k G1 points
+/// and validating them single-threaded in wasm takes tens of seconds, while
+/// a wrong key cannot harm the client beyond producing proofs the ledger
+/// rejects. Verifying keys are always validated.
+pub fn pk_from_bytes_with(bytes: &[u8], validate: bool) -> Result<ProvingKey<E>> {
+    let mode = if validate { Validate::Yes } else { Validate::No };
+    ProvingKey::<E>::deserialize_with_mode(bytes, Compress::No, mode)
         .map_err(|e| Error::Wire(format!("proving key: {e}")))
 }
 
 impl Keys {
+    /// Assemble from two circuits' keys, computing the circuit id.
+    pub fn from_circuits(inst: &Instance, op: CircuitKeys, deposit: CircuitKeys) -> Self {
+        Self::assemble(inst, op, deposit)
+    }
+
     fn assemble(inst: &Instance, op: CircuitKeys, deposit: CircuitKeys) -> Self {
         let circuit_id = circuit_id(inst, &op.vk, &deposit.vk);
         Self {

@@ -20,6 +20,8 @@ use ark_ff::PrimeField;
 pub const ENVELOPE_MAGIC: &[u8; 4] = b"PLK0";
 pub const ENVELOPE_REGISTER: u8 = 1;
 pub const ENVELOPE_OP: u8 = 2;
+pub const ENVELOPE_KEY_BINDING: u8 = 3;
+pub const ENVELOPE_INBOX_AUTH: u8 = 4;
 
 /// A ledger namespace: 32 bytes naming one asset domain (chain, token,
 /// gateway, ledger). Built by [`namespace_id`].
@@ -254,6 +256,151 @@ impl OpEnvelope {
                 &self.pubkey,
             ),
             &sig,
+        )
+        .map_err(|_| Error::BadSignature)
+    }
+}
+
+/// Binds an account to its receipt-encryption public key, signed by the
+/// spend key. The inbox directory stores the latest by `seq`; a client that
+/// reads the directory re-verifies the signature, so the directory cannot
+/// substitute a key.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct KeyBinding {
+    #[serde(with = "hex_32")]
+    pub namespace: Namespace,
+    #[serde(with = "fr_hex")]
+    pub account: Fr,
+    #[serde(with = "hex_32")]
+    pub enc_pubkey: [u8; 32],
+    /// Rotation counter; the directory keeps the highest.
+    pub seq: u64,
+    #[serde(with = "hex_32")]
+    pub pubkey: [u8; 32],
+    #[serde(with = "hex_64")]
+    pub signature: [u8; 64],
+}
+
+impl KeyBinding {
+    fn signing_bytes(
+        namespace: &Namespace,
+        account: &Fr,
+        enc_pubkey: &[u8; 32],
+        seq: u64,
+        pubkey: &[u8; 32],
+    ) -> Vec<u8> {
+        let mut m = Vec::with_capacity(4 + 1 + 32 * 4 + 8);
+        m.extend_from_slice(ENVELOPE_MAGIC);
+        m.push(ENVELOPE_KEY_BINDING);
+        m.extend_from_slice(namespace);
+        m.extend_from_slice(&fr_to_bytes(account));
+        m.extend_from_slice(enc_pubkey);
+        m.extend_from_slice(&seq.to_le_bytes());
+        m.extend_from_slice(pubkey);
+        m
+    }
+
+    pub fn sign(key: &SpendKey, namespace: Namespace, enc_pubkey: [u8; 32], seq: u64) -> Self {
+        let account = key.account_id(&namespace);
+        let pubkey = key.public().to_bytes();
+        let signature = key.sign(&Self::signing_bytes(
+            &namespace,
+            &account,
+            &enc_pubkey,
+            seq,
+            &pubkey,
+        ));
+        Self {
+            namespace,
+            account,
+            enc_pubkey,
+            seq,
+            pubkey,
+            signature,
+        }
+    }
+
+    pub fn verify(&self) -> Result<()> {
+        let pk = VerifyingKey::from_bytes(&self.pubkey).map_err(|_| Error::BadSignature)?;
+        if account_id(&self.namespace, &pk) != self.account {
+            return Err(Error::BadSignature);
+        }
+        pk.verify(
+            &Self::signing_bytes(
+                &self.namespace,
+                &self.account,
+                &self.enc_pubkey,
+                self.seq,
+                &self.pubkey,
+            ),
+            &Signature::from_bytes(&self.signature),
+        )
+        .map_err(|_| Error::BadSignature)
+    }
+}
+
+/// Proof of account control for reading an inbox: a signature over the
+/// account and a timestamp the server requires to be recent. Stateless, so
+/// a replay is bounded to the freshness window and only ever re-reads what
+/// the account could read anyway.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InboxAuth {
+    #[serde(with = "hex_32")]
+    pub namespace: Namespace,
+    #[serde(with = "fr_hex")]
+    pub account: Fr,
+    pub timestamp: u64,
+    #[serde(with = "hex_32")]
+    pub pubkey: [u8; 32],
+    #[serde(with = "hex_64")]
+    pub signature: [u8; 64],
+}
+
+impl InboxAuth {
+    fn signing_bytes(
+        namespace: &Namespace,
+        account: &Fr,
+        timestamp: u64,
+        pubkey: &[u8; 32],
+    ) -> Vec<u8> {
+        let mut m = Vec::with_capacity(4 + 1 + 32 * 3 + 8);
+        m.extend_from_slice(ENVELOPE_MAGIC);
+        m.push(ENVELOPE_INBOX_AUTH);
+        m.extend_from_slice(namespace);
+        m.extend_from_slice(&fr_to_bytes(account));
+        m.extend_from_slice(&timestamp.to_le_bytes());
+        m.extend_from_slice(pubkey);
+        m
+    }
+
+    pub fn sign(key: &SpendKey, namespace: Namespace, timestamp: u64) -> Self {
+        let account = key.account_id(&namespace);
+        let pubkey = key.public().to_bytes();
+        let signature = key.sign(&Self::signing_bytes(
+            &namespace, &account, timestamp, &pubkey,
+        ));
+        Self {
+            namespace,
+            account,
+            timestamp,
+            pubkey,
+            signature,
+        }
+    }
+
+    /// Valid signature, right account, and `timestamp` within `window`
+    /// seconds of `now`.
+    pub fn verify(&self, now: u64, window: u64) -> Result<()> {
+        if self.timestamp.abs_diff(now) > window {
+            return Err(Error::BadSignature);
+        }
+        let pk = VerifyingKey::from_bytes(&self.pubkey).map_err(|_| Error::BadSignature)?;
+        if account_id(&self.namespace, &pk) != self.account {
+            return Err(Error::BadSignature);
+        }
+        pk.verify(
+            &Self::signing_bytes(&self.namespace, &self.account, self.timestamp, &self.pubkey),
+            &Signature::from_bytes(&self.signature),
         )
         .map_err(|_| Error::BadSignature)
     }

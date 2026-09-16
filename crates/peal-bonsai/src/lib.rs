@@ -27,6 +27,8 @@
 pub mod account;
 pub mod deposit;
 pub mod encoding;
+pub mod envelope;
+pub mod manifest;
 pub mod params;
 pub mod trees;
 pub mod wallet;

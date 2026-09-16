@@ -33,6 +33,12 @@ rusqlite = { version = "0.40.1", features = ["bundled"], optional = true }
 # Account spend authority: ed25519 signatures over registration and submission
 # envelopes (the proofs themselves carry the value authority).
 ed25519-dalek = { version = "2", features = ["rand_core"] }
+# Receipt delivery and backups: x25519 key agreement, XChaCha20-Poly1305
+# authenticated encryption, argon2id for passphrase-derived backup keys.
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+hkdf = "0.12"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
