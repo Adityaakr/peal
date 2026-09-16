@@ -74,6 +74,7 @@ describe('peal-links bridge (real deposits and withdrawals on two local chains)'
     const token = nsA.token_address as Address;
     const gateway = nsA.gateway as Address;
     const reserveBefore = await pc.readContract({ address: token, abi: ERC20_ABI, functionName: 'balanceOf', args: [gateway] });
+    const liabilityBefore = BigInt((await client.accounting(nsA.id)).outstanding_liability);
     const walletBefore = await pc.readContract({ address: token, abi: ERC20_ABI, functionName: 'balanceOf', args: [account.address] });
     expect(walletBefore).toBeGreaterThan(0n);
 
@@ -173,13 +174,16 @@ describe('peal-links bridge (real deposits and withdrawals on two local chains)'
     });
     expect(confirmed.tx_hash).toBe(tx);
 
-    // Conservation on chain A: minted - withdrawn == balances + unclaimed.
+    // Conservation on chain A: this test's minted - withdrawn equals the
+    // two balances it created (other tests' accounts are in the base).
     const acct = await client.accounting(nsA.id);
-    expect(BigInt(acct.minted_total) - BigInt(acct.withdrawn_total)).toBe(BigInt((await alice.view()).balance) + BigInt((await bob.view()).balance) + BigInt(acct.outstanding_liability) - BigInt(acct.outstanding_liability));
-    expect(BigInt(acct.outstanding_liability)).toBe(BigInt((await alice.view()).balance) + BigInt((await bob.view()).balance));
-    // The gateway reserve covers the outstanding liability (plus the unmatched second deposit).
+    expect(BigInt(acct.minted_total) - BigInt(acct.withdrawn_total)).toBe(BigInt(acct.outstanding_liability));
+    expect(BigInt(acct.outstanding_liability) - liabilityBefore).toBe(BigInt((await alice.view()).balance) + BigInt((await bob.view()).balance));
+    // The gateway reserve covers the whole outstanding liability (the
+    // unmatched second deposit sits on top of it).
     const reserveAfter = await pc.readContract({ address: token, abi: ERC20_ABI, functionName: 'balanceOf', args: [gateway] });
-    expect(reserveAfter).toBeGreaterThanOrEqual(reserveBefore + BigInt(acct.outstanding_liability));
+    expect(reserveAfter).toBeGreaterThanOrEqual(BigInt(acct.outstanding_liability));
+    expect(reserveAfter - reserveBefore).toBe(2n * amount - 4_000_000n);
 
     // Chain B is a separate domain: its ledger saw nothing of this.
     const pcB = createPublicClient({ chain: chain(nsB), transport: http(RPC_B) });

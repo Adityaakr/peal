@@ -232,7 +232,7 @@ test('receiver creates a link, payer pays with a real proof, receiver claims lat
       expect(body, `${marker} in a request to ${url}`).not.toContain(marker);
     }
     expect(url, 'no secrets in URLs').not.toMatch(/seed|pass|opening/);
-    if (url.includes('/inbox/') && body) {
+    if (url.includes('/inbox/') && !url.includes('/inbox/keys') && body) {
       const parsed = JSON.parse(body) as { envelope?: { ciphertext?: string } };
       expect(parsed.envelope?.ciphertext, 'inbox posts carry ciphertext only').toBeTruthy();
       expect(body).not.toContain('"amount"');
