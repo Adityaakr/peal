@@ -237,6 +237,9 @@ impl NodeConfig {
             if !c.key_file.exists() {
                 anyhow::bail!("consensus key file {} does not exist", c.key_file.display());
             }
+            if c.max_block_txs == 0 || c.max_block_txs > 128 {
+                anyhow::bail!("max_block_txs must be between 1 and 128 (the block format's cap)");
+            }
         }
         if let Some(path) = &cfg.signer_key_file {
             if cfg.consensus.is_none() {

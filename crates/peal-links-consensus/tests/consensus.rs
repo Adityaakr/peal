@@ -578,3 +578,141 @@ fn a_validator_that_missed_blocks_catches_up_by_digest() {
         assert!(hs[0].0 > before[0].0);
     });
 }
+
+#[test]
+fn a_flooding_peer_cannot_fill_caches_or_stall_the_chain() {
+    use commonware_p2p::{Recipients, Sender as _};
+    use peal_links_consensus::block::{Block, VERSION};
+    use peal_links_consensus::wire::{BlockWire, CH_BLOCKS, CH_TXS};
+    let f = fixture();
+    let ns = namespace_id("sim/flood");
+    let executor = deterministic::Runner::timed(Duration::from_secs(300));
+    executor.start(|context| async move {
+        // Four validators plus one extra peer that is not a validator.
+        let privs: Vec<PrivateKey> = (0..5u64).map(PrivateKey::from_seed).collect();
+        let pubs: Vec<PublicKey> = privs.iter().map(|k| k.public_key()).collect();
+        let validators: Vec<PublicKey> = pubs[..4].to_vec();
+        let attacker = pubs[4].clone();
+        let g = genesis(&f.keys.circuit_id, &[ns]);
+        let (network, oracle) = Network::new_with_peers(
+            context.child("network"),
+            NetConfig {
+                max_size: 1024 * 1024,
+                max_peers_per_set: NZUsize!(6),
+                disconnect_on_block: true,
+                tracked_peer_sets: NZUsize!(1),
+            },
+            pubs.clone(),
+        )
+        .await;
+        network.start();
+        let link = Link {
+            latency: Duration::from_millis(20),
+            jitter: Duration::from_millis(2),
+            success_rate: probability!(1.0),
+        };
+        for a in &pubs {
+            for b in &pubs {
+                if a != b {
+                    oracle
+                        .add_link(a.clone(), b.clone(), link.clone())
+                        .await
+                        .unwrap();
+                }
+            }
+        }
+        let deposits = Arc::new(Deposits::default());
+        let mut handles = Vec::new();
+        let mut states = Vec::new();
+        for key in privs.iter().take(4) {
+            let state = new_state(f, ns, g);
+            states.push(state.clone());
+            handles.push(
+                sim::start(
+                    context.child("validator"),
+                    &oracle,
+                    SimValidator {
+                        private_key: key.clone(),
+                        validators: validators.clone(),
+                        genesis: g,
+                        params: Params::default(),
+                        max_block_txs: 32,
+                        mempool_ttl: Duration::from_secs(60),
+                    },
+                    state,
+                    deposits.clone(),
+                    Arc::new(Echo),
+                )
+                .await,
+            );
+        }
+        let control = oracle.control(attacker.clone());
+        let quota = commonware_runtime::Quota::per_second(std::num::NonZeroU32::MAX);
+        let (mut blocks_out, _) = control.register(CH_BLOCKS, quota).await.unwrap();
+        let (mut txs_out, _) = control.register(CH_TXS, quota).await.unwrap();
+        let c = Cluster {
+            handles,
+            states,
+            deposits,
+            oracle,
+        };
+        let mut rng = peal_bonsai::os_rng();
+
+        // Flood: decodable blocks with absurd heights and random parents,
+        // junk transactions, and requests for digests nobody has.
+        for i in 0..300u64 {
+            let block = Block {
+                version: VERSION,
+                epoch: 0,
+                view: i,
+                height: u64::MAX - i,
+                parent: [i as u8; 32],
+                txs: vec![],
+            };
+            blocks_out.send(
+                Recipients::All,
+                BlockWire::Block(block.encode()).encode(),
+                false,
+            );
+            blocks_out.send(
+                Recipients::All,
+                BlockWire::Request([(i % 251) as u8; 32]).encode(),
+                false,
+            );
+            let mut junk = vec![0u8; 512];
+            ark_std::rand::RngCore::fill_bytes(&mut rng, &mut junk);
+            txs_out.send(Recipients::All, junk, false);
+            txs_out.send(
+                Recipients::All,
+                b"{\"namespace\":\"00\",\"envelope\":{\"kind\":\"op\"}}".to_vec(),
+                false,
+            );
+        }
+        // Meanwhile a real registration must still land.
+        let mut w = Wallet::create(&f.inst, f.keys.circuit_id, ns, &mut rng);
+        let applied = c.handles[1]
+            .submit(
+                Tx {
+                    namespace: ns,
+                    envelope: Envelope::Register(w.register_envelope().unwrap()),
+                },
+                Duration::from_secs(60),
+            )
+            .await
+            .unwrap();
+        w.registered = true;
+        assert_eq!(applied.seq, 1);
+        settle(&context, &c).await;
+        let hs = heads(&c);
+        assert!(hs.iter().all(|h| h == &hs[0]), "heads differ: {hs:?}");
+        for h in &c.handles {
+            let s = h.status().await.unwrap();
+            assert!(
+                s.blocks_cached < 64,
+                "flooded blocks were cached: {}",
+                s.blocks_cached
+            );
+            assert_eq!(s.mempool, 0, "junk entered the mempool");
+        }
+    });
+}

@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use peal_bonsai::account::Namespace;
 use peal_bonsai::encoding::fr_to_hex;
@@ -68,10 +68,17 @@ pub struct State {
     store: Connection,
     genesis: Id,
     head: Head,
-    rng: rand_chacha::ChaCha20Rng,
 }
 
 pub type Shared = Arc<Mutex<State>>;
+
+/// Take the state lock. A panic under the lock (a bug) must not turn every
+/// later access into a panic and take the validator down with it: the
+/// state is sqlite-backed and every write is its own transaction, so the
+/// guard's contents are as consistent after a poison as before.
+pub fn lock(shared: &Shared) -> MutexGuard<'_, State> {
+    shared.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 fn storage<T>(r: rusqlite::Result<T>) -> Result<T, String> {
     r.map_err(|e| format!("block store: {e}"))
@@ -116,7 +123,6 @@ impl State {
                 digest: genesis,
                 root: [0u8; 32],
             },
-            rng: peal_bonsai::os_rng(),
         };
         if let Some((height, digest)) = stored {
             let mut d = [0u8; 32];
@@ -189,8 +195,9 @@ impl State {
 
     /// Apply a finalized block that extends the head. Every transaction is
     /// applied in order through the ledger's own entry points (proofs
-    /// re-verified); failures are per transaction and deterministic. The
-    /// block and the new head are then recorded.
+    /// re-verified, one at a time with the deterministic verifier, never
+    /// the randomized batch check); failures are per transaction and
+    /// deterministic. The block and the new head are then recorded.
     pub fn apply_block(
         &mut self,
         block: &Block,
@@ -212,10 +219,7 @@ impl State {
                 None => Err(Error::WrongNamespace),
                 Some(ledger) => match &tx.envelope {
                     Envelope::Register(env) => ledger.register(env),
-                    Envelope::Op(env) => ledger
-                        .apply_batch(std::slice::from_ref(env), &mut self.rng)
-                        .pop()
-                        .expect("one result per operation"),
+                    Envelope::Op(env) => ledger.apply(env),
                     Envelope::Mint(env) => ledger.mint(env),
                 },
             };

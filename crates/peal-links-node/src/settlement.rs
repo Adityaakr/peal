@@ -10,12 +10,14 @@
 //! namespaces. A compromised threshold can authorize invalid releases; the
 //! contract cannot tell.
 //!
-//! What every signer checks before signing (`SignerPolicy::check`):
-//! the position holds a leaf equal to the disclosed opening's commitment,
-//! the opening is a withdrawal receipt of the claiming account, the claim
-//! signature verifies, the position was not consumed before, and the amount
-//! is within the namespace's cap. The check runs against the ledger actor,
-//! never against a cached copy.
+//! What every signer checks before signing (`SignerPolicy::check` plus
+//! `attest`): the position holds a leaf equal to the disclosed opening's
+//! commitment, the opening is a withdrawal receipt of the claiming account,
+//! the claim signature verifies, the amount is not zero, and this signer
+//! has not attested a different message for the same position and epoch.
+//! The check runs against the ledger (local or replicated), never against
+//! a cached copy. Consumption on chain is by unique withdrawal id in the
+//! gateway; the per-token cap is enforced there too, not here.
 
 use k256::ecdsa::{signature::hazmat::PrehashSigner, Signature, SigningKey};
 use peal_bonsai::account::Namespace;
@@ -48,15 +50,17 @@ CREATE TABLE IF NOT EXISTS withdrawals (
     PRIMARY KEY (namespace, position)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawals_id ON withdrawals(namespace, withdrawal_id);
--- What this validator's signer attested for a position (distributed
--- committee): a second request for the same position with a different
--- digest is refused.
-CREATE TABLE IF NOT EXISTS signed_withdrawals (
+-- What a signer on this node attested for a position under a gateway
+-- epoch: a second request for the same position and epoch with a
+-- different digest (another recipient, another amount) is refused. A new
+-- epoch (signer rotation) needs a new attestation, which is allowed.
+CREATE TABLE IF NOT EXISTS withdrawal_attestations (
     namespace TEXT NOT NULL,
     position  INTEGER NOT NULL,
+    epoch     INTEGER NOT NULL,
     digest    TEXT NOT NULL,
     signed_at INTEGER NOT NULL,
-    PRIMARY KEY (namespace, position)
+    PRIMARY KEY (namespace, position, epoch)
 );
 "#;
 
@@ -239,19 +243,27 @@ impl Committee {
     }
 
     /// Gather at least `threshold` signatures over `digest`, sorted by
-    /// signer address ascending as the gateway requires.
+    /// signer address ascending as the gateway requires. Returns each
+    /// signature with its signer's address.
     pub async fn certify(
         &self,
         app: &AppState,
         claim: &WithdrawalClaim,
         message: &WithdrawalMessage,
         digest: &[u8; 32],
-    ) -> Result<Vec<String>, Problem> {
+    ) -> Result<Vec<(String, String)>, Problem> {
+        // Whoever signs here records what it attests for this position and
+        // epoch first; a different message for the same position is refused.
+        attest(app, &claim.namespace, claim.position, message.epoch, digest)
+            .map_err(|e| Problem::conflict("already_attested", e))?;
         match self {
             // Every signer signs (the fixture has them all).
             Self::Fixture { signers, .. } => signers
                 .iter()
-                .map(|s| s.sign_digest(digest))
+                .map(|s| {
+                    s.sign_digest(digest)
+                        .map(|sig| (s.address.to_lowercase(), sig))
+                })
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(Problem::internal),
             Self::Distributed {
@@ -320,9 +332,49 @@ impl Committee {
                     ));
                 }
                 collected.sort_by(|a, b| a.0.cmp(&b.0));
-                Ok(collected.into_iter().map(|(_, s)| s).collect())
+                Ok(collected)
             }
         }
+    }
+}
+
+/// Record that a signer on this node attests `digest` for `position` under
+/// `epoch`, or refuse if it already attested a different digest for that
+/// position and epoch.
+pub fn attest(
+    app: &AppState,
+    namespace: &Namespace,
+    position: u64,
+    epoch: u64,
+    digest: &[u8; 32],
+) -> Result<(), String> {
+    let conn = app.product.lock().expect("product lock");
+    let prior: Option<String> = conn
+        .query_row(
+            "SELECT digest FROM withdrawal_attestations WHERE namespace = ?1 AND position = ?2 AND epoch = ?3",
+            params![hex::encode(namespace), position as i64, epoch as i64],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("store: {e}"))?;
+    match prior {
+        Some(d) if d != hex::encode(digest) => Err(
+            "already attested a different withdrawal message for this position and epoch".into(),
+        ),
+        Some(_) => Ok(()),
+        None => conn
+            .execute(
+                "INSERT INTO withdrawal_attestations (namespace, position, epoch, digest, signed_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    hex::encode(namespace),
+                    position as i64,
+                    epoch as i64,
+                    hex::encode(digest),
+                    crate::product::now() as i64
+                ],
+            )
+            .map(|_| ())
+            .map_err(|e| format!("store: {e}")),
     }
 }
 
@@ -414,35 +466,14 @@ pub async fn sign_for_peer(app: &AppState, peer: &str, req: SignRequest) -> Sign
         Ok(d) => d,
         Err(e) => return refuse(signer, e),
     };
-    {
-        let conn = app.product.lock().expect("product lock");
-        let prior: Option<String> = conn
-            .query_row(
-                "SELECT digest FROM signed_withdrawals WHERE namespace = ?1 AND position = ?2",
-                params![hex::encode(req.claim.namespace), req.claim.position as i64],
-                |r| r.get(0),
-            )
-            .optional()
-            .unwrap_or(None);
-        match prior {
-            Some(d) if d != hex::encode(digest) => {
-                return refuse(signer, "already attested a different message for this position".into());
-            }
-            Some(_) => {}
-            None => {
-                if let Err(e) = conn.execute(
-                    "INSERT INTO signed_withdrawals (namespace, position, digest, signed_at) VALUES (?1, ?2, ?3, ?4)",
-                    params![
-                        hex::encode(req.claim.namespace),
-                        req.claim.position as i64,
-                        hex::encode(digest),
-                        crate::product::now() as i64
-                    ],
-                ) {
-                    return refuse(signer, format!("store: {e}"));
-                }
-            }
-        }
+    if let Err(e) = attest(
+        app,
+        &req.claim.namespace,
+        req.claim.position,
+        m.epoch,
+        &digest,
+    ) {
+        return refuse(signer, e);
     }
     match local.sign_digest(&digest) {
         Ok(sig) => {
@@ -535,7 +566,21 @@ pub async fn settle(app: &AppState, claim: WithdrawalClaim) -> Result<Certificat
         )
     })?;
     let ns_hex = hex::encode(ns.id());
-    // Already settled: return the stored certificate (idempotent).
+    let rpc = crate::evm::Rpc::new(&ns.rpc_url);
+    let epoch = rpc.gateway_epoch(&ns.gateway).await.map_err(|e| {
+        Problem::new(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "chain_unreachable",
+            e.to_string(),
+        )
+    })?;
+    // Already settled: return the stored certificate (idempotent) while
+    // the gateway's signer epoch is the one it was made for. After a
+    // rotation the stored certificate is dead on chain, so the same
+    // position is certified again under the new epoch and the stored row
+    // replaced; the withdrawal id (and so the on-chain consumption) is the
+    // same either way.
+    let mut recertify = false;
     {
         let conn = app.product.lock().expect("product lock");
         let existing: Option<(String, String)> = conn
@@ -547,24 +592,34 @@ pub async fn settle(app: &AppState, claim: WithdrawalClaim) -> Result<Certificat
             .optional()
             .map_err(|e| Problem::internal(e.to_string()))?;
         if let Some((m, s)) = existing {
-            return Ok(Certificate {
-                message: serde_json::from_str(&m).map_err(|e| Problem::internal(e.to_string()))?,
-                signatures: serde_json::from_str(&s)
-                    .map_err(|e| Problem::internal(e.to_string()))?,
-                signers: committee.addresses(),
-                threshold: committee.threshold(),
-            });
+            let message: WithdrawalMessage =
+                serde_json::from_str(&m).map_err(|e| Problem::internal(e.to_string()))?;
+            let signatures: Vec<String> =
+                serde_json::from_str(&s).map_err(|e| Problem::internal(e.to_string()))?;
+            if message.epoch == epoch {
+                let digest = withdrawal_digest(&message).map_err(Problem::internal)?;
+                let signers = signatures
+                    .iter()
+                    .filter_map(|sig| crate::auth::recover(&digest, sig).ok())
+                    .map(|a| a.to_lowercase())
+                    .collect();
+                return Ok(Certificate {
+                    message,
+                    signatures,
+                    signers,
+                    threshold: committee.threshold(),
+                });
+            }
+            tracing::warn!(
+                position = claim.position,
+                stored_epoch = message.epoch,
+                epoch,
+                "gateway signers rotated since this withdrawal was certified; certifying again"
+            );
+            recertify = true;
         }
     }
     SignerPolicy::check(app, &ns, &claim).await?;
-    let rpc = crate::evm::Rpc::new(&ns.rpc_url);
-    let epoch = rpc.gateway_epoch(&ns.gateway).await.map_err(|e| {
-        Problem::new(
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "chain_unreachable",
-            e.to_string(),
-        )
-    })?;
     let message = WithdrawalMessage {
         chain_id: ns.chain_id,
         gateway: ns.gateway.to_lowercase(),
@@ -575,8 +630,28 @@ pub async fn settle(app: &AppState, claim: WithdrawalClaim) -> Result<Certificat
         epoch,
     };
     let digest = withdrawal_digest(&message).map_err(Problem::internal)?;
-    let signatures = committee.certify(app, &claim, &message, &digest).await?;
+    let signed = committee.certify(app, &claim, &message, &digest).await?;
+    let signers: Vec<String> = signed.iter().map(|(a, _)| a.clone()).collect();
+    let signatures: Vec<String> = signed.into_iter().map(|(_, s)| s).collect();
     let conn = app.product.lock().expect("product lock");
+    if recertify {
+        conn.execute(
+            "UPDATE withdrawals SET message = ?3, signatures = ?4, status = 'certificate_ready' WHERE namespace = ?1 AND position = ?2",
+            params![
+                ns_hex,
+                claim.position as i64,
+                serde_json::to_string(&message).expect("serializes"),
+                serde_json::to_string(&signatures).expect("serializes"),
+            ],
+        )
+        .map_err(|e| Problem::internal(e.to_string()))?;
+        return Ok(Certificate {
+            message,
+            signatures,
+            signers,
+            threshold: committee.threshold(),
+        });
+    }
     // Consume exactly once: the primary key on (namespace, position) makes
     // a racing second claim fail here rather than produce a second
     // certificate.
@@ -605,7 +680,7 @@ pub async fn settle(app: &AppState, claim: WithdrawalClaim) -> Result<Certificat
     Ok(Certificate {
         message,
         signatures,
-        signers: committee.addresses(),
+        signers,
         threshold: committee.threshold(),
     })
 }

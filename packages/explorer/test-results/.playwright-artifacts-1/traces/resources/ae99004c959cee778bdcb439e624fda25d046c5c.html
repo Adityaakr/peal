@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script type="module">import { injectIntoGlobalHook } from "/@react-refresh";
+injectIntoGlobalHook(window);
+window.$RefreshReg$ = () => {};
+window.$RefreshSig$ = () => (type) => type;</script>
+
+    <script type="module" src="/@vite/client"></script>
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Peal Network. Sealed now, opened at the time you set.</title>
+    <meta name="description" content="Lock a bid, a vote or a message so nobody can read it before the moment you choose. When that moment arrives it opens for everyone at once, in the same instant. Used for sealed bid auctions, encrypted mempools and private onchain actions." />
+    <meta name="theme-color" content="#2563eb" />
+    <meta property="og:title" content="Peal Network. Sealed now, opened at the time you set." />
+    <meta property="og:description" content="Lock a bid, a vote or a message so nobody can read it before the moment you choose. When that moment arrives, it opens for everyone at once." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Peal Network" />
+    <!-- No og:image and no twitter:image on purpose: a link to Peal should
+         unfurl as text. There is deliberately no <img> in this shell either,
+         because a crawler with no image tag falls back to scraping the markup,
+         and the header logo was being served as the preview: a transparent PNG
+         that renders as a blank white slab in every chat client. The logo is a
+         CSS background now, which crawlers do not read. -->
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" type="image/png" href="/peal-logo.png" />
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;500;600&family=DM+Sans:opsz,wght@9..40,400..700&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-identity">
+        <a class="site-title" href="/"><span class="site-logo" aria-hidden="true"></span>Peal Network</a>
+        <span class="site-sub">The programmable confidentiality layer for digital markets</span>
+      </div>
+      <nav class="site-nav" aria-label="Primary navigation">
+        <button class="site-burger" id="site-burger" type="button"
+                aria-expanded="false" aria-controls="site-menu" aria-label="Open menu">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="site-menu" id="site-menu" hidden>
+          <a href="#/app" hidden>network</a>
+          <a href="#/protocol" hidden>protocol</a>
+          <a href="https://github.com/Adityaakr/batched-threshold-encryption" target="_blank" rel="noopener" hidden>code</a>
+          <a href="#/bonsai">payments</a>
+          <a href="#/execution">private actions</a>
+          <a href="#/mempool">encrypted mempool</a>
+          <a href="#/create">create an auction</a>
+          <a href="#/auction">sealed-bid auctions</a>
+          <a href="#/stakeholder-tokens">stakeholder tokens</a>
+          <a href="#/developers">developers</a>
+          <a href="#/philosophy">philosophy</a>
+        </div>
+      </nav>
+    </header>
+    <main id="app"></main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

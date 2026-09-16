@@ -173,21 +173,16 @@ impl LedgerHandle {
     pub async fn account(&self, id: Fr) -> peal_bonsai::Result<Option<AccountView>> {
         match self {
             Self::Local(tx) => Self::ask(tx, |r| Command::Account(id, r)).await,
-            Self::Replicated(r) => r
-                .state
-                .lock()
-                .expect("state lock")
-                .account(&r.namespace, &id),
+            Self::Replicated(r) => {
+                peal_links_consensus::state::lock(&r.state).account(&r.namespace, &id)
+            }
         }
     }
 
     pub async fn summary(&self) -> Summary {
         match self {
             Self::Local(tx) => Self::ask(tx, Command::Summary).await,
-            Self::Replicated(r) => r
-                .state
-                .lock()
-                .expect("state lock")
+            Self::Replicated(r) => peal_links_consensus::state::lock(&r.state)
                 .summary(&r.namespace)
                 .expect("namespace is served"),
         }
@@ -197,10 +192,7 @@ impl LedgerHandle {
         match self {
             Self::Local(tx) => Self::ask(tx, |r| Command::Path(pos, size, r)).await,
             Self::Replicated(r) => {
-                r.state
-                    .lock()
-                    .expect("state lock")
-                    .path(&r.namespace, pos, size)
+                peal_links_consensus::state::lock(&r.state).path(&r.namespace, pos, size)
             }
         }
     }
@@ -209,10 +201,7 @@ impl LedgerHandle {
         match self {
             Self::Local(tx) => Self::ask(tx, |r| Command::History(from, limit, r)).await,
             Self::Replicated(r) => {
-                r.state
-                    .lock()
-                    .expect("state lock")
-                    .history(&r.namespace, from, limit)
+                peal_links_consensus::state::lock(&r.state).history(&r.namespace, from, limit)
             }
         }
     }

@@ -1,0 +1,1 @@
+{"version":9,"type":"context-options","origin":"library","browserName":"","playwrightVersion":"1.63.0","options":{},"platform":"darwin","wallTime":1789538742171,"monotonicTime":11756.767,"sdkLanguage":"javascript","title":"links-edge.spec.ts:134 › wallet rejection and wrong network are recoverable, not silent"}

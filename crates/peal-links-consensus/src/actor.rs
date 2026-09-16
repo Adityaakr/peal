@@ -29,11 +29,13 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
 use crate::block::{Block, Envelope, Id, Tx, MAX_BLOCK_BYTES};
-use crate::state::{Head, Shared};
+use crate::state::{lock, Head, Shared};
 use crate::wire::{AppWire, BlockWire, CH_APP, CH_BLOCKS, CH_TXS};
 use crate::PublicKey;
 
 pub type Ctx = Context<Digest, PublicKey>;
+/// A submitter's reply channel with its deadline.
+pub type SubmitWaiter = (oneshot::Sender<peal_bonsai::Result<Applied>>, Duration);
 
 /// How a validator confirms, from its own view of the chain, that a
 /// deposit a proposer wants to mint really happened. `Ok(true)` confirms,
@@ -109,12 +111,17 @@ pub enum Message {
         from: PublicKey,
         bytes: Vec<u8>,
     },
-    /// A transaction that passed admission (for mints, including this
-    /// validator's own deposit confirmation) and may enter the mempool.
-    Admitted {
-        tx: Tx,
-        waiter: Option<(oneshot::Sender<peal_bonsai::Result<Applied>>, Duration)>,
-        gossip: bool,
+    /// Outcome of an admission task: the transaction passed every check
+    /// (for mints, including this validator's own deposit confirmation) and
+    /// may enter the mempool, or it did not.
+    Admission {
+        admitted: Option<(Tx, Option<SubmitWaiter>, bool)>,
+    },
+    /// A finalized block was applied off the actor task.
+    Applied {
+        id: Id,
+        cached: Arc<Cached>,
+        results: Result<Vec<peal_bonsai::Result<Applied>>, String>,
     },
     /// Forget a transaction this validator will not vote for.
     Drop {
@@ -162,6 +169,9 @@ impl Automaton for Mailbox {
     }
 }
 
+/// Certification uses the library default (always `true`): every check a
+/// validator makes happens in `verify`, before the vote; there is no second
+/// application-level gate after notarization.
 impl CertifiableAutomaton for Mailbox {}
 
 impl Relay for Mailbox {
@@ -245,7 +255,7 @@ impl Handle {
     }
 }
 
-struct Cached {
+pub struct Cached {
     block: Block,
     bytes: Vec<u8>,
 }
@@ -253,6 +263,7 @@ struct Cached {
 struct PoolEntry {
     id: Id,
     tx: Tx,
+    bytes: Vec<u8>,
     added: SystemTime,
 }
 
@@ -295,8 +306,15 @@ pub struct Actor<E, S> {
     /// Blocks whose verification waits for their parent (child ids by parent id).
     parent_waiters: HashMap<Id, Vec<Id>>,
     requested: HashMap<Id, SystemTime>,
+    /// When a digest first went into `verify_waiters` or `parent_waiters`,
+    /// so a block nobody can supply is given up on.
+    waiting_since: HashMap<Id, SystemTime>,
     mempool: Vec<PoolEntry>,
     mempool_ids: HashSet<Id>,
+    mempool_bytes: usize,
+    admissions_in_flight: usize,
+    /// A finalized block is being applied off the actor task.
+    applying: bool,
     waiters: HashMap<Id, Vec<Waiter>>,
     finalized_known: BTreeMap<u64, Id>,
     finalized_unknown: HashSet<Id>,
@@ -335,7 +353,20 @@ where
 
 const REQUEST_RETRY: Duration = Duration::from_millis(500);
 const IDLE_PROPOSE_DELAY: Duration = Duration::from_millis(400);
-const BLOCK_CACHE_DEPTH: u64 = 2_000;
+/// Applied blocks kept in memory behind the head (the rest are served from
+/// the block store).
+const BLOCK_CACHE_BEHIND: u64 = 64;
+/// How far ahead of the head an unsolicited block may be to be cached.
+const BLOCK_WINDOW_AHEAD: u64 = 256;
+/// Hard cap on cached blocks, whatever their heights.
+const MAX_BLOCK_CACHE: usize = 4_096;
+const MAX_MEMPOOL_TXS: usize = 4_096;
+const MAX_MEMPOOL_BYTES: usize = 32 * 1024 * 1024;
+/// Admission checks (a proof verification each, plus an RPC round trip for
+/// mints) running concurrently; peers past this are dropped.
+const MAX_ADMISSIONS_IN_FLIGHT: usize = 64;
+/// How long to keep asking peers for a block before giving up on it.
+const WAIT_TTL: Duration = Duration::from_secs(10);
 
 impl<E, S> Actor<E, S>
 where
@@ -344,7 +375,7 @@ where
 {
     pub fn new(context: E, cfg: Config<S>) -> (Self, Mailbox) {
         let (tx, rx) = mpsc::unbounded_channel();
-        let head = cfg.state.lock().expect("state lock").head();
+        let head = lock(&cfg.state).head();
         let actor = Self {
             context,
             cfg,
@@ -355,8 +386,12 @@ where
             verify_waiters: HashMap::new(),
             parent_waiters: HashMap::new(),
             requested: HashMap::new(),
+            waiting_since: HashMap::new(),
             mempool: Vec::new(),
             mempool_ids: HashSet::new(),
+            mempool_bytes: 0,
+            admissions_in_flight: 0,
+            applying: false,
             waiters: HashMap::new(),
             finalized_known: BTreeMap::new(),
             finalized_unknown: HashSet::new(),
@@ -451,16 +486,23 @@ where
                 from,
                 bytes,
             } => self.on_net(channel, from, bytes),
-            Message::Admitted { tx, waiter, gossip } => self.on_admitted(tx, waiter, gossip),
-            Message::Drop { id } => {
-                self.remove_from_mempool(&id);
-                if let Some(waiters) = self.waiters.remove(&id) {
-                    for w in waiters {
-                        let _ = w.reply.send(Err(peal_bonsai::Error::Storage(
-                            "this validator could not confirm the deposit".into(),
-                        )));
-                    }
+            Message::Admission { admitted } => {
+                self.admissions_in_flight = self.admissions_in_flight.saturating_sub(1);
+                if let Some((tx, waiter, gossip)) = admitted {
+                    self.on_admitted(tx, waiter, gossip);
                 }
+            }
+            Message::Applied {
+                id,
+                cached,
+                results,
+            } => self.on_applied(id, cached, results),
+            Message::Drop { id } => {
+                // This validator will not propose the mint; the submitter's
+                // waiter stays, because a quorum may still finalize it (the
+                // other validators' chain views are theirs) and the answer
+                // must be what the ledger did, not what this node guessed.
+                self.remove_from_mempool(&id);
             }
             Message::Tick => self.on_tick(),
         }
@@ -478,11 +520,7 @@ where
         if let Some(b) = self.blocks.get(parent) {
             return Some(b.block.height);
         }
-        self.cfg
-            .state
-            .lock()
-            .expect("state lock")
-            .block_height(parent)
+        lock(&self.cfg.state).block_height(parent)
     }
 
     fn on_propose(&mut self, context: Ctx, response: oneshot::Sender<Digest>) {
@@ -509,14 +547,15 @@ where
         }
         let mut txs = Vec::new();
         let mut size = 256usize;
+        let max_txs = self.cfg.max_block_txs.min(crate::block::MAX_BLOCK_TXS);
         for e in &self.mempool {
-            if txs.len() >= self.cfg.max_block_txs {
+            if txs.len() >= max_txs {
                 break;
             }
             if excluded.contains(&e.id) {
                 continue;
             }
-            let len = e.tx.encode().len() + 2;
+            let len = e.bytes.len() + 2;
             if size + len > MAX_BLOCK_BYTES {
                 break;
             }
@@ -563,6 +602,8 @@ where
 
     fn on_verify(&mut self, context: Ctx, id: Id, response: oneshot::Sender<bool>) {
         let Some(cached) = self.blocks.get(&id).cloned() else {
+            let now = self.context.current();
+            self.waiting_since.entry(id).or_insert(now);
             self.verify_waiters
                 .entry(id)
                 .or_default()
@@ -572,6 +613,9 @@ where
         };
         let block = &cached.block;
         let Some(parent_height) = self.parent_height(&block.parent) else {
+            let now = self.context.current();
+            self.waiting_since.entry(block.parent).or_insert(now);
+            self.waiting_since.entry(id).or_insert(now);
             self.parent_waiters
                 .entry(block.parent)
                 .or_default()
@@ -601,7 +645,7 @@ where
         let oracle = self.cfg.oracle.clone();
         let back = self.self_tx.clone();
         self.context.child("verify").spawn(move |ctx| async move {
-            let stateless = state.lock().expect("state lock").check_block(&cached.block);
+            let stateless = lock(&state).check_block(&cached.block);
             if let Err(e) = stateless {
                 warn!(digest = hex::encode(id), error = e, "block fails stateless checks");
                 let _ = response.send(false);
@@ -627,8 +671,9 @@ where
                                 attempts += 1;
                                 if attempts >= 3 {
                                     warn!(deposit_id = env.deposit_id, error = e, "chain unreachable; abstaining");
-                                    // Abstain: never resolve this vote.
-                                    std::mem::forget(response);
+                                    // Abstain: a dropped sender is an ignored
+                                    // proposal to the engine, never a vote.
+                                    drop(response);
                                     return;
                                 }
                                 ctx.sleep(Duration::from_millis(300)).await;
@@ -644,6 +689,7 @@ where
     /// A block's bytes became available: retry everything that waited.
     fn on_block_available(&mut self, id: Id) {
         self.requested.remove(&id);
+        self.waiting_since.remove(&id);
         if let Some(waiters) = self.verify_waiters.remove(&id) {
             for (context, response) in waiters {
                 self.on_verify(context, id, response);
@@ -731,9 +777,22 @@ where
                     self.finalized_known.remove(&height);
                     continue;
                 }
-                self.apply(&cached, id);
-                self.finalized_known.remove(&height);
-                continue;
+                if self.applying {
+                    // One block at a time, in order; `on_applied` resumes.
+                    break;
+                }
+                self.applying = true;
+                let state = self.cfg.state.clone();
+                let back = self.self_tx.clone();
+                self.context.child("apply").spawn(move |_| async move {
+                    let results = lock(&state).apply_block(&cached.block, &cached.bytes, id);
+                    let _ = back.send(Message::Applied {
+                        id,
+                        cached,
+                        results,
+                    });
+                });
+                break;
             }
             // A gap: walk the parent chain down to the head, marking every
             // known ancestor as finalized and requesting the first unknown.
@@ -746,7 +805,7 @@ where
                 };
                 if b.block.height <= self.head.height + 1 {
                     if b.block.height == self.head.height + 1 {
-                        progressed = self.finalized_known.insert(b.block.height, cur).is_none();
+                        progressed |= self.finalized_known.insert(b.block.height, cur).is_none();
                     }
                     break;
                 }
@@ -763,17 +822,20 @@ where
         }
     }
 
-    fn apply(&mut self, cached: &Cached, id: Id) {
-        let results = {
-            let mut state = self.cfg.state.lock().expect("state lock");
-            state.apply_block(&cached.block, &cached.bytes, id)
-        };
+    fn on_applied(
+        &mut self,
+        id: Id,
+        cached: Arc<Cached>,
+        results: Result<Vec<peal_bonsai::Result<Applied>>, String>,
+    ) {
+        self.applying = false;
+        self.finalized_known.remove(&cached.block.height);
         match results {
             Err(e) => {
                 error!(error = e, "applying a finalized block failed");
             }
             Ok(results) => {
-                let head = self.cfg.state.lock().expect("state lock").head();
+                let head = lock(&self.cfg.state).head();
                 self.head = head;
                 let ok = results.iter().filter(|r| r.is_ok()).count();
                 if results.is_empty() {
@@ -823,21 +885,42 @@ where
                 self.prune_blocks();
             }
         }
+        self.drain_finalized();
     }
 
+    /// Applied blocks leave memory a little behind the head (the store
+    /// serves them to peers); the cache never grows past its cap.
     fn prune_blocks(&mut self) {
-        if self.head.height <= BLOCK_CACHE_DEPTH {
-            return;
-        }
-        let floor = self.head.height - BLOCK_CACHE_DEPTH;
+        let floor = self.head.height.saturating_sub(BLOCK_CACHE_BEHIND);
         self.blocks.retain(|_, b| b.block.height >= floor);
+        if self.blocks.len() > MAX_BLOCK_CACHE {
+            let head = self.head.height;
+            self.blocks.retain(|_, b| b.block.height > head);
+        }
+    }
+
+    /// Whether a block a peer sent unasked is worth caching: close ahead
+    /// of the head (a proposal in flight) or explicitly wanted.
+    fn wants_block(&self, id: &Id, height: u64) -> bool {
+        if self.requested.contains_key(id)
+            || self.verify_waiters.contains_key(id)
+            || self.finalized_unknown.contains(id)
+        {
+            return true;
+        }
+        height > self.head.height
+            && height <= self.head.height + BLOCK_WINDOW_AHEAD
+            && self.blocks.len() < MAX_BLOCK_CACHE
     }
 
     // ---- mempool -------------------------------------------------------------
 
     fn remove_from_mempool(&mut self, id: &Id) {
         if self.mempool_ids.remove(id) {
-            self.mempool.retain(|e| &e.id != id);
+            if let Some(i) = self.mempool.iter().position(|e| &e.id == id) {
+                let e = self.mempool.remove(i);
+                self.mempool_bytes = self.mempool_bytes.saturating_sub(e.bytes.len());
+            }
         }
     }
 
@@ -868,55 +951,69 @@ where
     /// confirmation before the transaction can be proposed. A proposer
     /// therefore never includes a mint its own chain view has not
     /// confirmed, and a verifier's check is the safety net.
-    fn admit(
-        &mut self,
-        tx: Tx,
-        waiter: Option<(oneshot::Sender<peal_bonsai::Result<Applied>>, Duration)>,
-        gossip: bool,
-    ) {
-        if let Err(e) = self.cfg.state.lock().expect("state lock").check_tx(&tx) {
+    fn admit(&mut self, tx: Tx, waiter: Option<SubmitWaiter>, gossip: bool) {
+        // The checks cost a proof verification each (and an RPC round trip
+        // for a mint), so they run off the actor task and only so many at
+        // once: a peer cannot make this validator verify at its pace.
+        if self.admissions_in_flight >= MAX_ADMISSIONS_IN_FLIGHT {
             if let Some((reply, _)) = waiter {
-                let _ = reply.send(Err(e));
+                let _ = reply.send(Err(peal_bonsai::Error::Storage(
+                    "validator is busy admitting operations; retry".into(),
+                )));
             }
             return;
         }
-        let Envelope::Mint(env) = &tx.envelope else {
-            self.on_admitted(tx, waiter, gossip);
+        if self.mempool.len() >= MAX_MEMPOOL_TXS {
+            if let Some((reply, _)) = waiter {
+                let _ = reply.send(Err(peal_bonsai::Error::Storage(
+                    "mempool is full; retry".into(),
+                )));
+            }
             return;
-        };
+        }
+        self.admissions_in_flight += 1;
+        let state = self.cfg.state.clone();
         let oracle = self.cfg.oracle.clone();
         let back = self.self_tx.clone();
-        let ns = tx.namespace;
-        let env = env.clone();
         self.context.child("admit").spawn(move |_| async move {
-            match oracle.confirmed(ns, env).await {
-                Ok(true) => {
-                    let _ = back.send(Message::Admitted { tx, waiter, gossip });
+            let checked = lock(&state).check_tx(&tx);
+            if let Err(e) = checked {
+                if let Some((reply, _)) = waiter {
+                    let _ = reply.send(Err(e));
                 }
-                Ok(false) => {
-                    if let Some((reply, _)) = waiter {
-                        let _ = reply.send(Err(peal_bonsai::Error::Storage(
-                            "deposit is not confirmed on this validator's chain view".into(),
-                        )));
+                let _ = back.send(Message::Admission { admitted: None });
+                return;
+            }
+            if let Envelope::Mint(env) = &tx.envelope {
+                match oracle.confirmed(tx.namespace, env.clone()).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        if let Some((reply, _)) = waiter {
+                            let _ = reply.send(Err(peal_bonsai::Error::Storage(
+                                "deposit is not confirmed on this validator's chain view".into(),
+                            )));
+                        }
+                        let _ = back.send(Message::Admission { admitted: None });
+                        return;
                     }
-                }
-                Err(e) => {
-                    if let Some((reply, _)) = waiter {
-                        let _ = reply.send(Err(peal_bonsai::Error::Storage(format!(
-                            "chain unreachable while confirming the deposit: {e}"
-                        ))));
+                    Err(e) => {
+                        if let Some((reply, _)) = waiter {
+                            let _ = reply.send(Err(peal_bonsai::Error::Storage(format!(
+                                "chain unreachable while confirming the deposit: {e}"
+                            ))));
+                        }
+                        let _ = back.send(Message::Admission { admitted: None });
+                        return;
                     }
                 }
             }
+            let _ = back.send(Message::Admission {
+                admitted: Some((tx, waiter, gossip)),
+            });
         });
     }
 
-    fn on_admitted(
-        &mut self,
-        tx: Tx,
-        waiter: Option<(oneshot::Sender<peal_bonsai::Result<Applied>>, Duration)>,
-        gossip: bool,
-    ) {
+    fn on_admitted(&mut self, tx: Tx, waiter: Option<SubmitWaiter>, gossip: bool) {
         let id = tx.id();
         if let Some((reply, timeout)) = waiter {
             let expires = self.context.current() + timeout;
@@ -925,17 +1022,33 @@ where
                 .or_default()
                 .push(Waiter { reply, expires });
         }
-        if self.mempool_ids.insert(id) {
-            let bytes = tx.encode();
-            self.mempool.push(PoolEntry {
-                id,
-                tx,
-                added: self.context.current(),
-            });
-            if gossip {
-                self.cfg.txs_out.send(Recipients::All, bytes, false);
-            }
+        if self.mempool_ids.contains(&id) {
+            return;
         }
+        let bytes = tx.encode();
+        if self.mempool.len() >= MAX_MEMPOOL_TXS
+            || self.mempool_bytes + bytes.len() > MAX_MEMPOOL_BYTES
+        {
+            if let Some(waiters) = self.waiters.remove(&id) {
+                for w in waiters {
+                    let _ = w.reply.send(Err(peal_bonsai::Error::Storage(
+                        "mempool is full; retry".into(),
+                    )));
+                }
+            }
+            return;
+        }
+        self.mempool_ids.insert(id);
+        self.mempool_bytes += bytes.len();
+        if gossip {
+            self.cfg.txs_out.send(Recipients::All, bytes.clone(), false);
+        }
+        self.mempool.push(PoolEntry {
+            id,
+            tx,
+            bytes,
+            added: self.context.current(),
+        });
     }
 
     fn on_tick(&mut self) {
@@ -973,6 +1086,23 @@ where
             *waiters = kept;
         }
         self.waiters.retain(|_, w| !w.is_empty());
+        // Give up on blocks nobody supplied (a proposal with a parent no
+        // one holds): the vote is abstained by dropping its sender, and the
+        // request stops. Blocks known to be finalized are still wanted.
+        let stale: Vec<Id> = self
+            .waiting_since
+            .iter()
+            .filter(|(_, t)| now.duration_since(**t).unwrap_or_default() > WAIT_TTL)
+            .map(|(id, _)| *id)
+            .collect();
+        for id in stale {
+            self.waiting_since.remove(&id);
+            self.verify_waiters.remove(&id);
+            self.parent_waiters.remove(&id);
+            if !self.finalized_unknown.contains(&id) {
+                self.requested.remove(&id);
+            }
+        }
         // Re-request blocks we still need.
         let wanted: Vec<Id> = self
             .verify_waiters
@@ -1000,6 +1130,10 @@ where
                     }
                     match Block::decode(&raw) {
                         Ok(block) => {
+                            if !self.wants_block(&id, block.height) {
+                                debug!(peer = %from, height = block.height, "ignoring an unwanted block");
+                                return;
+                            }
                             self.blocks
                                 .insert(id, Arc::new(Cached { block, bytes: raw }));
                             self.on_block_available(id);
@@ -1010,7 +1144,7 @@ where
                 Ok(BlockWire::Request(id)) => {
                     let bytes = match self.blocks.get(&id) {
                         Some(b) => Some(b.bytes.clone()),
-                        None => self.cfg.state.lock().expect("state lock").block_bytes(&id),
+                        None => lock(&self.cfg.state).block_bytes(&id),
                     };
                     if let Some(bytes) = bytes {
                         self.cfg.blocks_out.send(
