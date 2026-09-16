@@ -12,6 +12,7 @@
 
 import { describe, expect, it, beforeAll } from 'vitest';
 import { createPublicClient, createWalletClient, http, type Address, type Hex } from 'viem';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { createLocalProver } from '../src/local.js';
 import {
   ERC20_ABI,
@@ -23,6 +24,7 @@ import {
   NodeClient,
   paymentIntentTypedData,
   verifyProfile,
+  walletScopedStore,
   type AsyncProver,
   type LinksStatus,
 } from '../src/index.js';
@@ -195,4 +197,28 @@ describe('peal-links end to end (wasm prover, live node, one wallet)', () => {
     expect(summary.receipt_count).toBeGreaterThanOrEqual(6);
     console.log('timings (ms, single-threaded wasm in Node):', timings);
   }, 900_000);
+
+  it('one device, two wallets: an account saved before per-wallet stores is adopted by its owner and left alone by any other wallet', async () => {
+    if (!status) return;
+    const ns = status.namespaces[0]!;
+    const owner = privateKeyToAccount(generatePrivateKey());
+    const other = privateKeyToAccount(generatePrivateKey());
+    const dev = device();
+    // The pre-partition layout: the account sits under the bare namespace keys.
+    const { client: ownerClient } = await setupAccount(prover, ns, status.circuit_id, owner, 'Owner', 'wallet-signature', dev);
+    const base = { prover, client: ownerClient, namespace: ns.id, store: dev.store, deviceKeys: dev.deviceKeys };
+    // Another wallet on the same device finds nothing of its own and must not take it.
+    expect(await LinksAccount.adoptUnscoped(base, other.address)).toBe('other');
+    expect(await LinksAccount.exists(walletScopedStore(dev.store, other.address), ns.id)).toBe(false);
+    expect(await LinksAccount.exists(dev.store, ns.id)).toBe(true);
+    // The owner adopts it: moved under its own scope, gone from the bare keys, unlockable there.
+    expect(await LinksAccount.adoptUnscoped(base, owner.address)).toBe('moved');
+    expect(await LinksAccount.exists(dev.store, ns.id)).toBe(false);
+    const scoped = walletScopedStore(dev.store, owner.address);
+    expect((await (await LinksAccount.unlock({ ...base, store: scoped })).walletAddress())?.toLowerCase()).toBe(owner.address.toLowerCase());
+    expect(await LinksAccount.adoptUnscoped(base, owner.address)).toBe('none');
+    // The other wallet sets up beside it; the owner's account is untouched.
+    await setupAccount(prover, ns, status.circuit_id, other, 'Other', 'wallet-signature', { store: walletScopedStore(dev.store, other.address), deviceKeys: dev.deviceKeys });
+    expect((await (await LinksAccount.unlock({ ...base, store: scoped })).walletAddress())?.toLowerCase()).toBe(owner.address.toLowerCase());
+  }, 300_000);
 });

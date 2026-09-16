@@ -43,9 +43,10 @@ import {
   type RecoveryPlan,
   type WalletSigner,
   type WalletStore,
+  walletScopedStore,
 } from 'peal-links';
 import type { EIP1193Provider } from 'viem';
-import { session as evmSession, type Eip1193Like } from '../auth';
+import { onAuthChange as onEvmChange, session as evmSession, type Eip1193Like } from '../auth';
 import { shortHex } from './format';
 
 /** Where the person is in activating their private account. */
@@ -117,6 +118,32 @@ function publish(next: Partial<LinksSession>): void {
 
 export const client = new NodeClient({ baseUrl: (import.meta.env.VITE_LINKS_URL as string | undefined) ?? '' });
 export const store: WalletStore = indexedDbStore('peal-links');
+
+/** The connected wallet's own slice of the store. Each wallet used from
+ * this browser keeps its own private account; proving keys and other
+ * wallet-independent material stay on the shared `store`. */
+function accountStore(): WalletStore | null {
+  const evm = evmSession();
+  return evm.address ? walletScopedStore(store, evm.address) : null;
+}
+
+async function storedAccountFor(namespace: NamespaceInfo | null): Promise<boolean> {
+  const scoped = accountStore();
+  return namespace && scoped ? LinksAccount.exists(scoped, namespace.id) : false;
+}
+
+// The wallet decides which slice of the store is in play: when the
+// connected address changes (connect, disconnect, or the wallet switching
+// accounts), lock whatever was open and re-read whether the new wallet has
+// an account on this device.
+let lastAddress: string | null = null;
+onEvmChange(() => {
+  const address = evmSession().address?.toLowerCase() ?? null;
+  if (address === lastAddress) return;
+  lastAddress = address;
+  if (state.account) publish({ account: null, setup: 'idle', setupDetail: null });
+  void storedAccountFor(state.namespace).then((hasStoredAccount) => publish({ hasStoredAccount }));
+});
 export const deviceKeys: DeviceKeys = indexedDbDeviceKeys('peal-links-device');
 
 let prover: AsyncProver | null = null;
@@ -135,7 +162,7 @@ export async function loadStatus(): Promise<LinksStatus | null> {
   try {
     const status = await client.status();
     const namespace = state.namespace ?? status.namespaces[0] ?? null;
-    const hasStoredAccount = namespace ? await LinksAccount.exists(store, namespace.id) : false;
+    const hasStoredAccount = await storedAccountFor(namespace);
     publish({ status, statusError: null, namespace, hasStoredAccount });
     return status;
   } catch (e) {
@@ -145,7 +172,7 @@ export async function loadStatus(): Promise<LinksStatus | null> {
 }
 
 export async function selectNamespace(ns: NamespaceInfo): Promise<void> {
-  const hasStoredAccount = await LinksAccount.exists(store, ns.id);
+  const hasStoredAccount = await storedAccountFor(ns);
   publish({ namespace: ns, hasStoredAccount, account: null, setup: 'idle', setupDetail: null, recoveryProfile: null });
 }
 
@@ -166,11 +193,13 @@ export function ensureParams(): Promise<void> {
 
 function opts(ns: NamespaceInfo) {
   const evm = evmSession();
+  const scoped = accountStore();
+  if (!scoped) throw new Error('connect a wallet first');
   return {
     prover: getProver(),
     client,
     namespace: ns.id,
-    store,
+    store: scoped,
     deviceKeys,
     publicClient: evm.provider ? publicClientFor(ns, evm.provider as unknown as EIP1193Provider) : undefined,
   };
@@ -288,13 +317,15 @@ export async function activate(): Promise<LinksAccount | null> {
     }
     publish({ setup: 'checking', setupDetail: 'loading proving keys and checking this browser' });
     await ensureParams();
-    // 1. Same device: unlock, no prompt. The stored account must belong to
-    //    the connected wallet; another wallet gets its own activation.
-    if (await LinksAccount.exists(store, namespace.id)) {
+    // 1. Same device: unlock, no prompt. An account saved before the store
+    //    was partitioned per wallet is adopted by its owner on first use;
+    //    one that belongs to another wallet stays untouched for that wallet.
+    await LinksAccount.adoptUnscoped({ ...opts(namespace), store }, address);
+    if (await LinksAccount.exists(accountStore()!, namespace.id)) {
       const account = await LinksAccount.unlock(opts(namespace));
       const owner = await account.walletAddress();
       if (owner && owner !== address) {
-        publish({ setup: 'idle', setupDetail: `this browser holds the private account of wallet ${shortHex(owner, 6, 4)}; connect that wallet, or clear site data to set up ${shortHex(address, 6, 4)}` });
+        publish({ setup: 'idle', setupDetail: `the account stored here for ${shortHex(address, 6, 4)} was authorized by wallet ${shortHex(owner, 6, 4)}; export a backup and clear site data before setting it up again` });
         return null;
       }
       const v = await account.view();
@@ -361,7 +392,7 @@ async function finishRecovery(namespace: NamespaceInfo, secret: RecoveryPlan): P
   try {
     const account = await LinksAccount.recover(opts(namespace), secret);
     const profile = state.recoveryProfile;
-    if (profile) await store.set(`peal-links:${namespace.id}:profile`, JSON.stringify(profile));
+    if (profile) await accountStore()?.set(`peal-links:${namespace.id}:profile`, JSON.stringify(profile));
     publish({ account, hasStoredAccount: true, setup: 'ready', setupDetail: null, recoveryProfile: null });
     return account;
   } catch (e) {

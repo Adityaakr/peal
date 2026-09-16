@@ -21,7 +21,7 @@ import {
   siweMessage,
 } from 'peal-links';
 import { createLocalProver } from 'peal-links/local';
-import { freshWallet, injectWallet, KEYS, NODE, shot as shotTo } from './wallet';
+import { freshWallet, injectWallet, KEYS, NODE, shot as shotTo, useWalletAccount } from './wallet';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = process.env.SHOTS_DIR ?? join(here, '..', '..', '..', 'docs', 'peal-links', 'evidence', 'phase-e');
@@ -169,5 +169,41 @@ test('checkout is reachable by keyboard', async ({ browser }) => {
   }
   expect(reached.at(-2)).toBe('button:Use browser wallet');
   expect(reached.at(-1)).toBe('button:Use Privy wallet');
+  await ctx.close();
+});
+
+test('two wallets in one browser each keep their own private account', async ({ browser }) => {
+  test.setTimeout(300_000);
+  // One after the other: both gas grants come from the same funder account.
+  const first = await freshWallet(0n);
+  const second = await freshWallet(0n);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const firstAddress = await injectWallet(ctx, [first, second], { chainId: 31337 });
+  const page = await ctx.newPage();
+  await page.goto('/#/bonsai/app');
+  await page.getByRole('button', { name: 'Use browser wallet' }).click();
+  await page.getByRole('button', { name: 'Continue with this wallet' }).click();
+  await expect(page.getByText('private payments on', { exact: true })).toBeVisible({ timeout: 120_000 });
+
+  // The person picks another account in their wallet and reloads: that
+  // wallet is new here and sets up its own account; it is never told the
+  // device belongs to the first wallet.
+  const secondAddress = await useWalletAccount(ctx, 1);
+  await page.reload();
+  await expect(page.getByText('First time here')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/holds the private account/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Continue with this wallet' }).click();
+  await expect(page.getByText('private payments on', { exact: true })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText(new RegExp(`browser wallet 0x${secondAddress.slice(2, 8)}`, 'i'))).toBeVisible();
+  await shot(page, 'edge-second-wallet-same-browser');
+
+  // Back to the first wallet: its account is still here and unlocks without
+  // a new setup.
+  await useWalletAccount(ctx, 0);
+  await page.reload();
+  await expect(page.getByText('Your private account is on this device')).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Continue with this wallet' }).click();
+  await expect(page.getByText('private payments on', { exact: true })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText(new RegExp(`browser wallet 0x${firstAddress.slice(2, 8)}`, 'i'))).toBeVisible();
   await ctx.close();
 });

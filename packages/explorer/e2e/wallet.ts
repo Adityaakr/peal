@@ -60,11 +60,29 @@ function coerceTypedData(json: string) {
   return { domain, types, primaryType: td.primaryType, message: fix(td.primaryType, td.message) };
 }
 
-export async function injectWallet(context: BrowserContext, key: `0x${string}`, opts: WalletOpts): Promise<string> {
-  const account = privateKeyToAccount(key);
+/** Which of a context's injected accounts is active, as a wallet's account
+ * picker would decide. Pages read the account when they connect or resume,
+ * so a test switches and then reloads, as a person would after picking
+ * another account in MetaMask. */
+const activeAccount = new WeakMap<BrowserContext, { index: number; addresses: string[] }>();
+
+export async function useWalletAccount(context: BrowserContext, index: number): Promise<string> {
+  const st = activeAccount.get(context);
+  if (!st || !st.addresses[index]) throw new Error(`no injected account ${index}`);
+  st.index = index;
+  return st.addresses[index]!;
+}
+
+export async function injectWallet(context: BrowserContext, keys: `0x${string}` | `0x${string}`[], opts: WalletOpts): Promise<string> {
+  const accounts = (Array.isArray(keys) ? keys : [keys]).map((k) => privateKeyToAccount(k));
   const rpc = RPC_BY_CHAIN[opts.chainId] ?? 'http://127.0.0.1:8545';
   const chain = { id: opts.chainId, name: 'local', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpc] } } };
-  const wallet = createWalletClient({ account, chain, transport: http(rpc) });
+  const wallets = accounts.map((account) => createWalletClient({ account, chain, transport: http(rpc) }));
+  const st = { index: 0, addresses: accounts.map((a) => a.address as string) };
+  activeAccount.set(context, st);
+  const account = () => accounts[st.index]!;
+  const wallet = () => wallets[st.index]!;
+  await context.exposeFunction('__pealAddress', async () => account().address);
   await context.exposeFunction('__pealSign', async (hex: string) => {
     if (opts.rejectSign) throw new Error('User rejected the request.');
     // A non-deterministic signer draws a fresh nonce per signature (viem's
@@ -72,7 +90,7 @@ export async function injectWallet(context: BrowserContext, key: `0x${string}`, 
     // the same, which is what the recovery-key check must detect.
     if (opts.nonDeterministic) setSignEntropy(true);
     try {
-      return await account.signMessage({ message: { raw: Buffer.from(hex.replace(/^0x/, ''), 'hex') } });
+      return await account().signMessage({ message: { raw: Buffer.from(hex.replace(/^0x/, ''), 'hex') } });
     } finally {
       // Back to deterministic nonces (RFC 6979 with fixed extra data) for
       // every other wallet in this process.
@@ -82,11 +100,12 @@ export async function injectWallet(context: BrowserContext, key: `0x${string}`, 
   await context.exposeFunction('__pealSignTyped', async (json: string) => {
     if (opts.rejectSign) throw new Error('User rejected the request.');
     const td = coerceTypedData(json);
-    return account.signTypedData(td as Parameters<typeof account.signTypedData>[0]);
+    const a = account();
+    return a.signTypedData(td as Parameters<typeof a.signTypedData>[0]);
   });
   await context.exposeFunction('__pealSendTx', async (tx: { to?: string; data?: string; value?: string; gas?: string }) => {
     if (opts.rejectTx) throw new Error('User rejected the request.');
-    return wallet.sendTransaction({ to: tx.to as `0x${string}`, data: tx.data as `0x${string}`, value: tx.value ? BigInt(tx.value) : undefined, gas: tx.gas ? BigInt(tx.gas) : TX_GAS[opts.chainId] });
+    return wallet().sendTransaction({ to: tx.to as `0x${string}`, data: tx.data as `0x${string}`, value: tx.value ? BigInt(tx.value) : undefined, gas: tx.gas ? BigInt(tx.gas) : TX_GAS[opts.chainId] });
   });
   await context.exposeFunction('__pealRpc', async (method: string, params: unknown[]) => {
     const res = await fetch(rpc, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
@@ -95,17 +114,18 @@ export async function injectWallet(context: BrowserContext, key: `0x${string}`, 
     return body.result;
   });
   await context.addInitScript(
-    ({ address, chainHex }) => {
+    ({ chainHex }) => {
       (window as unknown as { ethereum: unknown }).ethereum = {
         isPealTestWallet: true,
         async request({ method, params }: { method: string; params?: unknown[] }) {
           const w = window as unknown as {
+            __pealAddress: () => Promise<string>;
             __pealSign: (h: string) => Promise<string>;
             __pealSignTyped: (j: string) => Promise<string>;
             __pealSendTx: (t: unknown) => Promise<string>;
             __pealRpc: (m: string, p: unknown[]) => Promise<unknown>;
           };
-          if (method === 'eth_requestAccounts' || method === 'eth_accounts') return [address];
+          if (method === 'eth_requestAccounts' || method === 'eth_accounts') return [await w.__pealAddress()];
           if (method === 'eth_chainId') return chainHex;
           if (method === 'personal_sign') return w.__pealSign((params as string[])[0]!);
           if (method === 'eth_signTypedData_v4' || method === 'eth_signTypedData') {
@@ -126,9 +146,9 @@ export async function injectWallet(context: BrowserContext, key: `0x${string}`, 
         removeListener() {},
       };
     },
-    { address: account.address, chainHex: `0x${opts.chainId.toString(16)}` },
+    { chainHex: `0x${opts.chainId.toString(16)}` },
   );
-  return account.address;
+  return accounts[0]!.address;
 }
 
 /** A brand-new wallet for one run: a random key, gas from anvil's account 0

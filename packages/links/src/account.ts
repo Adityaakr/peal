@@ -103,6 +103,22 @@ export const PROFILE_VALIDITY_SECS = 365 * 24 * 3600;
 
 const key = (ns: string, what: string) => `peal-links:${ns}:${what}`;
 
+/** Everything an account leaves in a store for one namespace. */
+const ACCOUNT_KEYS = ['wallet', 'device-sealed-key', 'backup-key', 'backup-wrapped', 'profile', 'inbox-cursor', 'outbox', 'labels'] as const;
+
+/** A view of `store` that belongs to one wallet address, so several wallets
+ * used from the same browser each keep their own private account instead
+ * of colliding on the namespace's keys. The address is the only visible
+ * identity (decision 0011), so it is the natural partition. */
+export function walletScopedStore(store: WalletStore, owner: string): WalletStore {
+  const prefix = `${owner.toLowerCase()}|`;
+  return {
+    get: (k) => store.get(prefix + k),
+    set: (k, v) => store.set(prefix + k, v),
+    delete: (k) => store.delete(prefix + k),
+  };
+}
+
 export class LinksAccount {
   private wallet: string;
   private readonly prover: AsyncProver;
@@ -128,6 +144,27 @@ export class LinksAccount {
   /** Whether an encrypted wallet exists in the store for this namespace. */
   static async exists(store: WalletStore, namespace: string): Promise<boolean> {
     return (await store.get(key(namespace, 'wallet'))) !== null;
+  }
+
+  /** Accounts saved before stores were partitioned per wallet sit under the
+   * bare namespace keys of `opts.store`. When that account belongs to
+   * `owner`, move it into the owner's scoped view and return `moved`;
+   * when it belongs to another wallet leave it for that wallet (`other`);
+   * `none` when there is nothing to adopt. Needs the proving worker, since
+   * reading the owner means unlocking the account once. */
+  static async adoptUnscoped(opts: AccountOptions, owner: string): Promise<'moved' | 'other' | 'none'> {
+    if (!(await LinksAccount.exists(opts.store, opts.namespace))) return 'none';
+    const legacy = await LinksAccount.unlock(opts);
+    const address = await legacy.walletAddress();
+    if (!address || address.toLowerCase() !== owner.toLowerCase()) return 'other';
+    const scoped = walletScopedStore(opts.store, owner);
+    for (const what of ACCOUNT_KEYS) {
+      const k = key(opts.namespace, what);
+      const v = await opts.store.get(k);
+      if (v !== null) await scoped.set(k, v);
+    }
+    for (const what of ACCOUNT_KEYS) await opts.store.delete(key(opts.namespace, what));
+    return 'moved';
   }
 
   // ---- lifecycle -----------------------------------------------------------
