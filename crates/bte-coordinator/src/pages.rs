@@ -302,6 +302,28 @@ pub const PAGES: &[Page] = &[
         share: None,
     },
     Page {
+        path: "bonsai",
+        route: "#/bonsai",
+        title: "Peal Links. One link, a private payment.",
+        description:
+            "Create a payment request, share the link, and receive funds in a private Peal balance. Payments are zero-knowledge proofs on the Bonsai ledger: the amount and the parties stay inside a commitment, the ledger only learns that it checked out.",
+        schema: "WebPage",
+        index: true,
+        image: None,
+        share: None,
+    },
+    Page {
+        path: "bonsai/app",
+        route: "#/bonsai/app",
+        title: "Peal Links. Your payment requests and balances.",
+        description:
+            "Create and manage payment links, see incoming receipts, claim them into your private balance, add funds and withdraw.",
+        schema: "WebPage",
+        index: false,
+        image: None,
+        share: None,
+    },
+    Page {
         path: "app",
         route: "#/app",
         title: "Peal network explorer. Every condition and reveal.",

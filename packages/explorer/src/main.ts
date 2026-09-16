@@ -31,6 +31,9 @@ import { network as networkDocs } from './pages/docs/network';
 import { x402Page } from './pages/docs/x402';
 import { roadmap } from './pages/docs/roadmap';
 import { renderSealView } from './pages/seal-view';
+import { renderBonsaiLanding } from './pages/bonsai-landing';
+import { renderBonsaiApp } from './pages/bonsai-app';
+import { renderPay } from './pages/pay';
 
 type Cleanup = () => void;
 
@@ -149,7 +152,13 @@ const PAGE_PATHS = new Set([
   'developers/api', 'developers/x402', 'developers/limits', 'developers/network',
   'developers/roadmap',
   'protocol', 'mempool', 'auction', 'stakeholder-tokens', 'execution', 'philosophy', 'create', 'app',
+  'bonsai', 'bonsai/app',
 ]);
+
+// Peal Links checkout links are paths with a dynamic segment, /pay/<id>, so
+// they cannot sit in the static set above. Same treatment: the path is kept
+// in the address bar and the app routes on the fragment it means.
+const PAY_PATH = /^\/pay\/([a-z2-7]{24})\/?$/;
 
 /** Whether a fragment names a developer page, so it can be upgraded to a path. */
 function hashIsDocs(hash: string): boolean {
@@ -191,11 +200,14 @@ function route(): void {
   // "#/" and rendered the landing page under a correct looking docs URL. Every
   // older `#/developers/...` link broke that way, silently: right address, wrong
   // page. Read the intent first, then rewrite the bar.
+  const payPath = PAY_PATH.exec(location.pathname);
   const hash = !hashIsEmpty
     ? location.hash
     : cleanPath
       ? `#/${cleanPath}`
-      : '#/';
+      : payPath
+        ? `#/pay/${payPath[1]}`
+        : '#/';
 
   if (cleanPath) {
     if (!hashIsEmpty && location.hash !== `#/${cleanPath}`) {
@@ -207,6 +219,12 @@ function route(): void {
       // path does not, so it goes rather than sitting there looking like an
       // anchor into somewhere else.
       history.replaceState(null, '', `/${cleanPath}`);
+    }
+  } else if (payPath) {
+    if (hashIsEmpty) {
+      history.replaceState(null, '', `${location.pathname}#/pay/${payPath[1]}`);
+    } else if (location.hash !== `#/pay/${payPath[1]}`) {
+      history.replaceState(null, '', `/${location.hash}`);
     }
   } else if (PAGE_PATHS.has(pagePath)) {
     if (hashIsEmpty) {
@@ -229,7 +247,7 @@ function route(): void {
   // Page paths are never auction names, or the normalisation below would strip
   // /developers off the address bar the instant it loaded, throwing away the
   // URL a crawler indexed and a person copied.
-  const shortLink = location.pathname.match(/^\/([a-z0-9-]{3,32})\/?$/);
+  const shortLink = payPath ? null : location.pathname.match(/^\/([a-z0-9-]{3,32})\/?$/);
   const named = shortLink && !PAGE_PATHS.has(shortLink[1]!) ? shortLink : null;
   const hashIsBare = hashIsEmpty;
   if (named && !hashIsBare) {
@@ -260,12 +278,20 @@ function route(): void {
   // contained: no lookup, no storage, and no server ever learns which auction
   // was opened. base64url only, which is all packTerms can emit.
   const live = hash.match(/^#\/live\/([A-Za-z0-9_-]+)$/);
+  // Peal Links: landing, app, and the public checkout.
+  const pay = hash.match(/^#\/pay\/([^/]+)$/);
   if (seal) {
     cleanup = renderSealView(root, decodeURIComponent(seal[1]), seal[2], seal[3]);
   } else if (shortSeal) {
     cleanup = renderShortSeal(root, shortSeal[1], shortSeal[2]);
   } else if (match) {
     cleanup = renderCondition(root, decodeURIComponent(match[1]));
+  } else if (hash === '#/bonsai') {
+    cleanup = renderBonsaiLanding(root);
+  } else if (hash === '#/bonsai/app') {
+    cleanup = renderBonsaiApp(root);
+  } else if (pay) {
+    cleanup = renderPay(root, decodeURIComponent(pay[1]!));
   } else if (hash === '#/auction') {
     // Mirrors the mempool split: #/auction is the landing, the product page
     // lives at its own route. See main.ts's #/mempool vs #/encrypted-mempool.

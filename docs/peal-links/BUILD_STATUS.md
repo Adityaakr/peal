@@ -2,7 +2,7 @@
 
 Living log. Read this first every session. Spec: `SPEC.md`.
 
-## Current phase: B (design and navigation)
+## Current phase: C (wallet and private ledger)
 
 ### Smoke command
 ```
@@ -14,7 +14,7 @@ Expected: 7 passed, 0 failed (encoding 2, gate_a 3, parity 2), about 12 s includ
 - Apple M5, 10 cores, 24 GiB. macOS 25.4. Rust 1.97.0, Node 22.23.2, pnpm 11.9.0, wasm-pack present, wasm32-unknown-unknown target installed.
 - Foundry 1.6.0 at `~/.foundry/bin` (not on PATH by default). `just` installed via brew.
 - Docker is NOT installed. Compose files are prepared but the local stack runs under `scripts/peal-links/stack.sh` (process manager script, logs and pids under `.dev-state/peal-links/`).
-- Playwright not yet installed (added in Phase E).
+- Playwright 1.63 with Chromium installed as an explorer dev dependency (`pnpm -C packages/explorer shots` takes the evidence screenshots; `test:e2e` runs the flow tests once they exist).
 
 ### Phase A plan
 1. Repository discovery: explorer is a vanilla-TS SPA with hash routing (`packages/explorer/src/main.ts`), one React island (landing), Privy auth (`auth.tsx`), Tailwind only on the landing island, coordinator axum API on `/v0` + `/v1` with rusqlite. Design tokens in `packages/explorer/src/style.css` (`--accent #2563eb`, `--text #111827`, `--muted #6b7280`, `--border #e5e7eb`, Josefin Sans display, Satoshi/DM Sans body). DONE.
@@ -29,7 +29,7 @@ Expected: 7 passed, 0 failed (encoding 2, gate_a 3, parity 2), about 12 s includ
 | Gate | Status | Commit | Evidence |
 |---|---|---|---|
 | A | PASSED | 06703bf | evidence/gate-a-tests.log, evidence/phase-a-upstream-zkpari-tests.log |
-| B | OPEN | | |
+| B | PASSED | (see record) | evidence/phase-b/*.png |
 | C | OPEN | | |
 | D | OPEN | | |
 | E | OPEN | | |
@@ -82,5 +82,26 @@ Residual risks: single-node ledger (no consensus yet); locally generated setup; 
 6. Screenshots at 390, 820, 1280 px, inspected, fixed; existing routes re-checked.
 Gate B evidence: screenshots under evidence/phase-b/, typecheck and build green.
 
+### Gate B: design and navigation  [PASSED]
+Commit: see the commit that adds this record (peal-links(phase-b))
+Commands:
+- `pnpm -C packages/explorer exec tsc --noEmit` -> exit 0
+- `cargo check -p bte-coordinator` -> exit 0 (page table entries `bonsai`, `bonsai/app`)
+- `pnpm -C packages/explorer shots` (Playwright, vite dev on :5173, node not running) -> 21 passed; asserts no horizontal overflow and no page errors at 390, 820 and 1280 px on landing, app, checkout (valid and invalid id), home, mempool landing, developers
+Tests: explorer screenshots 21/0/0
+Artifacts: evidence/phase-b/{landing,app,pay,pay-bad-id,home,mempool-landing,developers}-{phone,tablet,desktop}.png
+Inspected and fixed: below-the-fold sections not revealed in captures (spec now scrolls before capture); vite proxy 500 shown as a raw status (non-JSON errors now read as "unreachable"); preview footer wrapping at 390 px; three-column privacy table at 390 px (now stacked with labels).
+Routes: `#/bonsai` (also `/bonsai`), `#/bonsai/app` (also `/bonsai/app`), `#/pay/<24-char id>` (also `/pay/<id>`); "payments" entry in the header menu. Existing routes re-captured unchanged.
+Residual risks: the app and checkout pages only show their populated states with the node running (Phase C); no active control can move funds yet and none is rendered as if it could; checkout `noindex` and `referrer` meta are set at render time only (prerender for the coordinator-served shell comes with Phase E).
+
+### Phase C plan (reordered: consensus after the end-to-end flow)
+1. `crates/peal-links-node`: axum on :8790. `/links/v1/status`; per-namespace ledger API (roots, account, register, ops, receipt paths, params by digest); product API (SIWE-style session auth via EIP-191 + nonce + expiry, signed request manifests, listing by session); inbox (bind encryption key to account, post ciphertext, fetch with account signature). sqlite: `ledger-<ns>.sqlite` per namespace and `links.sqlite` for product data.
+2. `crates/peal-links-wasm`: wasm-bindgen wallet (create, register, prepare/prove send, receive, deposit; commit/abort/reconcile; x25519 + XChaCha20-Poly1305 receipt envelopes; argon2id + XChaCha20-Poly1305 backups), built single-threaded, inlined like `packages/sdk`.
+3. `packages/links`: typed SDK (node client, wallet in a Web Worker for proving, IndexedDB persistence, request manifests, inbox, backup export/import), with vitest tests against the running node.
+4. Explorer: onboarding (Privy connect, SIWE session, create or restore private account with passphrase), dashboard with real balances and receipts, request creation with QR and copy link, checkout paying with real proofs, inbox auto-claim under a session preference, backup export and import.
+5. `scripts/peal-links/stack.sh` (node + explorer for now; anvil chains join in Phase D).
+6. Gate C: two browser contexts, recipient creates a link, payer (funded via a labelled local mint endpoint that is removed in Phase D when real deposits exist) pays, receiver offline during the send claims later; Playwright test.
+7. Commonware simplex multi-node ordering: scheduled after Gate E; recorded as a blocker until then.
+
 ### Next step
-Install Playwright in `packages/explorer` (`@playwright/test`, chromium), then write `packages/explorer/src/pages/bonsai-landing.ts`.
+Create `crates/peal-links-node` (config, sqlite stores, ledger API, status) and run it under `scripts/peal-links/stack.sh up`.

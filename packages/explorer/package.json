@@ -10,9 +10,12 @@
     "build": "tsc && node scripts/build-peal-js.mjs && node scripts/build-skill.mjs && vite build && node scripts/prerender-docs.mjs",
     "prerender": "node scripts/prerender-docs.mjs",
     "build:peal-js": "node scripts/build-peal-js.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "shots": "playwright test e2e/screenshots.spec.ts"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@tailwindcss/vite": "^4.1.11",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
@@ -27,9 +30,9 @@
     "motion": "^12.23.0",
     "peal-actions": "workspace:*",
     "peal-auctionkit": "workspace:*",
+    "peal-live": "workspace:*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "viem": "^2.21.0",
-    "peal-live": "workspace:*"
+    "viem": "^2.21.0"
   }
 }
