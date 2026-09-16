@@ -2,7 +2,7 @@
 
 Living log. Read this first every session. Spec: `SPEC.md`.
 
-## Current phase: D (funding and withdrawals)
+## Current phase: E (product integration)
 
 ### Smoke command
 ```
@@ -31,7 +31,7 @@ Expected: 7 passed, 0 failed (encoding 2, gate_a 3, parity 2), about 12 s includ
 | A | PASSED | 06703bf | evidence/gate-a-tests.log, evidence/phase-a-upstream-zkpari-tests.log |
 | B | PASSED | (see record) | evidence/phase-b/*.png |
 | C | PASSED | (see record) | evidence/phase-c/ |
-| D | OPEN | | |
+| D | PASSED | (see record) | evidence/phase-d/ |
 | E | OPEN | | |
 | F | OPEN | | |
 
@@ -142,5 +142,27 @@ Unblock requirement: Phase D watcher credits intents from finalized `Deposit` ev
 7. Tests: watcher unit tests (dedup, restart, reorg) with an RPC trait double in narrow unit tests only; SDK flow with real anvil deposits and withdrawals on both chains and cross-domain isolation; Foundry digest cross-check; Playwright flow extended with a real deposit and a withdrawal.
 Gate D evidence: token balances on anvil before and after, ledger minted/withdrawn totals reconciled against gateway reserves.
 
+### Gate D: funding and withdrawals  [PASSED]
+Commit: see the commit that adds this record (peal-links(phase-d): gate D)
+Commands:
+- `cd contracts && forge test` -> exit 0 (124 passed, 0 failed; 10 of them for Peal Links: `test/links/PealLinksGateway.t.sol` 9, `test/links/Digest.t.sol` 1)
+- `cargo test -p peal-links-node --release` -> exit 0 (6 passed: SIWE parse, EIP-191 recovery, deposit log decode, topic hashes, digest stability, fixture signer address)
+- `cargo test -p peal-bonsai --release` -> exit 0 (11 passed)
+- `cargo clippy -p peal-bonsai -p peal-links-node -p peal-links-wasm --all-targets -- -D warnings` -> exit 0
+- `scripts/peal-links/stack.sh reset` (two anvil chains, gateway + TestUSD on each, node with watcher and signer fixture) -> both namespaces `available: true` after the watcher verified chain id and code
+- `pnpm -C packages/links exec vitest run test/bridge.test.ts` -> exit 0 (1 passed, 52 s; evidence/phase-d/bridge-vitest.log)
+- `pnpm -C packages/explorer test:e2e e2e/links-flow.spec.ts` (real deposit path, no dev mint) -> exit 0 (1 passed, 38 s; evidence/phase-d/links-flow-playwright.log)
+Tests: forge 124/0/0; peal-links-node 6/0/0; peal-bonsai 11/0/0; peal-links vitest 2/0/0 (e2e + bridge); explorer Playwright 1/0/0
+Artifacts: evidence/phase-d/bridge-vitest.log, evidence/phase-d/links-flow-playwright.log, evidence/phase-c/04-payer-needs-funds.png and 05-payer-funded.png (now the real deposit path), evidence/phase-d/bench-ledger.md (ledger benchmark, see BENCHMARKS.md)
+What the gate proves: real TestUSD tokens enter `PealLinksGateway` on anvil chain A through `approve` + `deposit(token, amount, rho)` signed by the person's wallet; the node's watcher credits the registered intent exactly once after two confirmations with `deposit_id = 31337:<tx>:<logIndex>`; a second deposit for an already minted receipt is observed and never credited; the credited receipt is claimed with a receive proof, moves privately to a second account, and part of it is burned with a send to the withdraw identifier; the node checks the disclosed opening against the ledger leaf, consumes the position once, and the three-signer fixture (threshold 2) certifies an EIP-712 message whose digest is cross-checked against the contract; the certificate releases tokens to the recipient on chain A, a replay is refused by the contract, the same certificate is refused by chain B's gateway, and the watcher confirms the `Withdrawn` event; `minted - withdrawn` equals the sum of private balances and the gateway reserve covers it. In the browser, the checkout funds a first-time payer from the connected wallet (two wallet transactions) and continues to a real payment.
+Residual risks: committee-attested bridge with a single-process signer fixture (documented in decision 0005, THREAT_MODEL.md, MAINNET_READINESS.md); confirmation policy is a block count (Ethereum finality tags and L2 settlement assumptions are not modelled); the gateway owner can rotate signers; watcher unit tests with an RPC double (restart, rewind) are not yet written, the behaviours are exercised only through the live stack; the browser withdrawal step is added to the flow test and runs at the start of Phase E.
+
+### Phase E plan
+1. Browser flow: withdrawal from the dashboard (added), reload at every payment stage, wallet rejection, wrong network, expired request, concurrent payer on a one-time request, stale manifest, backup export and restore on a fresh context, incoming-versus-spendable semantics, QR and copy link, keyboard navigation, mobile layout; existing routes re-captured.
+2. Reality audit per SPEC section 4 prompt 4: grep for mocks, fixtures, demo flags; network and log capture for private material; existing routes; gate evidence matches commits.
+3. Remove the dev-mint fixture from the default configuration (keep the flag for the SDK's Phase C test only, or convert that test to the real deposit path).
+4. Explorer polish from inspected screenshots; `.env.example` entries; README section.
+5. Watcher unit tests with an RPC double (narrow unit tests only).
+
 ### Next step
-Write `crates/peal-links-node/src/evm.rs`, `watcher.rs`, `settlement.rs`; deploy contracts from `stack.sh`.
+Run the browser flow with the withdrawal step, then the reality audit.

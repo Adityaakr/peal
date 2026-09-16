@@ -149,11 +149,15 @@ test('receiver creates a link, payer pays with a real proof, receiver claims lat
   // A real deposit from the payer's wallet: approve, deposit with the
   // receipt commitment, credited by the watcher after confirmations.
   await alice.getByRole('button', { name: 'Use browser wallet' }).click();
-  await alice.getByRole('button', { name: 'Add funds' }).click();
   await alice.locator('#pay-fund-form input[name="amount"]').fill('20');
+  const mintedBefore = BigInt((await (await fetch(`${NODE}/links/v1/ledger/${status.namespaces[0].id}/accounting`)).json()).minted_total);
   await alice.getByRole('button', { name: 'Deposit from wallet' }).click();
-  await expect(alice.getByText(/deposit confirmed on chain/)).toBeVisible({ timeout: 120_000 });
+  // Approve and deposit are signed by the test wallet, the watcher credits
+  // the intent after two blocks, and the page claims it: the pay button
+  // appears once the balance covers the request.
   await expect(alice.getByRole('button', { name: /^Pay 12\.50/ })).toBeVisible({ timeout: 180_000 });
+  const mintedAfter = BigInt((await (await fetch(`${NODE}/links/v1/ledger/${status.namespaces[0].id}/accounting`)).json()).minted_total);
+  expect(mintedAfter - mintedBefore).toBe(20_000_000n);
   await shot(alice, '05-payer-funded');
   await alice.getByRole('button', { name: /^Pay 12\.50/ }).click();
   await expect(alice.locator('.pl-status', { hasText: 'proving the payment on this device' })).toBeVisible({ timeout: 10_000 });
@@ -185,6 +189,27 @@ test('receiver creates a link, payer pays with a real proof, receiver claims lat
 
   const req = await (await fetch(`${NODE}/links/v1/requests/${url.split('/').pop()}`)).json();
   expect(req.status).toBe('fulfilled');
+
+  // ---- Bob withdraws 5 tUSD to his wallet: burn proof, committee
+  // certificate, release submitted from his wallet, confirmed by the watcher.
+  const ns = status.namespaces[0];
+  const recipient = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+  const balanceOf = async (who: string): Promise<bigint> => {
+    const data = `0x70a08231000000000000000000000000${who.slice(2).toLowerCase()}`;
+    const res = await fetch(RPC_BY_CHAIN[chainId]!, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: ns.token_address, data }, 'latest'] }) });
+    return BigInt(((await res.json()) as { result: string }).result);
+  };
+  const before = await balanceOf(recipient);
+  await bob2.getByRole('button', { name: 'Use browser wallet' }).click();
+  await bob2.getByRole('button', { name: 'Withdraw' }).click();
+  await bob2.locator('#pl-withdraw-form input[name="amount"]').fill('5');
+  await bob2.locator('#pl-withdraw-form input[name="recipient"]').fill(recipient);
+  await bob2.locator('#pl-withdraw-form').getByRole('button', { name: 'Withdraw' }).click();
+  await expect(bob2.getByText(/Withdrawal released on/)).toBeVisible({ timeout: 180_000 });
+  await shot(bob2, '10-receiver-withdrawn');
+  expect((await balanceOf(recipient)) - before).toBe(5_000_000n);
+  await expect(bob2.locator('.pl-balance-amount').first()).toContainText('7.50');
+  await expect(bob2.getByText('confirmed on chain')).toBeVisible({ timeout: 60_000 });
   expect(errors).toEqual([]);
   await bobCtx.close();
   await aliceCtx.close();
