@@ -12,6 +12,7 @@ import {
   type Address,
   type EIP1193Provider,
   type Hex,
+  type PublicClient,
 } from 'viem';
 import type { NamespaceInfo, WithdrawalCertificate } from './client.js';
 

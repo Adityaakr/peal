@@ -3987,3 +3987,13 @@ a.pla-ministat:hover {
     padding-top: 0;
   }
 }
+
+/* Already open before a repaint: no entrance animation the second time. */
+.pla-steady .pla-scrim,
+.pla-menu.pla-steady {
+  animation: none;
+}
+
+.pla-steady .pla-drawer {
+  transition: none;
+}

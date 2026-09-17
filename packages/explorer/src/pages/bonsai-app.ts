@@ -1048,7 +1048,13 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     const activeName = active?.name;
     const activeValue = active?.value;
     const y = window.scrollY;
+    // A drawer or menu that is already open must not slide in again on a
+    // routine repaint (the sync runs every few seconds).
+    const drawerOpen = !!root.querySelector('.pla-drawer.is-open');
+    const menuOpen = !!root.querySelector('.pla-menu');
     root.innerHTML = html();
+    if (drawerOpen) root.querySelector('.pla-shell')?.classList.add('pla-steady');
+    if (menuOpen) root.querySelector('.pla-menu')?.classList.add('pla-steady');
     if (activeName) {
       const again = root.querySelector<HTMLInputElement>(`input[name="${activeName}"]`);
       if (again && activeValue !== undefined && again.type !== 'file' && again.type !== 'radio') {
@@ -1058,7 +1064,11 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       }
     }
     window.scrollTo({ top: y });
-    if (page.drawer) requestAnimationFrame(() => root.querySelector('.pla-drawer')?.classList.add('is-open'));
+    if (page.drawer) {
+      const d = root.querySelector('.pla-drawer');
+      if (drawerOpen) d?.classList.add('is-open');
+      else requestAnimationFrame(() => d?.classList.add('is-open'));
+    }
   };
 
   // Where the app has been, so the back control can go back through the
@@ -1122,7 +1132,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     for (const b of burns) {
       try {
         const w = await client.withdrawal(l.namespace!.id, b.position!);
-        withdrawals.push({ position: b.position!, amount: w.amount, recipient: w.recipient, status: w.status, tx_hash: w.tx_hash, certificate: { message: w.message, signatures: w.signatures } });
+        withdrawals.push({ position: b.position!, amount: w.amount, recipient: w.recipient, status: w.status, tx_hash: w.tx_hash, certificate: { message: w.message, signatures: w.signatures, signers: w.signers, threshold: w.threshold } });
       } catch {
         withdrawals.push({ position: b.position!, amount: b.amount, recipient: b.reference!.slice('withdraw:'.length), status: 'not yet settled', tx_hash: null, certificate: null });
       }
