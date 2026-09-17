@@ -413,3 +413,143 @@ const { round_id, unlock_at, proof_url } = await peal.sealUntil(
 
 Use `peal.encrypt(payload, { padTo })` if you want the ciphertext back and will
 send it through your own transport.
+
+
+## Getting paid privately: Peal Private Links
+
+Read `reference/links.md` first. This is the shop shape: the business owns one
+receiving account in a Node process, customers pay from any wallet on the
+hosted checkout, and the server watches its private balance. Nothing about a
+payment is on the chain; the shop withdraws to its own wallet when it wants.
+
+### 1. One account for the shop, in the server
+
+```js
+// lib/links.js: one module, one account, created on first use
+import { LinksAccount, NodeClient, loadParams, localSigner, siweMessage,
+         deterministicSignature, recoveryMessage, deriveBackupKey, newRecoveryCode } from 'peal-links';
+import { createLocalProver } from 'peal-links/local';
+import { privateKeyToAccount } from 'viem/accounts';
+import { dbStore, dbDeviceKeys } from './links-store.js';   // your WalletStore and DeviceKeys over your database
+
+let ready;
+export function shopAccount() {
+  return (ready ??= (async () => {
+    const client = new NodeClient({ baseUrl: process.env.LINKS_URL ?? 'https://peal.network' });
+    const status = await client.status();
+    const ns = status.namespaces.find((n) => n.label === process.env.LINKS_NAMESPACE ?? 'sepolia/USDC');
+    const prover = await createLocalProver();
+    const store = dbStore('shop');
+    await loadParams(client, prover, store);
+
+    const signer = localSigner(privateKeyToAccount(process.env.SHOP_WALLET_KEY), ns.chain_id);
+    const { nonce } = await client.nonce();
+    const msg = siweMessage({ domain: 'peal.network', address: signer.address, uri: 'https://peal.network', chainId: ns.chain_id, nonce });
+    await client.session(msg, await signer.signMessage(msg));
+
+    const opts = { prover, client, namespace: ns.id, store, deviceKeys: dbDeviceKeys('shop') };
+    if (await LinksAccount.exists(store, ns.id)) return { account: await LinksAccount.unlock(opts), ns, client };
+    const sig = await deterministicSignature(signer, recoveryMessage(signer.address, ns.label, ns.id));
+    const recovery = sig
+      ? { mechanism: 'wallet-signature', backupKey: await deriveBackupKey(sig, signer.address, ns.id) }
+      : { mechanism: 'recovery-code', code: newRecoveryCode() };   // print it once, store it in your secrets manager
+    return { account: await LinksAccount.setup(opts, status.circuit_id, signer, process.env.SHOP_NAME ?? 'Shop', recovery), ns, client };
+  })());
+}
+```
+
+The session lasts twelve hours. Wrap calls that need one (`createRequest`,
+`publishProfile`, `backupNow`) so that a `LinksApiError` with status 401
+re-runs the sign-in and retries once.
+
+`WalletStore` is three async string methods (`get`, `set`, `delete`); back it
+with a table keyed by name. Every value is ciphertext. `DeviceKeys` is
+`get`/`set` of a `CryptoKey`; export it with `crypto.subtle.exportKey('raw')`
+into the same table, or the sealed wallet cannot be opened after a restart and
+you are recovering from the node backup every boot.
+
+### 2. A route handler that creates the request when an order is placed
+
+```js
+// app/api/orders/[id]/pay/route.js
+import { shopAccount } from '@/lib/links';
+import { db } from '@/lib/db';
+
+export async function POST(_req, { params }) {
+  const order = await db.order.findUnique({ where: { id: params.id } });
+  const { account, ns } = await shopAccount();
+  const amount = toBaseUnits(order.totalDecimal, ns.decimals);   // '12.50' -> '12500000'; a string, never a float
+  const request = await account.createRequest({
+    amount,
+    title: `Order ${order.number}`,
+    reference: order.id,                       // up to 64 characters; how you match the receipt later
+    expiresAt: Math.floor(Date.now() / 1000) + 24 * 3600,
+  });
+  const requestId = request.manifest.request_id;
+  await db.order.update({ where: { id: order.id }, data: { pealRequestId: requestId } });
+  return Response.json({ payUrl: `https://peal.network/pay/${requestId}` });
+}
+
+function toBaseUnits(decimal, decimals) {
+  const [whole, frac = ''] = String(decimal).split('.');
+  return (BigInt(whole) * 10n ** BigInt(decimals) + BigInt((frac + '0'.repeat(decimals)).slice(0, decimals))).toString();
+}
+```
+
+The customer is sent to `payUrl`. The hosted page verifies the request,
+connects their wallet, funds if needed, and pays.
+
+### 3. Watch for the payment
+
+A receipt reaches the shop's inbox the moment the payer's proof lands. Poll
+from a job, not from a request handler: `sync` may prove nothing but does
+network and disk work.
+
+```js
+// jobs/links-sync.js: every 30 seconds
+import { shopAccount } from '../lib/links.js';
+import { db } from '../lib/db.js';
+
+export async function syncLinks() {
+  const { account, client } = await shopAccount();
+  const { discovered } = await account.sync();          // pulls and verifies new receipts
+  if (discovered > 0) await account.claimAll();          // one proof each; the balance grows
+  const view = await account.view();
+  for (const r of view.receipts.filter((x) => x.status === 'claimed' && x.reference)) {
+    const order = await db.order.findFirst({ where: { id: r.reference, paidAt: null } });
+    if (!order) continue;
+    if (r.amount !== order.expectedBaseUnits) { await flag(order, r); continue; }   // integer strings, compare exactly
+    await db.order.update({ where: { id: order.id }, data: { paidAt: new Date(), pealPosition: r.position } });
+    await account.acknowledge(order.pealRequestId, r.position).catch(() => {});      // marks the link fulfilled
+  }
+  return view.balance;
+}
+```
+
+Match on `reference`, not on the amount: two orders can have the same total.
+A receipt with a reference you do not know is money someone sent by hand;
+keep it and show it in an admin view rather than dropping it.
+
+### 4. Withdraw to the shop's wallet, when it wants
+
+```js
+const { account, ns } = await shopAccount();
+const { position, certificate } = await account.withdraw('50000000', shopWalletAddress);   // 50.00 USDC
+// then, from any wallet with gas, the public leg:
+//   gateway.withdraw(certificate.message, certificate.signatures)
+// withdrawOnChain(ns, provider, from, certificate) does it with an EIP-1193 provider;
+// from Node, call the gateway with viem and GATEWAY_ABI from 'peal-links'.
+```
+
+The certificate is committee-attested (two of three signers on the hosted
+node), which is the trust model to state to the user. A withdrawal is public
+on the chain: the recipient, the amount and the gateway.
+
+### What you do not build
+
+The checkout. `https://peal.network/pay/<id>` already verifies the manifest
+and the receiver's profile, handles a wallet with no account yet, funds from
+the gateway, asks for the approval, proves, and delivers. Embedding the SDK in
+the shop's own page means asking the customer's wallet to sign in to the
+shop's domain, which the hosted node does not accept; that path needs the
+shop to run a node. Say so before building it.

@@ -60,3 +60,52 @@ Reading:
 - 50 requests a second per IP, bursting to 400
 - batches are 64 slots; a smaller round is padded with decoys, so the slot count
   is never the number of participants
+
+
+## Peal Private Links (`/links/v1`)
+
+A different node with its own codes. Same `application/problem+json` shape
+with `type`, `title`, `status`, `code`, `detail`. Match on `code`.
+
+| code | status | what happened |
+| --- | --- | --- |
+| `malformed` | 400 | a hex field is the wrong length, a field element is not canonical, a proof is not 128 bytes |
+| `wrong_namespace`, `wrong_circuit`, `wrong_chain` | 400 | the body names a different namespace, circuit id or chain than the path or the node |
+| `unknown_namespace` | 400 in a body, 404 on a path | no such namespace on this node |
+| `bad_siwe`, `bad_manifest`, `bad_profile`, `bad_opening` | 400 | the sign-in message, request manifest, directory profile or withdrawal opening did not validate; a bad manifest signature is `bad_manifest`, not 401 |
+| `unregistered_receiver`, `unregistered_account` | 400 | the account in the manifest or profile is not on the ledger yet |
+| `too_large` | 400 | an inbox envelope over 8 KiB |
+| `unauthorized` | 401 | no session, an expired one, a bad account signature, or an inbox read header older than two minutes |
+| `unknown_account`, `unknown_request`, `unknown_intent`, `unknown_withdrawal`, `unknown_param`, `not_registered`, `no_key`, `no_backup` | 404 | the thing does not exist |
+| `single_node` | 404 | `/consensus` on a node with no validators |
+| `account_exists` | 409 | registering an account a second time |
+| `stale_commitment` | 409 | the proof was made against a commitment the ledger has since moved; refresh the wallet and prove again |
+| `root_not_recent` | 409 | the receipt path is older than the last 1024 roots; fetch a fresh path |
+| `request_exists` | 409 | a different manifest under an id already used |
+| `reserved`, `not_payable` | 409 | another payer holds the request; or it is expired, fulfilled or archived |
+| `stale_binding`, `profile_rejected`, `backup_rejected` | 409 | the sequence or version did not increase |
+| `already_attested`, `already_consumed`, `already_minted`, `duplicate_deposit` | 409 | a second, different claim for the same burn; a withdrawal id already used on the chain; a deposit credited twice |
+| `invalid_proof` | 422 | the zero-knowledge proof did not verify: wrong keys for this circuit, or a tampered envelope |
+| `rate_limited` | 429 | more than 60 directory lookups in a minute on one session |
+| `log_full` | 503 | the receipt log is at capacity |
+| `no_gateway`, `no_committee`, `no_consensus`, `not_enough_signers`, `chain_unreachable` | 503 | settlement cannot certify a withdrawal right now; retry |
+
+Through the SDK, every 502, 503 and 504 and every non-JSON answer arrives as
+`LinksApiError` with status 0 and code `unreachable`; the 503 codes above are
+therefore only visible over raw HTTP. 4xx and 500 keep their status and code.
+
+### Limits
+
+| what | limit |
+| --- | --- |
+| any request body | 256 KiB |
+| an inbox envelope | 8 KiB |
+| a backup blob | 1 MiB; the last 8 versions are kept |
+| a sign-in message | 4096 characters; nonce valid 10 minutes; session 12 hours |
+| a request | title 1 to 140 characters, display name 1 to 60, reference up to 64; `created_at` within the last hour |
+| a request reservation | 10 minutes, renewable by the same intent id |
+| a payment intent | 10 minutes |
+| directory lookups | 60 per session per minute |
+| inbox page, request list | 200 items, 500 requests |
+| proof freshness | the root must be among the last 1024 |
+| deposit credit | after the namespace's confirmations, 2 on Sepolia |

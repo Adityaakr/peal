@@ -88,7 +88,7 @@ localSigner(privateKeyToAccount(key), chainId)  // viem, for Node and tests</cod
 const message = siweMessage({ domain: 'peal.network', address: signer.address,
                               uri: '${esc(shown)}', chainId: ns.chain_id, nonce });
 await client.session(message, await signer.signMessage(message));   // stores the token on the client
-const { address, expires_at } = await client.me();</code></pre>
+const { address } = await client.me();                                  // who the token is for</code></pre>
 
     <h2 id="account">The account</h2>
     <p><code>LinksAccount</code> is one private account on one namespace. It is created once,
