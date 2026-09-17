@@ -9,7 +9,7 @@ description = "Solana program anchoring Peal reveal roots, with onchain inclusio
 # coordinator and nodes; this builds an SBF object for a different target with a
 # dependency tree that shares nothing with them. Keeping it out of the root
 # workspace means `cargo build` at the repo root is unchanged by this directory
-# existing, which is the same arrangement vara/reveal-engine uses.
+# existing.
 [workspace]
 
 [lib]
