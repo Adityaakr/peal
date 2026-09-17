@@ -1,15 +1,21 @@
 # Peal Links node image. Built from the repo root:
 #   docker build -f docker/Dockerfile.links -t peal-links-node .
 #
-# Runtime expectations (see docs/peal-links/OPERATIONS.md):
-#   /data      sqlite stores (mount a volume)
-#   /params    proving material; generated on first start if absent, which
-#              is a LOCAL DEVELOPMENT SETUP (no ceremony). A production
-#              deployment mounts ceremony output here read-only.
-#   PEAL_LINKS_CONFIG  path to the node config (mount it), default /config/peal-links.json
+# Runtime expectations (see docs/peal-links/OPERATIONS.md, "Hosting"):
+#   /var/lib/peal-links   one volume: data/ (sqlite stores) and params/ (proving
+#                         material, generated on first start if absent, which
+#                         is a LOCAL DEVELOPMENT SETUP with no ceremony; a
+#                         production deployment puts ceremony output there).
+#   PEAL_LINKS_SIGNER_KEYS  the settlement signer keys, as a JSON array, from
+#                         the platform's secret store (docker/start-links.sh
+#                         writes them to a root-only file and drops the env).
+#   PEAL_LINKS_CONFIG     node profile; the hosted Sepolia profile is baked in
+#                         and is the default.
+#   PEAL_LINKS_AUTH_DOMAINS  extra sign-in domains, comma separated.
+#   PORT                  what the platform routes to (default 8790).
 #
 # Not exercised on the build machine (Docker unavailable there); the tested
-# path is scripts/peal-links/stack.sh. Recorded in BUILD_STATUS.md.
+# path is scripts/peal-links/stack.sh and testnet.sh. Recorded in BUILD_STATUS.md.
 
 FROM rust:1.97-bookworm AS build
 WORKDIR /src
@@ -22,9 +28,12 @@ RUN cargo build --release -p peal-links-node
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
 COPY --from=build /src/target/release/peal-links-node /usr/local/bin/peal-links-node
-ENV PEAL_LINKS_CONFIG=/config/peal-links.json
-ENV PEAL_LINKS_LISTEN=0.0.0.0:8790
-VOLUME ["/data", "/params"]
+COPY config/peal-links.railway-sepolia.json /etc/peal-links/railway-sepolia.json
+COPY docker/start-links.sh /usr/local/bin/start-links
+ENV PEAL_LINKS_CONFIG=/etc/peal-links/railway-sepolia.json
+ENV PEAL_LINKS_DATA_DIR=/var/lib/peal-links/data
+ENV PEAL_LINKS_PARAMS_DIR=/var/lib/peal-links/params
+VOLUME ["/var/lib/peal-links"]
 EXPOSE 8790
-HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD curl -fsS http://127.0.0.1:8790/healthz || exit 1
-ENTRYPOINT ["peal-links-node"]
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD curl -fsS "http://127.0.0.1:${PORT:-8790}/healthz" || exit 1
+ENTRYPOINT ["start-links"]

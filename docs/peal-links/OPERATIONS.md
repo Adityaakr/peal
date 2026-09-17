@@ -79,3 +79,13 @@ The status document carries each namespace's `rpc_url` so a client can read the 
 ## Logs and secret redaction
 
 The node logs operation counts, batch sizes and timings, never envelopes, proofs, openings or session tokens. Request bodies are not logged. arkworks tracing is disabled at the filter (it emits a span per constraint).
+
+## Hosting the node beside the deployed explorer (Railway)
+
+The deployed explorer (`packages/explorer/Dockerfile`, service `bte-explorer`) proxies `/links/*` to `LINKS_UPSTREAM` (Caddyfile); without it the pages say the services are not running. The node runs as a second Railway service from the same repository:
+
+- **Service file** `railway.links.json` (`docker/Dockerfile.links`, health check `/healthz`). Point a new service at the repository, set its config file path to `railway.links.json`, and give it the same branch the explorer builds from.
+- **Volume** mounted at `/var/lib/peal-links` (one volume per service on Railway; the stores go under `data/`, the proving material under `params/`). The material is generated on first start when absent, which takes a minute or two and is a local development setup with no ceremony; it stays on the volume, so the circuit id is stable across deploys.
+- **Variables** on the node service: `PEAL_LINKS_SIGNER_KEYS` = the JSON array of the three settlement signer keys the Sepolia gateway was deployed with (the contents of `.dev-state/peal-links/sepolia/signers.json` on the deploying machine; the gateway checks certificates against exactly these signers, so no other keys work), and `PEAL_LINKS_AUTH_DOMAINS` = the explorer's Railway hostname (e.g. `bte-explorer-production.up.railway.app`). `peal.network` and `www.peal.network` are already in the baked profile `config/peal-links.railway-sepolia.json`. Nothing else: the profile carries the Sepolia gateway, both tokens and the start block; `PORT` comes from the platform; dev-mint stays off.
+- **Variable on the explorer service**: `LINKS_UPSTREAM` = `<node service name>.railway.internal:8790` (private networking, IPv6; the node listens on `[::]`).
+- The ledger on the hosted node starts empty. Deposits made to the gateway from the laptop's node are known only to that node's ledger; on the hosted one they show in the log as observed but not credited and stay in the gateway (testnet funds).
