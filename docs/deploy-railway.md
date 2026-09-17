@@ -12,9 +12,11 @@ nodes, 1 web (explorer + edge).
 
 ## config-as-code (the repo now carries the build settings)
 
-- `railway.json` (repo root): the DEFAULT config, set up for the **web**
-  service (Dockerfile.web + /v0/healthz healthcheck). A service linked to this
-  repo with no custom config path picks it up on the next deploy.
+- `railway/devnet.json`: the devnet-in-a-box config (Dockerfile.railway). It
+  used to live at the repo root as `railway.json`, where Railway applied it to
+  EVERY service built from this repo that had no config path of its own, which
+  silently turned new services into a second devnet. Set it by path on the
+  devnet service (Settings -> Config-as-code). Nothing is auto-detected now.
 - `railway/coordinator.json`: for the coordinator service. In its
   Settings -> Config-as-code, set the path to `railway/coordinator.json`.
 - `railway/node.json`: for each node service, path `railway/node.json`.
@@ -75,7 +77,7 @@ For N in 1..5, one service each:
 
 ## 3. web service (explorer + edge)
 
-- Uses the root `railway.json` automatically (no config path needed).
+- Config path `railway/devnet.json` (it is no longer picked up automatically).
 - Variables:
   - `BTE_DOMAIN=:8080` (Caddy serves plain HTTP on 8080; Railway's edge does TLS)
   - `BTE_UPSTREAM=<coordinator service name>.railway.internal:8080`
