@@ -205,6 +205,23 @@ impl NodeConfig {
         if let Ok(l) = std::env::var("PEAL_LINKS_LISTEN") {
             cfg.listen = l;
         }
+        // A hosted node keeps its stores on one mounted volume and learns
+        // the site's domains from the platform, so a profile checked into
+        // the repository carries no host-specific paths or names.
+        if let Ok(d) = std::env::var("PEAL_LINKS_DATA_DIR") {
+            cfg.data_dir = PathBuf::from(d);
+        }
+        if let Ok(d) = std::env::var("PEAL_LINKS_PARAMS_DIR") {
+            cfg.params_dir = PathBuf::from(d);
+        }
+        if let Ok(extra) = std::env::var("PEAL_LINKS_AUTH_DOMAINS") {
+            for d in extra.split(',') {
+                let d = d.trim().to_lowercase();
+                if !d.is_empty() && !cfg.auth_domains.contains(&d) {
+                    cfg.auth_domains.push(d);
+                }
+            }
+        }
         if std::env::var("PEAL_LINKS_DEV_MINT")
             .map(|v| v == "1")
             .unwrap_or(false)

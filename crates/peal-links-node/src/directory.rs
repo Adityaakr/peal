@@ -118,7 +118,8 @@ impl Profile {
         ] {
             hex32(v).map_err(|e| format!("{name}: {e}"))?;
         }
-        if self.display_name.trim().is_empty() || self.display_name.chars().count() > MAX_DISPLAY_NAME
+        if self.display_name.trim().is_empty()
+            || self.display_name.chars().count() > MAX_DISPLAY_NAME
         {
             return Err("display name must be 1 to 60 characters".into());
         }
@@ -128,7 +129,8 @@ impl Profile {
         if self.expiry <= self.issued_at {
             return Err("expiry must be after issued_at".into());
         }
-        let sig = hex::decode(self.signature.trim_start_matches("0x")).map_err(|e| e.to_string())?;
+        let sig =
+            hex::decode(self.signature.trim_start_matches("0x")).map_err(|e| e.to_string())?;
         if sig.len() != 65 {
             return Err("signature must be 65 bytes".into());
         }

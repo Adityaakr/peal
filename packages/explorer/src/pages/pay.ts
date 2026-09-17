@@ -16,7 +16,7 @@ import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
 import { esc } from '../util';
 import { describeError, formatUnits, fmtTime, shortHex } from '../links/format';
-import { acknowledgeRecoveryCode, activate, client, disconnect, ensureWalletChain, links, loadStatus, onLinksChange, recoverWithCode, resumeSignIn, selectNamespace } from '../links/session';
+import { acknowledgeRecoveryCode, activate, client, disconnect, ensureWalletChain, links, loadStatus, onLinksChange, recoverWithCode, refreshStoredAccount, resumeSignIn, selectNamespace } from '../links/session';
 import { connectorLine } from '../links/connectors';
 import { avatar, busyBanner, cap } from '../links/ui';
 import '../links.css';
@@ -547,6 +547,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     await loadStatus();
     await resumeSignIn();
     await resumeInjected();
+    const stored = await refreshStoredAccount();
     try {
       s.request = await client.getRequest(requestId, s.intentId);
     } catch (e) {
@@ -573,7 +574,7 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
     // (an unlock, no prompt), so a reload mid-checkout resumes where it was.
     const l = links();
     const evm = session();
-    if (!l.account && l.hasStoredAccount && l.signedIn && evm.address && l.signedIn.toLowerCase() === evm.address.toLowerCase()) {
+    if (!l.account && stored && l.signedIn && evm.address && l.signedIn.toLowerCase() === evm.address.toLowerCase()) {
       await activate().catch(() => {});
     }
     await refreshBalance().catch(() => {});

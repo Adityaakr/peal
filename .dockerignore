@@ -13,3 +13,7 @@ packages/explorer/dist
 crates/bte-wasm/pkg-seal
 crates/bte-wasm/pkg-verify
 packages/sdk/src/generated
+.dev-state
+.dev-params
+.env
+.env.*

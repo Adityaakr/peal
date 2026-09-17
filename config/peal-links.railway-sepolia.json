@@ -1,0 +1,45 @@
+{
+  "listen": "[::]:8790",
+  "data_dir": "/var/lib/peal-links/data",
+  "params_dir": "/var/lib/peal-links/params",
+  "auth_domains": [
+    "peal.network",
+    "www.peal.network"
+  ],
+  "root_window": 1024,
+  "watch_interval_ms": 6000,
+  "signer_keys_file": "/run/peal-links/signers.json",
+  "signer_threshold": 2,
+  "namespaces": [
+    {
+      "label": "sepolia/USDC",
+      "chain_id": 11155111,
+      "chain_name": "Ethereum Sepolia",
+      "rpc_url": "https://ethereum-sepolia-rpc.publicnode.com",
+      "token_address": "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238",
+      "token_symbol": "USDC",
+      "decimals": 6,
+      "gateway": "0xc141bc6aaed24258276dc203050ad148ec95c1fc",
+      "confirmations": 2,
+      "environment": "testnet",
+      "enabled": true,
+      "explorer_url": "https://sepolia.etherscan.io",
+      "start_block": 11715471
+    },
+    {
+      "label": "sepolia/tUSD",
+      "chain_id": 11155111,
+      "chain_name": "Ethereum Sepolia",
+      "rpc_url": "https://ethereum-sepolia-rpc.publicnode.com",
+      "token_address": "0x46a7b253abdcb7302e79ffed9eb660d3b7a4967d",
+      "token_symbol": "tUSD",
+      "decimals": 6,
+      "gateway": "0xc141bc6aaed24258276dc203050ad148ec95c1fc",
+      "confirmations": 2,
+      "environment": "testnet",
+      "enabled": true,
+      "explorer_url": "https://sepolia.etherscan.io",
+      "start_block": 11715471
+    }
+  ]
+}

@@ -36,6 +36,7 @@ import {
   onLinksChange,
   payAddress,
   recoverWithCode,
+  refreshStoredAccount,
   rename,
   restoreFile,
   resumeSignIn,
@@ -1165,6 +1166,10 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     }
   };
 
+  // A claim that fails is shown, and not retried in the background until a
+  // minute has passed (or the person presses Claim now), so the error is
+  // readable instead of being replaced by "claiming…" every few seconds.
+  let claimPausedUntil = 0;
   const claimAll = async (account: LinksAccount) => {
     if (claiming) return;
     claiming = true;
@@ -1177,6 +1182,12 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
           const ref = v.receipts[i]!.reference;
           if (ref && /^[a-z2-7]{24}$/.test(ref)) await account.acknowledge(ref, v.receipts[i]!.position).catch(() => {});
         });
+        if (page.error) {
+          claimPausedUntil = Date.now() + 60_000;
+          page.error = `Claiming an incoming payment failed: ${page.error} It will be tried again in a minute, or press Claim now on the payment.`;
+          paint();
+          break;
+        }
         v = await account.view();
       }
     } finally {
@@ -1188,10 +1199,11 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     const l = links();
     if (!l.account || stale) return;
     try {
-      await l.account.sync();
+      const r = await l.account.sync();
+      if (r.stale) page.notice = 'This tab had fallen behind the ledger (another tab or device acted for this account). It has been brought up to date from your backup.';
       await refresh();
       paint();
-      if (l.autoClaim) await claimAll(l.account);
+      if (l.autoClaim && Date.now() >= claimPausedUntil) await claimAll(l.account);
     } catch {
       /* next tick */
     }
@@ -1361,6 +1373,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
       });
     } else if (btn.dataset.claim !== undefined) {
       const idx = Number(btn.dataset.claim);
+      claimPausedUntil = 0;
       page.drawer = null;
       void run(`claiming: proving on this device (about 7 s)`, async () => {
         const v = await l.account!.view();
@@ -1531,6 +1544,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     await loadStatus();
     await resumeSignIn();
     await resumeInjected();
+    const stored = await refreshStoredAccount();
     await refresh();
     await refreshWalletBalance();
     paint();
@@ -1538,7 +1552,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     // device unlocks by itself: no prompt of any kind.
     const l = links();
     const evm = session();
-    if (!l.account && l.hasStoredAccount && l.signedIn && evm.address && l.signedIn.toLowerCase() === evm.address.toLowerCase()) void doActivate();
+    if (!l.account && stored && l.signedIn && evm.address && l.signedIn.toLowerCase() === evm.address.toLowerCase()) void doActivate();
     syncTimer = window.setInterval(() => void syncOnce(), 5000);
   })();
 
