@@ -1,0 +1,38 @@
+{
+  "listen": "127.0.0.1:8796",
+  "data_dir": ".dev-state/peal-links/tempo/data",
+  "params_dir": ".dev-params",
+  "auth_domains": ["localhost:5175", "localhost", "127.0.0.1:5175", "localhost:5173"],
+  "root_window": 1024,
+  "watch_interval_ms": 3000,
+  "namespaces": [
+    {
+      "label": "tempo-moderato/tUSD",
+      "chain_id": 42431,
+      "chain_name": "Tempo Moderato",
+      "rpc_url": "https://rpc.moderato.tempo.xyz",
+      "token_address": "",
+      "token_symbol": "tUSD",
+      "decimals": 6,
+      "gateway": "",
+      "confirmations": 10,
+      "environment": "testnet",
+      "enabled": false,
+      "explorer_url": "https://explore.testnet.tempo.xyz"
+    },
+    {
+      "label": "tempo-moderato/PathUSD",
+      "chain_id": 42431,
+      "chain_name": "Tempo Moderato",
+      "rpc_url": "https://rpc.moderato.tempo.xyz",
+      "token_address": "0x20c0000000000000000000000000000000000000",
+      "token_symbol": "PathUSD",
+      "decimals": 6,
+      "gateway": "",
+      "confirmations": 10,
+      "environment": "testnet",
+      "enabled": false,
+      "explorer_url": "https://explore.testnet.tempo.xyz"
+    }
+  ]
+}

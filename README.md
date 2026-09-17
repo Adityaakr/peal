@@ -115,6 +115,8 @@ everything between them is inside commitments and 128-byte proofs.
 
 Validator mode: `PEAL_LINKS_VALIDATORS=3 scripts/peal-links/stack.sh reset` runs the ledger as three local Commonware simplex validators (`docs/peal-links/decisions/0010-simplex-consensus-over-the-ledger.md`); `scripts/peal-links/stack.sh consensus` shows that they agree.
 
+One wallet, private by default (`docs/peal-links/SPEC-ADDENDUM-one-wallet.md`): a person connects their existing EVM wallet, signs one account authorization, and pays or receives privately; the Bonsai account, keys, proofs and receipts stay behind the interface. A signed receiving profile in the node's directory lets others pay a plain `0x` address; recovery uses a deterministic wallet signature or a recovery code (decisions 0011 to 0013).
+
 ## The encrypted mempool
 
 The flagship demo. It is the same swap sent into two mempools at once, live on

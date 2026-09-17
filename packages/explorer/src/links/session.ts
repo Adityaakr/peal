@@ -19,6 +19,7 @@ import {
   createRemoteProver,
   deriveBackupKey,
   deterministicSignature,
+  gasSymbol,
   indexedDbDeviceKeys,
   indexedDbStore,
   isContractAddress,
@@ -42,9 +43,10 @@ import {
   type RecoveryPlan,
   type WalletSigner,
   type WalletStore,
+  walletScopedStore,
 } from 'peal-links';
 import type { EIP1193Provider } from 'viem';
-import { session as evmSession, type Eip1193Like } from '../auth';
+import { onAuthChange as onEvmChange, session as evmSession, type Eip1193Like } from '../auth';
 import { shortHex } from './format';
 
 /** Where the person is in activating their private account. */
@@ -116,6 +118,32 @@ function publish(next: Partial<LinksSession>): void {
 
 export const client = new NodeClient({ baseUrl: (import.meta.env.VITE_LINKS_URL as string | undefined) ?? '' });
 export const store: WalletStore = indexedDbStore('peal-links');
+
+/** The connected wallet's own slice of the store. Each wallet used from
+ * this browser keeps its own private account; proving keys and other
+ * wallet-independent material stay on the shared `store`. */
+function accountStore(): WalletStore | null {
+  const evm = evmSession();
+  return evm.address ? walletScopedStore(store, evm.address) : null;
+}
+
+async function storedAccountFor(namespace: NamespaceInfo | null): Promise<boolean> {
+  const scoped = accountStore();
+  return namespace && scoped ? LinksAccount.exists(scoped, namespace.id) : false;
+}
+
+// The wallet decides which slice of the store is in play: when the
+// connected address changes (connect, disconnect, or the wallet switching
+// accounts), lock whatever was open and re-read whether the new wallet has
+// an account on this device.
+let lastAddress: string | null = null;
+onEvmChange(() => {
+  const address = evmSession().address?.toLowerCase() ?? null;
+  if (address === lastAddress) return;
+  lastAddress = address;
+  if (state.account) publish({ account: null, setup: 'idle', setupDetail: null });
+  void storedAccountFor(state.namespace).then((hasStoredAccount) => publish({ hasStoredAccount }));
+});
 export const deviceKeys: DeviceKeys = indexedDbDeviceKeys('peal-links-device');
 
 let prover: AsyncProver | null = null;
@@ -134,7 +162,7 @@ export async function loadStatus(): Promise<LinksStatus | null> {
   try {
     const status = await client.status();
     const namespace = state.namespace ?? status.namespaces[0] ?? null;
-    const hasStoredAccount = namespace ? await LinksAccount.exists(store, namespace.id) : false;
+    const hasStoredAccount = await storedAccountFor(namespace);
     publish({ status, statusError: null, namespace, hasStoredAccount });
     return status;
   } catch (e) {
@@ -144,7 +172,7 @@ export async function loadStatus(): Promise<LinksStatus | null> {
 }
 
 export async function selectNamespace(ns: NamespaceInfo): Promise<void> {
-  const hasStoredAccount = await LinksAccount.exists(store, ns.id);
+  const hasStoredAccount = await storedAccountFor(ns);
   publish({ namespace: ns, hasStoredAccount, account: null, setup: 'idle', setupDetail: null, recoveryProfile: null });
 }
 
@@ -165,14 +193,56 @@ export function ensureParams(): Promise<void> {
 
 function opts(ns: NamespaceInfo) {
   const evm = evmSession();
+  const scoped = accountStore();
+  if (!scoped) throw new Error('connect a wallet first');
   return {
     prover: getProver(),
     client,
     namespace: ns.id,
-    store,
+    store: scoped,
     deviceKeys,
     publicClient: evm.provider ? publicClientFor(ns, evm.provider as unknown as EIP1193Provider) : undefined,
   };
+}
+
+/** Put the connected wallet on the namespace's chain before anything is
+ * signed or sent: switch, and add the chain to the wallet first when it
+ * does not know it (Tempo, local anvil). Reads the wallet's current chain
+ * from the provider rather than trusting what was recorded at connect. */
+export async function ensureWalletChain(ns: NamespaceInfo): Promise<void> {
+  const evm = evmSession();
+  if (!evm.provider) throw new Error('connect a wallet first');
+  const current = Number.parseInt(String(await evm.provider.request({ method: 'eth_chainId' })), 16);
+  if (current === ns.chain_id) return;
+  const chainId = `0x${ns.chain_id.toString(16)}`;
+  try {
+    // The session's own switch knows the connector (Privy's embedded wallet
+    // switches through its SDK; an injected wallet through EIP-3326).
+    await evm.switchChain(ns.chain_id);
+  } catch (e) {
+    const code = (e as { code?: number }).code;
+    const msg = e instanceof Error ? e.message : String(e);
+    if (code === 4001 || /rejected|denied/i.test(msg)) {
+      throw new Error(`Your wallet is on chain ${current} and the switch to ${ns.chain_name} (id ${ns.chain_id}) was declined. Switch it there yourself and try again.`);
+    }
+    if (code !== 4902 && !/unrecognized|not added|Unknown chain|4902/i.test(msg)) throw e;
+    const symbol = gasSymbol(ns.chain_id);
+    await evm.provider.request({
+      method: 'wallet_addEthereumChain',
+      params: [
+        {
+          chainId,
+          chainName: ns.chain_name,
+          rpcUrls: [ns.rpc_url],
+          nativeCurrency: { name: symbol, symbol, decimals: 18 },
+          blockExplorerUrls: ns.explorer_url ? [ns.explorer_url] : [],
+        },
+      ],
+    });
+    await evm.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId }] });
+  }
+  const after = Number.parseInt(String(await evm.provider.request({ method: 'eth_chainId' })), 16);
+  if (after !== ns.chain_id) throw new Error(`your wallet is still on chain ${after}; switch it to ${ns.chain_name} (id ${ns.chain_id}) and try again`);
 }
 
 function walletSigner(ns: NamespaceInfo): WalletSigner {
@@ -206,6 +276,14 @@ export function lockAccount(): void {
   publish({ account: null, setup: 'idle', setupDetail: null });
 }
 
+/** Leave the wallet: end the product session, lock the account, and
+ * disconnect the connector (Privy logs out; a browser wallet is forgotten). */
+export function disconnect(): void {
+  signOut();
+  const evm = evmSession();
+  evm.logout();
+}
+
 export function signOut(): void {
   client.token = null;
   try {
@@ -231,19 +309,23 @@ export async function activate(): Promise<LinksAccount | null> {
   const address = evm.address.toLowerCase();
   if (state.account) return state.account;
   try {
+    publish({ setup: 'checking', setupDetail: `switching your wallet to ${namespace.chain_name}` });
+    await ensureWalletChain(namespace);
     if (!state.signedIn || state.signedIn.toLowerCase() !== address) {
       publish({ setup: 'signing-in', setupDetail: 'confirm the sign-in message in your wallet' });
       await signIn();
     }
     publish({ setup: 'checking', setupDetail: 'loading proving keys and checking this browser' });
     await ensureParams();
-    // 1. Same device: unlock, no prompt. The stored account must belong to
-    //    the connected wallet; another wallet gets its own activation.
-    if (await LinksAccount.exists(store, namespace.id)) {
+    // 1. Same device: unlock, no prompt. An account saved before the store
+    //    was partitioned per wallet is adopted by its owner on first use;
+    //    one that belongs to another wallet stays untouched for that wallet.
+    await LinksAccount.adoptUnscoped({ ...opts(namespace), store }, address);
+    if (await LinksAccount.exists(accountStore()!, namespace.id)) {
       const account = await LinksAccount.unlock(opts(namespace));
       const owner = await account.walletAddress();
       if (owner && owner !== address) {
-        publish({ setup: 'idle', setupDetail: `this browser holds the private account of wallet ${shortHex(owner, 6, 4)}; connect that wallet, or clear site data to set up ${shortHex(address, 6, 4)}` });
+        publish({ setup: 'idle', setupDetail: `the account stored here for ${shortHex(address, 6, 4)} was authorized by wallet ${shortHex(owner, 6, 4)}; export a backup and clear site data before setting it up again` });
         return null;
       }
       const v = await account.view();
@@ -310,7 +392,7 @@ async function finishRecovery(namespace: NamespaceInfo, secret: RecoveryPlan): P
   try {
     const account = await LinksAccount.recover(opts(namespace), secret);
     const profile = state.recoveryProfile;
-    if (profile) await store.set(`peal-links:${namespace.id}:profile`, JSON.stringify(profile));
+    if (profile) await accountStore()?.set(`peal-links:${namespace.id}:profile`, JSON.stringify(profile));
     publish({ account, hasStoredAccount: true, setup: 'ready', setupDetail: null, recoveryProfile: null });
     return account;
   } catch (e) {
@@ -341,6 +423,7 @@ export async function restoreFile(backupJson: string, code: string): Promise<Lin
  * here and never transmitted), then prove and pay. */
 export async function payRequest(account: LinksAccount, request: PaymentRequest, intentId: string, onStage?: (s: string) => void): Promise<PayResult> {
   const ns = state.namespace!;
+  await ensureWalletChain(ns);
   const signer = walletSigner(ns);
   const intent = await account.paymentIntentFor({ request });
   onStage?.('approve');
@@ -360,6 +443,7 @@ export async function payAddress(
   const ns = state.namespace!;
   const resolved = await account.resolve(address);
   if (!resolved) return { unregistered: true };
+  await ensureWalletChain(ns);
   const signer = walletSigner(ns);
   const target = { profile: resolved.profile, profileHash: resolved.hash, amount, reference };
   const intent = await account.paymentIntentFor(target);

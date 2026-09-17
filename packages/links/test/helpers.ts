@@ -17,6 +17,7 @@ import {
   type NamespaceInfo,
   type RecoveryPlan,
   type WalletSigner,
+  type WalletStore,
 } from '../src/index.js';
 
 export const URL_ = process.env.LINKS_URL ?? 'http://127.0.0.1:8790';
@@ -43,7 +44,7 @@ export async function signedClient(account: PrivateKeyAccount, chainId: number):
 }
 
 export interface Device {
-  store: MemoryStore;
+  store: WalletStore;
   deviceKeys: MemoryDeviceKeys;
 }
 

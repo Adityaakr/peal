@@ -13,6 +13,7 @@ import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ACTIVE, CHAIN_FOR, TEMPO } from 'peal-auctionkit';
+import { sepolia } from 'viem/chains';
 import type { Address } from 'viem';
 
 /** Just the method the pages use.
@@ -50,6 +51,29 @@ export interface Session {
   switchChain: (chainId: number) => Promise<void>;
 }
 
+// Privy's own logout, kept out of `state` on purpose. `usePrivy()` hands the
+// bridge a fresh `logout` function on many re-renders; publishing it straight
+// into `state.logout` used to overwrite the browser wallet's disconnect a
+// moment after the wallet connected - so Disconnect ran Privy's logout, which
+// does nothing for an injected wallet, and the wallet never went away.
+let privyLogout: () => void = () => {};
+
+/** Disconnect whatever is connected: forget an injected browser wallet, or
+ * log out of Privy. Stable identity; never replaced. */
+function logout(): void {
+  if (state.source === 'injected') {
+    try {
+      localStorage.removeItem(INJECTED_FLAG);
+      sessionStorage.setItem(CHOOSE_FLAG, '1');
+    } catch {
+      /* storage unavailable */
+    }
+    publish({ source: null, address: null, provider: null, chainId: null, switchChain: async () => {} });
+    return;
+  }
+  privyLogout();
+}
+
 let state: Session = {
   ready: false,
   source: null,
@@ -57,7 +81,7 @@ let state: Session = {
   provider: null,
   chainId: null,
   login: () => {},
-  logout: () => {},
+  logout,
   switchChain: async () => {},
 };
 
@@ -79,12 +103,67 @@ export function injectedProvider(): Eip1193Like | null {
  * still goes through the wallet's own confirmation. Publishes into the same
  * session state the Privy bridge uses, so pages need not know which one is
  * active. */
-export async function connectInjected(): Promise<Address> {
+const INJECTED_FLAG = 'peal-links:wallet';
+/** Set when the person disconnected on purpose: the next connect must let
+ * them pick an account, not silently return the one the wallet already
+ * authorized for this site. */
+const CHOOSE_FLAG = 'peal-links:wallet-choose';
+
+/** Reconnect a browser wallet the person connected before, without a
+ * prompt (`eth_accounts` answers only for sites already authorized), so a
+ * reload resumes where it was. */
+export async function resumeInjected(): Promise<Address | null> {
+  try {
+    if (localStorage.getItem(INJECTED_FLAG) !== 'injected') return null;
+  } catch {
+    return null;
+  }
+  if (state.address) return state.address;
+  const provider = injectedProvider();
+  if (!provider) return null;
+  try {
+    const accounts = (await provider.request({ method: 'eth_accounts' })) as string[];
+    if (!accounts[0]) return null;
+    return await connectInjected('eth_accounts');
+  } catch {
+    return null;
+  }
+}
+
+export async function connectInjected(method: 'eth_requestAccounts' | 'eth_accounts' = 'eth_requestAccounts'): Promise<Address> {
   const provider = injectedProvider();
   if (!provider) throw new Error('no browser wallet found');
-  const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[];
+  let choose = false;
+  try {
+    choose = method === 'eth_requestAccounts' && sessionStorage.getItem(CHOOSE_FLAG) === '1';
+  } catch {
+    /* storage unavailable */
+  }
+  if (choose) {
+    // After "switch wallet" the site is still authorized for the old
+    // account, so `eth_requestAccounts` would hand it straight back. Asking
+    // for the permission again opens the wallet's account picker (EIP-2255).
+    // Wallets without it fall through to the plain request.
+    try {
+      await provider.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
+    } catch (e) {
+      const code = (e as { code?: number }).code;
+      if (code === 4001) throw e; // the person closed the picker: not a connect
+    }
+    try {
+      sessionStorage.removeItem(CHOOSE_FLAG);
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  const accounts = (await provider.request({ method })) as string[];
   const address = accounts[0] as Address | undefined;
   if (!address) throw new Error('the wallet returned no account');
+  try {
+    localStorage.setItem(INJECTED_FLAG, 'injected');
+  } catch {
+    /* storage unavailable */
+  }
   const chainHex = (await provider.request({ method: 'eth_chainId' })) as string;
   publish({
     ready: true,
@@ -92,7 +171,6 @@ export async function connectInjected(): Promise<Address> {
     address,
     provider,
     chainId: Number.parseInt(chainHex, 16),
-    logout: () => publish({ source: null, address: null, provider: null, chainId: null }),
     switchChain: async (id: number) => {
       await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${id.toString(16)}` }] });
       publish({ chainId: id });
@@ -118,7 +196,8 @@ function Bridge(): null {
   const { wallets } = useWallets();
 
   useEffect(() => {
-    publish({ ready, login, logout });
+    privyLogout = logout;
+    publish({ ready, login });
   }, [ready, login, logout]);
 
   useEffect(() => {
@@ -199,7 +278,9 @@ export function mountAuth(): void {
         // the app between chains cannot leave new wallets provisioned on the
         // old one. Both stay supported, so a link to an auction on the other
         // chain still works.
-        supportedChains: [CHAIN_FOR[TEMPO.chainId]!],
+        // Peal Links also runs on Ethereum Sepolia (testnet USDC), so an
+        // embedded wallet must be able to switch there.
+        supportedChains: [CHAIN_FOR[TEMPO.chainId]!, sepolia],
         defaultChain: CHAIN_FOR[ACTIVE.chainId]!,
         appearance: { theme: 'light', accentColor: '#2563eb' },
       }}

@@ -861,47 +861,10 @@
   text-align: center;
 }
 
+/* The checkout's progress list is the app timeline; .pl-steps and
+   .pl-step-* stay on it only as hooks for the browser suites. */
 .pl-steps {
-  display: grid;
-  gap: 8px;
-  margin: 16px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.pl-step {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13.5px;
-  color: var(--muted);
-}
-
-.pl-step::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border);
-  flex: none;
-}
-
-.pl-step-active {
-  color: var(--text);
-}
-
-.pl-step-active::before {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-
-.pl-step-done {
-  color: var(--text);
-}
-
-.pl-step-done::before {
-  border-color: var(--green);
-  background: var(--green);
+  margin: 4px 0 0;
 }
 
 /* ---------- dialogs ---------- */
@@ -1001,4 +964,3036 @@
   .pl-dialog[open] {
     animation: none;
   }
+}
+
+/* ---------- wallet chooser ---------- */
+
+.pl-connectors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .pl-connectors {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pl-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: var(--pl-radius);
+  border: 1px solid var(--border);
+  background: rgb(255 255 255 / 0.8);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    transform 100ms ease;
+}
+
+.pl-connector:hover {
+  background: #fff;
+  border-color: var(--accent);
+}
+
+.pl-connector:active {
+  transform: translateY(1px);
+}
+
+.pl-connector:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pl-connector:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pl-connector-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pl-connector-hint {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.pl-link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ---------- the landing (#/bonsai) ----------
+   The mempool landing's shape (.ml-hero, .ml-section, .ml-btn, the sky
+   background the explorer already has), with scenes that borrow the network
+   landing's stage and card mechanics (pages/landing.css) and are recoloured
+   here to the explorer's tokens. Depth in the scenes comes from translateZ
+   under a perspective and from nothing else. */
+
+.pl-ld-hero {
+  padding-bottom: 36px;
+}
+
+.pl-ld-hero .ml-hero-ctas {
+  margin-bottom: 36px;
+}
+
+.pl-ld-note {
+  text-align: center;
+}
+
+.pl-ld-kicker {
+  text-align: center;
+}
+
+.pl-ld-h2 {
+  margin-bottom: 18px;
+}
+
+.pl-ld-body .ml-p {
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+.pl-ld-try {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin: 26px 0 30px;
+}
+
+.pl-ld-more {
+  font-size: 14.5px;
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-border);
+}
+
+.pl-ld-more:hover {
+  border-bottom-color: var(--accent);
+  text-decoration: none;
+}
+
+.pl-ld-fine {
+  max-width: 760px;
+  margin: 0 auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  line-height: 1.6;
+}
+
+.pl-ld-fine code {
+  font-size: 12.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(37 99 235 / 8%);
+}
+
+.pl-ld-close .ml-wrap {
+  text-align: center;
+}
+
+.pl-ld-close .ml-hero-ctas {
+  margin: 22px 0 0;
+}
+
+/* ---- the network landing's cards, in the explorer's colours ---- */
+
+.pl-ld .peal-card {
+  border-color: var(--border);
+  box-shadow: 0 18px 34px -24px rgb(15 35 70 / 40%);
+}
+
+.pl-ld .peal-card-v {
+  color: var(--text);
+}
+
+.pl-ld .peal-card-w {
+  color: var(--muted);
+}
+
+.pl-ld .peal-card-open.peal-card-last,
+.pl-ld .peal-card-last {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 4px rgb(37 99 235 / 10%),
+    0 18px 34px -22px rgb(37 99 235 / 45%);
+}
+
+.pl-ld .peal-card-last .peal-card-w {
+  color: var(--accent);
+}
+
+.pl-ld .peal-x4-step {
+  background: var(--accent-weak);
+  border-color: var(--accent-border);
+}
+
+.pl-ld .peal-x4-step.is-on {
+  background: #fff;
+  border-color: var(--accent-border);
+  box-shadow: 0 18px 34px -24px rgb(37 99 235 / 55%);
+}
+
+.pl-ld .peal-x4-step code {
+  color: var(--muted);
+}
+
+.pl-ld .peal-x4-step b {
+  color: var(--text);
+}
+
+.pl-ld .peal-x4-step.is-on b {
+  color: var(--accent);
+}
+
+.pl-ld .peal-x4-step i {
+  color: var(--muted);
+}
+
+.pl-ld .peal-x4 {
+  margin: 32px 0 28px;
+}
+
+.pl-ld-cap {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Cards wait for their scene to be reached, then rise as on the landing. */
+.pl-ld-scene:not(.is-in) .peal-card-open {
+  animation: none;
+  opacity: 0;
+}
+
+.pl-ld-scene {
+  margin: 34px 0 30px;
+}
+
+/* Four stepped cards reach lower than the landing's stage allows for. */
+.pl-ld-scene-ledger .peal-stage {
+  height: 310px;
+}
+
+.pl-ld-wallet-stage {
+  height: 280px;
+}
+
+.pl-ld-wcard {
+  opacity: 0;
+  transform: translate3d(0, 0, 0);
+  transition:
+    transform 800ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 600ms ease;
+}
+
+.pl-ld .pl-ld-wcard-account,
+.pl-ld .pl-ld-wcard-backup {
+  background: var(--accent-weak);
+  border-color: var(--accent-border);
+}
+
+.pl-ld-scene.is-in .pl-ld-wcard-backup {
+  opacity: 1;
+  transform: translate3d(70px, -100px, -120px);
+  transition-delay: 240ms;
+}
+
+.pl-ld-scene.is-in .pl-ld-wcard-account {
+  opacity: 1;
+  transform: translate3d(15px, -35px, -50px);
+  transition-delay: 120ms;
+}
+
+.pl-ld-scene.is-in .pl-ld-wcard-wallet {
+  opacity: 1;
+  transform: translate3d(-40px, 35px, 40px);
+}
+
+/* ---- the checkout in the hero, with the two observers behind it ---- */
+
+.pl-ld-flow {
+  margin: 0 auto;
+  max-width: 900px;
+  text-align: left;
+}
+
+.pl-ld-flow-stage {
+  position: relative;
+  height: 390px;
+  perspective: 1100px;
+  perspective-origin: 50% 40%;
+  transform-style: preserve-3d;
+}
+
+.pl-ld-checkout {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 300px;
+  max-width: 100%;
+  transform: translate3d(-50%, -50%, 40px);
+  padding: 18px 18px 16px;
+  border-radius: 18px;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 44px -26px rgb(15 35 70 / 45%);
+}
+
+.pl-ld-tag {
+  position: absolute;
+  top: -11px;
+  right: 14px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.pl-ld-co-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.pl-ld-co-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pl-ld-co-wallet {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pl-ld-co-title {
+  margin: 6px 0 10px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.pl-ld-co-amount {
+  font-family: var(--pl-display);
+  font-size: 34px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-ld-co-amount span {
+  margin-left: 8px;
+  font-family: var(--pl-body);
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.pl-ld-co-rows {
+  margin: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.pl-ld-co-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.pl-ld-co-row span:first-child {
+  color: var(--muted);
+}
+
+.pl-ld-side {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 200px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--accent-weak);
+  border: 1px solid var(--accent-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  opacity: 0;
+  transform: translate3d(-50%, -50%, -60px);
+  transition:
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 500ms ease,
+    background 500ms ease,
+    border-color 500ms ease,
+    box-shadow 500ms ease;
+}
+
+.pl-ld-side-tag {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pl-ld-side b {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pl-ld-side i {
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.pl-ld-flow.is-in .pl-ld-side-ledger {
+  opacity: 1;
+  transform: translate3d(calc(-50% - 280px), -70%, -60px);
+}
+
+.pl-ld-flow.is-in .pl-ld-side-receiver {
+  opacity: 1;
+  transform: translate3d(calc(-50% + 280px), -30%, -60px);
+}
+
+.pl-ld-flow.is-accepted .pl-ld-side {
+  background: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 10%);
+}
+
+.pl-ld-flow.is-accepted .pl-ld-side b {
+  color: var(--accent);
+}
+
+.pl-ld-steps {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.pl-ld-step {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgb(255 255 255 / 75%);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.pl-ld-step[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.pl-ld-flow-cap {
+  margin: 12px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ---- lists, table, code, questions ---- */
+
+.pl-ld-uses {
+  list-style: none;
+  margin: 28px auto 0;
+  padding: 0;
+  max-width: 760px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 28px;
+  text-align: left;
+}
+
+.pl-ld-uses li {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.pl-ld-uses b {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pl-ld-uses span {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.pl-ld .pl-table-wrap {
+  margin: 28px 0 26px;
+  text-align: left;
+}
+
+.pl-ld-code {
+  margin: 28px 0 8px;
+  text-align: left;
+}
+
+.pl-ld-faq {
+  max-width: 760px;
+  margin: 6px auto 0;
+  text-align: left;
+}
+
+@media (max-width: 720px) {
+  /* The observers cannot stand beside a card that is already the width of
+     the phone, so they sit under it. */
+  .pl-ld-flow-stage {
+    height: auto;
+    perspective: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .pl-ld-checkout,
+  .pl-ld-side {
+    width: 100%;
+    max-width: 380px;
+    opacity: 1;
+    transform: none !important;
+  }
+
+  .pl-ld-side {
+    position: static;
+  }
+
+  /* The checkout first, then what the two observers see of it. The tag
+     stays on the checkout, so that one keeps a position of its own. */
+  .pl-ld-checkout {
+    position: relative;
+    left: auto;
+    top: auto;
+    order: -1;
+    margin-top: 12px;
+  }
+
+  .pl-ld-x4 {
+    grid-template-columns: 1fr;
+  }
+
+  .pl-ld-uses {
+    grid-template-columns: 1fr;
+  }
+
+  .pl-ld-wallet-stage {
+    height: 320px;
+  }
+
+  .pl-ld-scene.is-in .pl-ld-wcard-backup {
+    transform: translate3d(30px, -100px, -120px);
+  }
+
+  .pl-ld-scene.is-in .pl-ld-wcard-account {
+    transform: translate3d(0, -35px, -50px);
+  }
+
+  .pl-ld-scene.is-in .pl-ld-wcard-wallet {
+    transform: translate3d(-25px, 35px, 40px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-ld-scene .peal-card-open,
+  .pl-ld-wcard,
+  .pl-ld-side {
+    transition: none;
+  }
+}
+
+/* ---------- the app (#/bonsai/app): a product shell ----------
+   A sidebar with the sections and the wallet, a top bar with the breadcrumb,
+   the network and the wallet chip, a main column with a page head and
+   white cards, forms as pages, a details drawer on the right. Light, quiet,
+   the explorer's own tokens; motion where a state changes. Prefix .pla-. */
+
+body.pla-page {
+  background: #f6f7f9;
+}
+
+body.pla-page .site-header {
+  display: none;
+}
+
+body.pla-page main {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pla {
+  --pla-radius: 14px;
+  --pla-dark: #111827;
+  --pla-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --pla-canvas: #f6f7f9;
+  color: var(--text);
+}
+
+.pla-shell {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 100vh;
+  background: var(--pla-canvas);
+}
+
+/* ---- sidebar ---- */
+
+.pla-side {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 20px 14px 14px;
+  border-right: 1px solid var(--border);
+  background: #fff;
+  overflow-y: auto;
+}
+
+.pla-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 20px;
+  font-family: var(--pl-display);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.pla-brand-dot {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+  box-shadow: inset 0 -3px 6px rgb(255 255 255 / 35%);
+}
+
+.pla-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pla-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.pla-nav-item:hover {
+  background: #f3f4f6;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.pla-nav-item.is-active {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.pla-ic {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.pla-wallet {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fbfcfd;
+}
+
+.pla-wallet-off {
+  color: var(--muted);
+}
+
+.pla-wallet-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.pla-wallet-line .pl-mono {
+  display: block;
+  width: 100%;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.pla-wallet-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pla-home {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-decoration: none;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.pla-home:hover {
+  background: #f3f4f6;
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* ---- top bar ---- */
+
+.pla-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pla-top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 32px;
+  border-bottom: 1px solid var(--border);
+  background: rgb(255 255 255 / 85%);
+  backdrop-filter: blur(10px);
+}
+
+.pla-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13.5px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pla-crumb {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.pla-crumb:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.pla-crumb.is-here {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.pla-crumb-sep {
+  display: inline-flex;
+  color: #c4c9d2;
+}
+
+.pla-crumb-sep .pla-ic {
+  width: 14px;
+  height: 14px;
+}
+
+.pla-top-r {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.pla-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.pla-chip:hover {
+  border-color: #d1d5db;
+  text-decoration: none;
+}
+
+.pla-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d1d5db;
+}
+
+.pla-chip-dot.is-live {
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgb(22 163 74 / 15%);
+}
+
+.pla-select {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pla-chip-wallet {
+  padding: 0 12px 0 4px;
+}
+
+.pla-avatar {
+  display: block;
+  flex: none;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(15 23 42 / 8%);
+}
+
+.pla-chip-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.pla-chip-text b {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pla-chip-text i {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.pla-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.pla-iconbtn:hover {
+  background: #f3f4f6;
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* ---- main column ---- */
+
+.pla-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 28px 32px 56px;
+  min-width: 0;
+  max-width: 1180px;
+  width: 100%;
+}
+
+/* One-form pages: the head and the card share a centred measure instead
+   of hugging the left edge of a wide column. */
+.pla-main-narrow {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.pla-main-narrow .pla-card-narrow {
+  max-width: none;
+}
+
+.pla-enter > * {
+  animation: pla-in 320ms var(--pla-ease) both;
+}
+
+.pla-enter > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.pla-enter > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.pla-enter > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.pla-enter > *:nth-child(5) {
+  animation-delay: 160ms;
+}
+
+@keyframes pla-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pla-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+
+.pla-head-l {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pla-head-r {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pla-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.pla-back:hover {
+  background: #f3f4f6;
+  transform: translateX(-1px);
+}
+
+.pla-title {
+  margin: 0;
+  font-family: var(--pl-body);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.pla-sub {
+  margin: 2px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.pla-p {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.pla-note {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.pla-foot {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.pla-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pla-link .pla-ic {
+  width: 15px;
+  height: 15px;
+}
+
+.pla-link:hover {
+  text-decoration: underline;
+}
+
+.pla-link-quiet {
+  color: var(--muted);
+  text-decoration: underline;
+}
+
+.pla-unit {
+  font-size: 0.8em;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.pla-pos {
+  color: #047857;
+}
+
+.pla-neg {
+  color: var(--text);
+}
+
+/* ---- buttons ---- */
+
+.pla-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 100ms ease,
+    box-shadow 140ms ease;
+}
+
+.pla-btn:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+  text-decoration: none;
+}
+
+.pla-btn:active {
+  transform: translateY(1px);
+}
+
+.pla-btn:disabled,
+.pla-btn[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.pla-btn-dark {
+  background: var(--pla-dark);
+  border-color: var(--pla-dark);
+  color: #fff;
+}
+
+.pla-btn-dark:hover {
+  background: #1f2937;
+  border-color: #1f2937;
+  box-shadow: 0 8px 20px -12px rgb(17 24 39 / 60%);
+}
+
+.pla-btn-sm {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  border-radius: 9px;
+}
+
+.pla-btn-sm .pla-ic {
+  width: 14px;
+  height: 14px;
+}
+
+.pla-btn-block {
+  width: 100%;
+}
+
+/* ---- the balance block ---- */
+
+.pla-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px 40px;
+  align-items: end;
+  padding: 26px 28px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background:
+    radial-gradient(80% 120% at 100% 0%, #eff6ff 0%, rgb(239 246 255 / 0) 60%),
+    #fff;
+}
+
+.pla-hero-l {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 260px;
+}
+
+.pla-hero-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.pla-hero-amount {
+  font-family: var(--pl-display);
+  font-size: clamp(40px, 5vw, 56px);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pla-hero-amount .pl-amount-unit {
+  margin-left: 10px;
+  font-family: var(--pl-body);
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.pla-hero-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.pla-hero-r {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 18px;
+}
+
+.pla-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.pla-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.pla-pill:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+
+.pla-pill:disabled,
+.pla-pill[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+button.pla-pill {
+  font-family: inherit;
+}
+
+.pla-pill-dark {
+  background: var(--pla-dark);
+  border-color: var(--pla-dark);
+  color: #fff;
+}
+
+.pla-pill-dark:hover {
+  background: #1f2937;
+  border-color: #1f2937;
+  box-shadow: 0 10px 24px -14px rgb(17 24 39 / 60%);
+}
+
+.pla-pill-round {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+  font: inherit;
+}
+
+.pla-more {
+  position: relative;
+}
+
+.pla-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 6;
+  min-width: 240px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 20px 40px -20px rgb(15 23 42 / 30%), 0 2px 6px rgb(15 23 42 / 6%);
+  animation: pla-pop 160ms var(--pla-ease) both;
+}
+
+@keyframes pla-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pla-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pla-menu-item:hover {
+  background: #f3f4f6;
+  text-decoration: none;
+}
+
+.pla-menu-item .pla-ic {
+  color: #6b7280;
+}
+
+.pla-hero-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.pla-ministat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 170px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 80%);
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+a.pla-ministat:hover {
+  border-color: var(--accent-border);
+  box-shadow: 0 10px 22px -18px rgb(37 99 235 / 45%);
+  text-decoration: none;
+}
+
+.pla-ministat span {
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pla-ministat b {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pla-ministat i {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pla-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+/* ---- cards ---- */
+
+.pla-card {
+  border: 1px solid var(--border);
+  border-radius: var(--pla-radius);
+  background: #fff;
+}
+
+.pla-card-narrow {
+  max-width: 660px;
+}
+
+.pla-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pla-card-title {
+  margin: 0;
+  font-family: var(--pl-body);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pla-card-body {
+  padding: 20px;
+}
+
+.pla-card-body + .pla-card-head {
+  border-top: 1px solid var(--border);
+}
+
+.pla-center {
+  text-align: center;
+}
+
+.pla-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.pla-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 44px 20px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted);
+  text-align: center;
+}
+
+.pla-empty-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 6px;
+  border-radius: 14px;
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.pla-empty-ic .pla-ic {
+  width: 20px;
+  height: 20px;
+}
+
+.pla-empty b {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pla-empty .pla-btn {
+  margin-top: 12px;
+}
+
+/* ---- stats ---- */
+
+.pla-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.pla-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--pla-radius);
+  background: #fff;
+}
+
+.pla-stat-primary {
+  background: linear-gradient(160deg, #eff6ff, #fff 60%);
+  border-color: var(--accent-border);
+}
+
+.pla-stat-label {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pla-stat-n {
+  font-family: var(--pl-display);
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pla-stat-text {
+  font-family: var(--pl-body);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.pla-stat i {
+  font-style: normal;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* ---- toolbar: search and filters ---- */
+
+.pla-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pla-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 260px;
+  max-width: 420px;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--muted);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.pla-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 12%);
+}
+
+.pla-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+}
+
+.pla-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pla-filter {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: #374151;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.pla-filter:hover {
+  background: #f3f4f6;
+}
+
+.pla-filter.is-on {
+  background: var(--pla-dark);
+  border-color: var(--pla-dark);
+  color: #fff;
+}
+
+/* ---- lists ---- */
+
+.pla-group + .pla-group {
+  border-top: 1px solid var(--border);
+}
+
+.pla-group-label {
+  margin: 0;
+  padding: 12px 20px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pla-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pla-row {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 13px 20px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.pla-list li:first-child .pla-row {
+  border-top: 0;
+}
+
+.pla-row:hover {
+  background: #f9fafb;
+}
+
+.pla-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent-border);
+}
+
+.pla-row-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.pla-row-ic-in {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.pla-row-ic-out {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.pla-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pla-row-main b {
+  font-size: 14.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pla-row-main i {
+  font-style: normal;
+  font-size: 12.5px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pla-row-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+
+.pla-row-side b {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pla-row-chev {
+  display: inline-flex;
+  color: #c4c9d2;
+  transition: transform 140ms ease, color 140ms ease;
+}
+
+.pla-row:hover .pla-row-chev {
+  color: var(--text);
+  transform: translateX(2px);
+}
+
+/* ---- forms ---- */
+
+.pla-form {
+  display: block;
+}
+
+.pla-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.pla-field:last-child {
+  margin-bottom: 0;
+}
+
+.pla-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pla-help {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.pla-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 11px;
+  background: #fff;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text);
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.pla-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 12%);
+}
+
+.pla-input[type='file'] {
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.pla-field-mono .pla-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+}
+
+.pla-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.pla-input-wrap .pla-input {
+  padding-right: 76px;
+}
+
+.pla-input-suffix {
+  position: absolute;
+  right: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.pla-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pla-choice {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.pla-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pla-choice-dot {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 1.5px solid #d1d5db;
+  background: #fff;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.pla-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pla-choice-text b {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.pla-choice-text i {
+  font-style: normal;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.pla-choice:hover {
+  border-color: #d1d5db;
+}
+
+.pla-choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.pla-choice:has(input:checked) .pla-choice-dot {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 5px var(--accent);
+}
+
+.pla-choice:has(input:focus-visible) {
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 12%);
+}
+
+.pla-form-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: #fbfcfd;
+  border-radius: 0 0 var(--pla-radius) var(--pla-radius);
+}
+
+.pla-form-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.pla-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fbfcfd;
+}
+
+.pla-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+  color: #374151;
+}
+
+.pla-step b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ---- settings rows ---- */
+
+.pla-setting {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.pla-card-head + .pla-setting {
+  border-top: 0;
+}
+
+.pla-setting > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pla-setting b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pla-setting i {
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.pla-setting-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ---- switch ---- */
+
+.pla-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.pla-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pla-switch-track {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex: none;
+  border-radius: 999px;
+  background: #d1d5db;
+  transition: background 160ms ease;
+}
+
+.pla-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
+  transition: transform 180ms var(--pla-ease);
+}
+
+.pla-switch input:checked + .pla-switch-track {
+  background: var(--accent);
+}
+
+.pla-switch input:checked + .pla-switch-track::after {
+  transform: translateX(18px);
+}
+
+.pla-switch input:focus-visible + .pla-switch-track {
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 15%);
+}
+
+/* ---- the details drawer ---- */
+
+.pla-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgb(15 23 42 / 28%);
+  animation: pla-fade 200ms ease both;
+}
+
+@keyframes pla-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pla-drawer {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 21;
+  width: min(480px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 30px 80px -30px rgb(15 23 42 / 45%);
+  transform: translateX(calc(100% + 24px));
+  transition: transform 320ms var(--pla-ease);
+}
+
+.pla-drawer.is-open {
+  transform: none;
+}
+
+.pla-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 22px 14px;
+}
+
+.pla-drawer-head h2 {
+  margin: 0;
+  font-family: var(--pl-body);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.pla-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 22px 22px;
+}
+
+.pla-drawer-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.pla-drawer-amount {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 0 16px;
+}
+
+.pla-drawer-amount > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.pla-drawer-amount span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.pla-drawer-amount b {
+  font-family: var(--pl-display);
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.pla-drawer-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.pla-drawer-ic .pla-ic {
+  width: 22px;
+  height: 22px;
+}
+
+.pla-urlbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f9fafb;
+  margin-bottom: 18px;
+}
+
+.pla-urlbox .pla-input {
+  flex: 1;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 13.5px;
+  box-shadow: none;
+}
+
+.pla-urlbox .pla-link {
+  flex: none;
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+
+.pla-drawer-h {
+  margin: 18px 0 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-family: var(--pl-body);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pla-drawer-amount + .pla-urlbox + .pla-drawer-h,
+.pla-drawer-amount + .pla-drawer-h {
+  margin-top: 0;
+}
+
+.pla-kv {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pla-kv > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid #f1f2f4;
+}
+
+.pla-kv dt {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.pla-kv dd {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.pla-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 4px;
+}
+
+.pla-timeline li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 0 18px 26px;
+}
+
+.pla-timeline li::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 18px;
+  bottom: -2px;
+  width: 2px;
+  background: #e5e7eb;
+}
+
+.pla-timeline li:last-child::before {
+  display: none;
+}
+
+.pla-tl-dot {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #fff;
+}
+
+.pla-tl-dot .pla-ic {
+  width: 10px;
+  height: 10px;
+  stroke-width: 3;
+}
+
+.pla-timeline li.is-done .pla-tl-dot {
+  background: #16a34a;
+}
+
+.pla-timeline li.is-now .pla-tl-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 15%);
+}
+
+.pla-timeline li b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pla-timeline li.is-todo b {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.pla-timeline li i {
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ---- notices ---- */
+
+.pla-main .pl-notice {
+  margin: 0;
+}
+
+.pla-notice-ok {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.pla .pl-share-link .pla-input {
+  min-height: 42px;
+}
+
+/* ---- narrow ---- */
+
+@media (max-width: 1100px) {
+  .pla-hero {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .pla-hero-r {
+    align-items: flex-start;
+  }
+
+  .pla-pills,
+  .pla-hero-stats {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 960px) {
+  .pla-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .pla-two {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .pla-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pla-side {
+    position: static;
+    height: auto;
+    overflow: visible;
+    padding: 14px 12px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+
+  .pla-brand {
+    padding: 0 6px 8px;
+  }
+
+  .pla-nav {
+    flex-direction: row;
+    gap: 4px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .pla-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pla-nav-item {
+    flex: none;
+    padding: 8px 12px;
+  }
+
+  .pla-wallet {
+    margin-top: 0;
+  }
+
+  .pla-wallet-line .pl-mono {
+    width: auto;
+  }
+
+  .pla-home {
+    margin-top: 0;
+  }
+
+  .pla-top {
+    padding: 10px 16px;
+  }
+
+  .pla-chip-text i {
+    display: none;
+  }
+
+  .pla-main {
+    padding: 18px 16px 32px;
+  }
+
+  .pla-choices {
+    grid-template-columns: 1fr;
+  }
+
+  .pla-row {
+    grid-template-columns: 38px minmax(0, 1fr) 18px;
+  }
+
+  .pla-row-side {
+    grid-column: 2;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .pla-setting {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pla-form-foot {
+    flex-direction: column-reverse;
+  }
+
+  .pla-form-foot .pla-btn {
+    width: 100%;
+  }
+
+  .pla-pill {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .pla-drawer {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-height: 88vh;
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pla-enter > *,
+  .pla-menu,
+  .pla-scrim {
+    animation: none;
+  }
+
+  .pla-drawer {
+    transition: none;
+  }
+}
+
+/* One connector: the card takes the full width; the extension link sits under it. */
+.pl-connectors-one {
+  grid-template-columns: 1fr;
+}
+
+.pl-connector-alt {
+  justify-self: start;
+  font-size: 13.5px;
+  color: var(--accent);
+}
+
+/* ---- the welcome screen: centred in the page ---- */
+
+.pla-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  max-width: 520px;
+  margin: 10vh auto 0;
+  padding: 24px 16px;
+}
+
+.pla-welcome-dot {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  margin-bottom: 6px;
+}
+
+.pla-welcome-avatar {
+  display: inline-flex;
+  margin-bottom: 6px;
+  border-radius: 50%;
+  box-shadow: 0 10px 24px -14px rgb(15 23 42 / 45%);
+}
+
+.pla-welcome-title {
+  margin: 0;
+  font-family: var(--pl-body);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.pla-welcome-kicker {
+  margin: -6px 0 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.pla-welcome-sub {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.pla-welcome-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.pla-welcome-form {
+  width: 100%;
+  text-align: left;
+  margin-top: 6px;
+}
+
+.pla-welcome-form .pla-form-actions {
+  align-items: center;
+}
+
+.pla-welcome .pl-notice {
+  width: 100%;
+  text-align: left;
+}
+
+.pla-btn-lg {
+  min-height: 50px;
+  padding: 0 28px;
+  font-size: 15.5px;
+  border-radius: 999px;
+  margin-top: 8px;
+}
+
+.pla-brand-logo {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  object-fit: contain;
+}
+
+.pla-welcome-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  margin-bottom: 6px;
+}
+
+/* ---- something is running ---- */
+
+.pla-busy {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.pla-busy-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.pla-busy-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--accent-weak);
+}
+
+.pla-busy-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+  border-radius: 3px;
+  background: var(--accent);
+  animation: pla-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes pla-slide {
+  0% {
+    left: -30%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.pla-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--accent-border);
+  border-top-color: var(--accent);
+  animation: pla-spin 800ms linear infinite;
+}
+
+.pla-spinner-sm {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+  border-color: rgb(255 255 255 / 45%);
+  border-top-color: #fff;
+}
+
+@keyframes pla-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- setup progress ---- */
+
+.pla-progress {
+  list-style: none;
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 18px 20px 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+}
+
+.pla-progress li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 0 18px 34px;
+}
+
+.pla-progress li::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 22px;
+  bottom: 0;
+  width: 2px;
+  background: #e5e7eb;
+}
+
+.pla-progress li:last-child::before {
+  display: none;
+}
+
+.pla-progress-dot {
+  position: absolute;
+  left: 0;
+  top: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #fff;
+}
+
+.pla-progress-dot .pla-ic {
+  width: 12px;
+  height: 12px;
+  stroke-width: 3;
+}
+
+.pla-progress li.is-done .pla-progress-dot {
+  background: #16a34a;
+}
+
+.pla-progress li.is-now .pla-progress-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 15%);
+}
+
+.pla-progress li b {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.pla-progress li.is-todo b {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.pla-progress li i {
+  font-style: normal;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.pla-progress li.is-now i {
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pla-busy-bar::after,
+  .pla-spinner {
+    animation: none;
+  }
+}
+
+/* ---------- the checkout (#/pay/:id) ----------
+   One centred card on the app's canvas: what it is for and the amount at
+   the top, the payee under it, the facts as rows, then the action. Prefix
+   .pc-; buttons, inputs, rows and the timeline come from the app styles. */
+
+.pc-wrap {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 22px 16px 48px;
+}
+
+.pc-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 0 4px 16px;
+}
+
+.pc-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--pl-display);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.pc-brand img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.pc-top-r {
+  font-size: 12.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pc-card {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%), 0 24px 60px -40px rgb(15 35 70 / 30%);
+  overflow: hidden;
+}
+
+.pc-head {
+  padding: 26px 26px 22px;
+  border-bottom: 1px solid var(--border);
+  background: radial-gradient(90% 120% at 100% 0%, #eff6ff 0%, rgb(239 246 255 / 0) 60%), #fff;
+}
+
+.pc-kicker {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.pc-amount {
+  font-family: var(--pl-display);
+  font-size: 44px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pc-unit {
+  margin-left: 10px;
+  font-family: var(--pl-body);
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.pc-payee {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.pc-payee-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pc-payee-to {
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pc-payee-name {
+  font-size: 16px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pc-payee .pl-payee-assurance {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.pc-body {
+  padding: 8px 26px;
+}
+
+.pc-body-tight {
+  padding-top: 0;
+  padding-bottom: 12px;
+}
+
+.pc-kv > div {
+  padding: 11px 0;
+}
+
+.pc-kv dd {
+  max-width: 62%;
+}
+
+.pc-kv .pl-small {
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.pc-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.pc-from .pla-avatar {
+  display: inline-block;
+}
+
+.pc-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 26px 26px;
+  border-top: 1px solid var(--border);
+  background: #fbfcfd;
+}
+
+.pc-actions .pla-btn-lg {
+  margin-top: 0;
+}
+
+.pc-actions .pla-timeline {
+  padding: 4px 0 0 4px;
+}
+
+.pc-actions .pl-notice {
+  margin: 0;
+}
+
+.pc-help {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+  text-align: center;
+}
+
+.pc-done {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.pc-done-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  background: #16a34a;
+  color: #fff;
+}
+
+.pc-done-ic .pla-ic {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3;
+}
+
+.pc-done b {
+  display: block;
+  font-size: 14.5px;
+}
+
+.pc-done span {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.pc-h1 {
+  margin: 12px 0 8px;
+  font-family: var(--pl-body);
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.pc-foot {
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .pc-head,
+  .pc-actions {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .pc-body {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .pc-amount {
+    font-size: 38px;
+  }
+
+  .pc-kv > div {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .pc-kv dd {
+    max-width: none;
+    text-align: left;
+  }
+
+  .pc-from {
+    justify-content: flex-start;
+  }
+}
+
+.pc-head-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pc-state {
+  flex: none;
+  padding-top: 4px;
+  max-width: 50%;
+  text-align: right;
+}
+
+.pc-state .pl-status {
+  white-space: normal;
+}
+
+.pc-bad {
+  margin-top: 16px;
+}
+
+.pc-bad .pl-notice {
+  margin: 0;
+}
+
+@media (max-width: 520px) {
+  .pc-head-row {
+    flex-direction: column;
+  }
+
+  .pc-state {
+    max-width: none;
+    text-align: left;
+    padding-top: 0;
+  }
+}
+
+/* Already open before a repaint: no entrance animation the second time. */
+.pla-steady .pla-scrim,
+.pla-menu.pla-steady {
+  animation: none;
+}
+
+.pla-steady .pla-drawer {
+  transition: none;
 }

@@ -170,7 +170,20 @@ function isDocsPath(path: string): boolean {
   return path === 'developers' || path.startsWith('developers/');
 }
 
+// The Peal Private Links app keeps its sections in the fragment
+// (#/bonsai/app/links, #/bonsai/app/settings, …) so the browser's back
+// button works inside it. Moving between two of its own routes is the
+// app's business: it listens to hashchange itself and must not be torn
+// down and rebuilt for every click.
+const APP_ROUTE = /^#\/bonsai\/app(?:\/[a-z-]+)?(?:\?.*)?$/;
+let lastHash = '';
+
 function route(): void {
+  if (cleanup && APP_ROUTE.test(lastHash) && APP_ROUTE.test(location.hash)) {
+    lastHash = location.hash;
+    return;
+  }
+  lastHash = location.hash;
   if (cleanup) cleanup();
   const root = document.getElementById('app');
   if (!root) return;
@@ -288,7 +301,7 @@ function route(): void {
     cleanup = renderCondition(root, decodeURIComponent(match[1]));
   } else if (hash === '#/bonsai') {
     cleanup = renderBonsaiLanding(root);
-  } else if (hash === '#/bonsai/app') {
+  } else if (APP_ROUTE.test(hash)) {
     cleanup = renderBonsaiApp(root);
   } else if (pay) {
     cleanup = renderPay(root, decodeURIComponent(pay[1]!));

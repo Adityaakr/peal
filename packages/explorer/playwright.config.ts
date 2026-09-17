@@ -9,7 +9,7 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
   use: {
-    baseURL: process.env.EXPLORER_URL ?? 'http://localhost:5173',
+    baseURL: process.env.EXPLORER_URL ?? 'http://localhost:5176',
     trace: 'retain-on-failure',
     ...devices['Desktop Chrome'],
   },
