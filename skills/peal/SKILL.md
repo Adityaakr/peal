@@ -1,6 +1,6 @@
 ---
 name: peal
-description: Use when adding sealed submissions or timed disclosure to an application. Data encrypted on the client, unreadable by anyone including the server, that opens by itself at a deadline. Covers sealed bid auctions on a marketplace, private voting, encrypted mempools, commit-reveal without the reveal step, and agent actions that must not be front run. Trigger on requests like "add auctions to my marketplace", "let people bid without seeing each other", "collect these privately until Friday", "sealed bids", "open at a time", or any mention of Peal or peal.network. Also covers building the interface for it, matching the app's existing design system, and charging per call with x402 micropayments, for requests like "charge per bid", "pay per call", "meter this API" or "let agents pay without an account". Do not use for encryption at rest or for hiding data permanently.
+description: Use when adding sealed submissions or timed disclosure to an application. Data encrypted on the client, unreadable by anyone including the server, that opens by itself at a deadline. Covers sealed bid auctions on a marketplace, private voting, encrypted mempools, commit-reveal without the reveal step, and agent actions that must not be front run. Trigger on requests like "add auctions to my marketplace", "let people bid without seeing each other", "collect these privately until Friday", "sealed bids", "open at a time", or any mention of Peal or peal.network. Also covers building the interface for it, matching the app's existing design system, and charging per call with x402 micropayments, for requests like "charge per bid", "pay per call", "meter this API" or "let agents pay without an account". Also covers Peal Private Links, private payments on a zero-knowledge ledger, for requests like "get paid privately", "a payment link that hides the amount", "send money without it showing on chain", or any mention of Peal Links or Bonsai. Do not use for encryption at rest or for hiding data permanently.
 ---
 
 # Peal
@@ -219,6 +219,20 @@ paying us. That file covers both, including the two mistakes that cost money:
 redeem the payment before serving rather than after, and check the payee and the
 asset rather than only the amount.
 
+## Private payments
+
+Peal Private Links is the other engine, and it does not open anything at a
+deadline: it moves money privately. A receiver shares a link, a payer pays from
+any EVM wallet, and between the public deposit and the public withdrawal the
+amount and the parties are on no chain. It is a zero-knowledge ledger (Bonsai
+with ZK-Pari), a TypeScript SDK (`peal-links`) and an HTTP API (`/links/v1`).
+
+If the user wants to get paid privately, send privately, or add a payment link
+whose amount stays off the chain, read `reference/links.md`. It has the flow in
+call order, a complete example, the encodings, the errors, and the trust model
+you must state to the user: Sepolia testnet only, private but not unlinkable,
+committee-attested withdrawals.
+
 ## Reference files
 
 - `reference/recipes.md`: working integrations per stack, and sealing your own
@@ -230,6 +244,7 @@ asset rather than only the amount.
 - `reference/errors.md`: error codes and limits
 - `reference/ui.md`: matching their design system, and the states to build
 - `reference/payments.md`: charging per call with x402
+- `reference/links.md`: Peal Private Links, private payments through the SDK and the API
 
 ## The trust model, stated plainly
 
@@ -241,3 +256,9 @@ merkle root covers the set, so a batch cannot be reordered or edited.
 
 Do not tell a user their data is unreadable by everyone for ever. It is
 unreadable until the deadline, and then it is public. That is the product.
+
+For Peal Private Links the model is different and `reference/links.md` states
+it in full. The short form: testnet only; the amount and the parties of a
+payment are on no chain, but the node knows which wallet owns which account
+and the ledger shows who acted; withdrawals are released by a signer
+committee, not by a proof on the chain. Do not call it trustless or unlinkable.

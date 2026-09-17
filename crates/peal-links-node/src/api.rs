@@ -1329,9 +1329,14 @@ pub fn router(app: App) -> Router {
     }
     let cors = tower_http::cors::CorsLayer::new()
         .allow_origin(tower_http::cors::Any)
+        // PUT is how a profile is published and a backup uploaded. Same-origin
+        // callers (the site behind Caddy) never preflight, so its absence went
+        // unnoticed; a third-party page on its own origin preflights every PUT
+        // and was refused before the request reached a handler.
         .allow_methods([
             axum::http::Method::GET,
             axum::http::Method::POST,
+            axum::http::Method::PUT,
             axum::http::Method::OPTIONS,
         ])
         .allow_headers([

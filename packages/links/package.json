@@ -18,6 +18,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
+  "peerDependencies": {
+    "viem": "^2.54.3"
+  },
   "devDependencies": {
     "@types/node": "^22.20.0",
     "typescript": "^5.7.3",

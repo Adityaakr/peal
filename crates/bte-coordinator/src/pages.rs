@@ -181,6 +181,45 @@ pub const PAGES: &[Page] = &[
         share: None,
     },
     Page {
+        path: "developers/links",
+        route: "#/developers/links",
+        title: "Peal Private Links for developers: private payment links on a zero-knowledge ledger.",
+        description:
+            "How a private payment moves: one wallet authorization, a signed request link, a proof made \
+             in the payer's browser, an encrypted receipt, a claim. Who sees what, what is deployed on \
+             Sepolia, and what you are trusting, stated plainly.",
+        schema: "TechArticle",
+        index: true,
+        image: Some(DEV_CARD),
+        share: None,
+    },
+    Page {
+        path: "developers/links-sdk",
+        route: "#/developers/links-sdk",
+        title: "Private Links SDK: the peal-links TypeScript client.",
+        description:
+            "Install the SDK, bootstrap from one status call, set up an account with one wallet \
+             signature, create a request, pay it, claim it and withdraw. Every method, the encodings, \
+             and running it from Node.",
+        schema: "APIReference",
+        index: true,
+        image: Some(DEV_CARD),
+        share: None,
+    },
+    Page {
+        path: "developers/links-api",
+        route: "#/developers/links-api",
+        title: "Private Links API: every route under /links/v1.",
+        description:
+            "The Peal Links node's HTTP API: status, params, the public ledger, requests, directory, \
+             inbox, deposits, withdrawals and backups, with what authenticates each, the request and \
+             response fields, the error codes and the limits.",
+        schema: "APIReference",
+        index: true,
+        image: Some(DEV_CARD),
+        share: None,
+    },
+    Page {
         path: "developers/limits",
         route: "#/developers/limits",
         title: "Peal API limits and errors.",
@@ -677,6 +716,10 @@ pub fn llms_txt(origin: &str) -> String {
          ```\n\
          \n\
          Or read it directly: [{origin}/skill/SKILL.md]({origin}/skill/SKILL.md)\n\
+         \n\
+         The skill also covers Peal Private Links, private payment links and transfers on a \
+         zero-knowledge ledger, through the `peal-links` SDK and the `/links/v1` API: \
+         [{origin}/developers/links]({origin}/developers/links).\n\
          \n\
          ## Pages\n\
          \n\

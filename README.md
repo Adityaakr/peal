@@ -135,6 +135,15 @@ Full observer matrix and threats: [docs/peal-links/THREAT_MODEL.md](docs/peal-li
 
 Testnet funds only. Mainnet is blocked on purpose; see [Trust model](#trust-model-honestly) and [docs/peal-links/MAINNET_READINESS.md](docs/peal-links/MAINNET_READINESS.md).
 
+### For developers
+
+Three pages on the site, prerendered so they read without JavaScript, and a reference file in the agent skill:
+
+- [Peal Private Links](https://peal.network/developers/links): the pieces, how a payment moves, who sees what, what you are trusting.
+- [Private Links SDK](https://peal.network/developers/links-sdk): the `peal-links` TypeScript client, every method, and running it from Node.
+- [Private Links API](https://peal.network/developers/links-api): every route under `/links/v1`, with what authenticates it, the fields, the error codes and the limits. Two examples run against the live node from the page.
+- `curl -fsSL https://peal.network/skill/install.sh | sh` installs the skill; `reference/links.md` is the private payments half.
+
 ### Where the code is
 
 | part | path |
