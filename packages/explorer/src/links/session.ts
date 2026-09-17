@@ -58,7 +58,10 @@ export type SetupState =
   | 'needs-recovery-code'
   | 'setting-up'
   | 'ready'
-  | 'no-backup';
+  | 'no-backup'
+  /** This browser holds an account the ledger has no record of: the node
+   * was set up again since. The only way on is a fresh account. */
+  | 'ledger-reset';
 
 export interface LinksSession {
   status: LinksStatus | null;
@@ -339,6 +342,18 @@ export async function activate(): Promise<LinksAccount | null> {
         return null;
       }
       const v = await account.view();
+      // The ledger knowing nothing of an account this browser registered
+      // means the node was reset since (its state did not survive a deploy).
+      // Nothing here can be reused: the balance refers to a ledger that is
+      // gone and the node's backup went with it. Say so, and offer a fresh
+      // start rather than letting every later action fail one by one.
+      if (v.registered && !(await client.account(namespace.id, v.account))) {
+        publish({
+          setup: 'ledger-reset',
+          setupDetail: `the ledger for ${namespace.label} has no record of the private account stored here for this wallet. The node was set up again since this account was created, so its balance and receipts cannot be carried over. Start over to set up a new private account for this wallet on the current ledger.`,
+        });
+        return null;
+      }
       if (v.pending) await account.reconcile();
       publish({ account, hasStoredAccount: true, setup: 'ready', setupDetail: null });
       return account;
@@ -388,6 +403,18 @@ export async function activate(): Promise<LinksAccount | null> {
     publish({ setup: 'idle', setupDetail: null });
     throw e;
   }
+}
+
+/** After `ledger-reset`: discard the account stored here for the connected
+ * wallet and set up a fresh one. The old state is not exported first because
+ * it describes a ledger that no longer exists. */
+export async function startOver(): Promise<LinksAccount | null> {
+  const { namespace } = state;
+  const scoped = accountStore();
+  if (!namespace || !scoped) throw new Error('connect a wallet first');
+  await LinksAccount.forget(scoped, namespace.id);
+  publish({ hasStoredAccount: false, setup: 'idle', setupDetail: null });
+  return activate();
 }
 
 /** The recovery-code path, after `activate` asked for the code. */
