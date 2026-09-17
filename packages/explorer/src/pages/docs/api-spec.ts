@@ -27,7 +27,7 @@ export interface Param {
    * offered only to fields that can use it. A round id is `cond_…` and a seal
    * id is the sha256 of a ciphertext: filling one with the other produces a
    * confusing 404 on a button somebody just pressed. */
-  carry?: 'round' | 'seal';
+  carry?: 'round' | 'seal' | 'namespace' | 'request';
 }
 
 export interface Endpoint {
@@ -45,9 +45,20 @@ export interface Endpoint {
   /** True when the playground needs a ciphertext, which cannot be typed: the
    * page offers to encrypt something instead. */
   needsSeal?: boolean;
+  /** Served by the Peal Links node rather than the coordinator: no metered
+   * twin exists, so the x402 switch leaves these alone. */
+  unmetered?: boolean;
 }
 
-export const GROUPS = ['Rounds', 'Seals', 'Auctions', 'Reference'] as const;
+export const GROUPS = ['Rounds', 'Seals', 'Auctions', 'Reference', 'Private Links'] as const;
+
+/** A sentence under a group heading, where the group needs one. */
+export const GROUP_NOTES: Partial<Record<(typeof GROUPS)[number], string>> = {
+  'Private Links':
+    'The public half of the Peal Private Links node: the ledger every proof is about, and the reads a payer or a wallet makes. None of these need a session. The writes carry a zero-knowledge proof or an account signature and are made by the SDK.',
+};
+
+const SEPOLIA_USDC = '79c4f2a9ebab783dc37773ff576cb5f7ce720b1bbf4507e4239decf7bac88d37';
 
 export const ENDPOINTS: Endpoint[] = [
   // ----------------------------------------------------------------- rounds --
@@ -391,5 +402,174 @@ export const ENDPOINTS: Endpoint[] = [
   "permanent": true
 }`,
     note: 'Checking only. Claiming is a permanent onchain write that can never be undone or repointed, so it happens from your own key rather than from a server acting on your behalf.',
+  },
+  // ---------------------------------------------------------- private links --
+  {
+    id: 'links-status',
+    group: 'Private Links',
+    method: 'GET',
+    path: '/links/v1/status',
+    title: 'Read the node',
+    summary:
+      'Everything a client needs to configure itself: the namespaces (an asset on a chain, with token, decimals, gateway and confirmations), the circuit id the proving keys must match, and the settlement signers.',
+    params: [],
+    response: `{
+  "ok": true,
+  "circuit_id": "d308e51f…",
+  "ledger_mode": "single-node",
+  "signers": ["0x1d9c…", "0x238f…", "0xd140…"],
+  "signer_threshold": 2,
+  "namespaces": [{
+    "id": "79c4f2a9…",
+    "label": "sepolia/USDC",
+    "chain_id": 11155111,
+    "token_address": "0x1c7d…7238",
+    "decimals": 6,
+    "gateway": "0xc141…c1fc",
+    "confirmations": 2,
+    "available": true
+  }],
+  "ledgers": [{ "namespace": "79c4f2a9…", "seq": 0, "receipt_count": 0, "state_root": "…", "receipt_root": "…" }]
+}`,
+    note: 'Running this fills the namespace id into the endpoints below. The signer mode on the hosted node is a single-process fixture: two of three keys in one process, which is the trust model stated on every Private Links page.',
+    unmetered: true,
+  },
+  {
+    id: 'links-ledger',
+    group: 'Private Links',
+    method: 'GET',
+    path: '/links/v1/ledger/{ns}',
+    title: 'Read a ledger',
+    summary: 'One namespace: its sequence number, how many receipts the log holds, and the current state and receipt roots. This is all the ledger publishes about balances: nothing.',
+    params: [
+      { name: 'ns', in: 'path', type: 'hex', required: true, description: 'The namespace id: 64 lowercase hex characters, SHA-256 of the namespace label under a domain tag.', example: SEPOLIA_USDC, carry: 'namespace' },
+    ],
+    response: `{
+  "namespace": "79c4f2a9…",
+  "seq": 18,
+  "receipt_count": 14,
+  "state_root": "5725b1ff…",
+  "receipt_root": "3d4745e5…",
+  "recent_roots": ["…"],
+  "minted_total": "3000000"
+}`,
+    unmetered: true,
+  },
+  {
+    id: 'links-history',
+    group: 'Private Links',
+    method: 'GET',
+    path: '/links/v1/ledger/{ns}/history',
+    title: 'Read the records',
+    summary:
+      'The operations in order. Look at what an op record carries: an account, an old and a new commitment, one receipt, a root and a 128-byte proof. No amount, no counterparty, and no way to tell a send from a receive.',
+    params: [
+      { name: 'ns', in: 'path', type: 'hex', required: true, description: 'The namespace id.', example: SEPOLIA_USDC, carry: 'namespace' },
+      { name: 'from', in: 'query', type: 'integer', description: 'First sequence number to return. Defaults to 1.', example: '1' },
+      { name: 'limit', in: 'query', type: 'integer', description: 'How many. Defaults to 100.', example: '5' },
+    ],
+    response: `{
+  "ops": [
+    { "seq": 1, "kind": "register", "position": null, "envelope": { "namespace": "…", "pubkey": "…", "randomness": "…", "signature": "…" } },
+    { "seq": 3, "kind": "mint", "position": 0, "envelope": { "deposit_id": "11155111:0x…", "intent": { "amount": 1000000, "receipt": "…", "proof": "…" } } },
+    { "seq": 4, "kind": "op", "position": 1, "envelope": { "account": "…", "com": "…", "com_new": "…", "receipt": "…", "root": "…", "proof": "…", "pubkey": "…", "signature": "…" } }
+  ]
+}`,
+    note: 'A mint is a deposit credited by the chain watcher; its amount is public because the deposit was. Everything after it is an op.',
+    unmetered: true,
+  },
+  {
+    id: 'links-accounting',
+    group: 'Private Links',
+    method: 'GET',
+    path: '/links/v1/ledger/{ns}/accounting',
+    title: 'Read the books',
+    summary: 'What the gateway must hold for this namespace, as public numbers: everything minted, everything withdrawn, and the difference, which is the outstanding liability.',
+    params: [
+      { name: 'ns', in: 'path', type: 'hex', required: true, description: 'The namespace id.', example: SEPOLIA_USDC, carry: 'namespace' },
+    ],
+    response: `{
+  "namespace": "79c4f2a9…",
+  "minted_total": "3000000",
+  "withdrawn_total": "1000000",
+  "outstanding_liability": "2000000",
+  "receipt_count": 14
+}`,
+    note: 'Amounts are strings of integer base units. 3000000 is 3.00 USDC.',
+    unmetered: true,
+  },
+  {
+    id: 'links-account',
+    group: 'Private Links',
+    method: 'GET',
+    path: '/links/v1/ledger/{ns}/accounts/{acct}',
+    title: 'Read an account',
+    summary: 'What the ledger knows about one account: a 32-byte commitment and the sequence number that last changed it. The balance is inside the commitment and only the owner can open it.',
+    params: [
+      { name: 'ns', in: 'path', type: 'hex', required: true, description: 'The namespace id.', example: SEPOLIA_USDC, carry: 'namespace' },
+      { name: 'acct', in: 'path', type: 'hex', required: true, description: 'An account id, 64 hex characters. Take one from an op record in the history above.' },
+    ],
+    response: `{
+  "account": "a5d085a2…",
+  "com": "b6f780ec…",
+  "updated_seq": 4
+}`,
+    unmetered: true,
+  },
+  {
+    id: 'links-params',
+    group: 'Private Links',
+    method: 'GET',
+    path: '/links/v1/params',
+    title: 'Read the proving keys index',
+    summary: 'The circuit id and the four key files a prover downloads by digest: the operation proving and verifying keys, and the deposit pair. A client refuses to prove if the circuit id here does not match its keys.',
+    params: [],
+    response: `{
+  "circuit_id": "d308e51f…",
+  "setup": "local-dev",
+  "files": {
+    "op.pk": { "digest": "…", "size": 15000000 },
+    "op.vk": { "digest": "…", "size": 716 },
+    "deposit.pk": { "digest": "…", "size": 940348 },
+    "deposit.vk": { "digest": "…", "size": 716 }
+  }
+}`,
+    note: '"setup": "local-dev" is honest: the keys come from a per-process setup, not a ceremony. GET /links/v1/params/{name} serves the bytes with an immutable cache header and the digest as the ETag.',
+    unmetered: true,
+  },
+  {
+    id: 'links-request',
+    group: 'Private Links',
+    method: 'GET',
+    path: '/links/v1/requests/{id}',
+    title: 'Read a payment request',
+    summary: 'What a payer reads when they open a pay link: the signed manifest (amount, title, receiver account and key, receiver wallet), its status, and whether another payer currently holds it.',
+    params: [
+      { name: 'id', in: 'path', type: 'string', required: true, description: 'The request id: the last segment of a pay link, 24 characters of a-z and 2-7. Create one in the app and paste it here.', carry: 'request' },
+      { name: 'intent', in: 'query', type: 'string', description: 'Your own payer intent id, so your own reservation reports as free.' },
+    ],
+    response: `{
+  "manifest": {
+    "version": 2,
+    "request_id": "…",
+    "namespace": "79c4f2a9…",
+    "receiver_account": "…",
+    "receiver_enc_key": "…",
+    "amount": "12500000",
+    "title": "Logo files",
+    "display_name": "Bob",
+    "receiver_address": "0x…",
+    "reference": "INV-7",
+    "expires_at": null,
+    "created_at": 1789408800,
+    "signer_pubkey": "…",
+    "signature": "…"
+  },
+  "status": "active",
+  "fulfilled_at": null,
+  "reserved": false
+}`,
+    note: 'The SDK verifies the manifest signature against the receiver account, and the receiver profile against the wallet address, before paying. It does not take this response on trust, and neither should your client.',
+    unmetered: true,
   },
 ];

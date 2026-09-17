@@ -28,6 +28,23 @@ Something like:
 Work in this order. Do not skip step 1: the integration shape depends entirely
 on what is already there.
 
+### 0. Which engine
+
+Two things live behind peal.network and they do not share code paths.
+
+- **Sealed submissions**: anything that must stay hidden until a moment and
+  then open for everyone: bids, votes, orders, agent intents. The steps below.
+- **Private payments**: getting paid or paying where the amount and the
+  parties stay off the chain. That is Peal Private Links: a different ledger, a
+  different SDK (`peal-links`), a different API (`/links/v1`), a wallet instead
+  of no wallet. Read `reference/links.md` and follow its procedure; step 1
+  below (survey the application) still applies, steps 2 to 6 do not.
+
+If the user says "auction", "bid", "reveal", "deadline", it is the first. If
+they say "get paid", "payment link", "send money", "private balance",
+"invoice", it is the second. If they want both (a sealed auction settled with a
+private payment), build them as two integrations that meet at the result.
+
 ### 1. Survey the application first
 
 Find out what you are adding to before you write anything.
@@ -192,6 +209,33 @@ the integration end to end against the live network.
    error and do not treat it as empty. Only the legacy `GET /v0/reveals/{id}`
    returns 404 before a reveal exists; new code should not call it.
 
+For Peal Private Links, four more. `reference/links.md` has the reasons.
+
+10. **The wallet's private key and the account's spending key never reach a
+    server, including the user's own.** The SDK asks a `WalletSigner` to sign
+    and holds the spending key in an encrypted store on the client. A "backend
+    that pays on the user's behalf" holds the user's money; say so if that is
+    what they are asking for, and only build it for an account the server
+    itself owns (a shop's receiving account, for instance).
+
+11. **Register the deposit intent before sending tokens, and persist the
+    wallet store before the transaction.** `prepareDeposit` returns the tag the
+    chain call carries; a deposit whose tag the node never saw is held, and a
+    tag whose witness was lost is unclaimable for ever.
+
+12. **Sessions are for metadata and are bound to a domain.** Requests, the
+    profile and backups need a sign-in; the ledger, the inbox and settlement
+    do not. The hosted node accepts sign-ins for `peal.network`. A browser
+    wallet on the user's own site must not be asked to sign in to
+    `peal.network`; they run their own node with `PEAL_LINKS_AUTH_DOMAINS`. A
+    server-side script with its own key may sign in directly.
+
+13. **Do not say trustless, unlinkable, audited or mainnet.** The ledger is
+    private, not unlinkable: the node knows which wallet owns which account and
+    the ledger shows who acted. Withdrawals are released by a signer committee.
+    It is Sepolia testnet with test funds. These are the words the user will
+    repeat to their users; get them right.
+
 ---
 
 ## What you get for free
@@ -203,6 +247,10 @@ the integration end to end against the live network.
 - **A check code.** Eight speakable characters over the terms. A seller reads
   them out, a bidder compares them: the only defence against a swapped link.
 - **No wallet, no account, no gas** for the people bidding.
+- **For private payments, a hosted checkout.** Every request has a page at
+  `https://peal.network/pay/<id>` where a payer connects a wallet and pays; a
+  shop can link to it before it has built anything, and the dashboard at
+  `https://peal.network/#/bonsai/app` shows what arrived.
 
 ## Charging for it
 

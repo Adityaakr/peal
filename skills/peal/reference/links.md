@@ -131,6 +131,134 @@ await me.claimAll();
 console.log((await me.view()).balance, 'base units');
 ```
 
+## The procedure
+
+Same discipline as a sealed-submission integration. Say what you found before
+you build.
+
+1. **Survey.** Who receives and who pays? A shop receiving from customers is
+   one receiving account the server can own; a peer-to-peer feature is one
+   account per user, held in their browser. Where does the app run: a server,
+   a static page, both? Is there already a wallet connection (wagmi, viem, an
+   EIP-1193 provider)? Which chain are they on: Sepolia is the only hosted one.
+2. **Choose where the account lives.**
+
+   | account owner | where the SDK runs | store | signer |
+   | --- | --- | --- | --- |
+   | the business (a shop, a treasury) | a Node process the business runs | your own `WalletStore` over a database, plus `DeviceKeys` | `localSigner` with a key the business holds |
+   | each user | the user's browser | `indexedDbStore()` | `providerSigner` over their wallet |
+
+   A user's account in a server is the user's money in your custody. Do not
+   build that quietly.
+3. **Choose the checkout.** The hosted page at `https://peal.network/pay/<id>`
+   is complete: request verification, wallet connect, funding, approval,
+   proof, delivery. Link to it. Build your own only if the product needs it,
+   and then read "Sessions on your own origin" below.
+4. **Implement** from the example above, or the recipe in
+   `reference/recipes.md` ("Getting paid privately").
+5. **Verify** with the script below before reporting success.
+
+## Sessions on your own origin
+
+The hosted node signs in wallets for the domain `peal.network`. A script with
+its own key (a shop's server) may sign in with that domain, because nobody is
+being asked to trust a page. A browser wallet on `shop.example` must not be
+asked to sign a message that says `peal.network wants you to sign in`; that is
+the shape of a phishing prompt. For a browser integration on another origin,
+run a node (`docs/peal-links/OPERATIONS.md` in the repository) with
+`PEAL_LINKS_AUTH_DOMAINS=shop.example`, point `NodeClient` at it, and the same
+Sepolia gateway serves both.
+
+## Verify before you say it is done
+
+A script that proves the integration against the hosted node: reads the node,
+signs in, sets up an account, creates a request, reads it back the way a payer
+would, and verifies the manifest and profile. It needs no funds. About twenty
+seconds, most of it downloading the proving key on the first run.
+
+```js
+// verify-links.mjs: node verify-links.mjs   (KEY=0x… a throwaway Sepolia key, no funds needed)
+import { LinksAccount, NodeClient, loadParams, localSigner, siweMessage,
+         deterministicSignature, recoveryMessage, deriveBackupKey, newRecoveryCode,
+         MemoryStore } from 'peal-links';
+import { createLocalProver } from 'peal-links/local';
+import { privateKeyToAccount } from 'viem/accounts';
+
+const client = new NodeClient({ baseUrl: 'https://peal.network' });
+const status = await client.status();
+const ns = status.namespaces.find((n) => n.label === 'sepolia/USDC');
+if (!ns?.available) throw new Error('sepolia/USDC is not available on this node');
+console.log('node ok, circuit', status.circuit_id.slice(0, 12), 'signers', status.signers.length, 'threshold', status.signer_threshold);
+
+const store = new MemoryStore();
+const prover = await createLocalProver();
+await loadParams(client, prover, store);
+console.log('proving keys verified by digest');
+
+const signer = localSigner(privateKeyToAccount(process.env.KEY), ns.chain_id);
+const { nonce } = await client.nonce();
+const message = siweMessage({ domain: 'peal.network', address: signer.address, uri: 'https://peal.network', chainId: ns.chain_id, nonce });
+await client.session(message, await signer.signMessage(message));
+console.log('session for', (await client.me()).address);
+
+const sig = await deterministicSignature(signer, recoveryMessage(signer.address, ns.label, ns.id));
+const recovery = sig
+  ? { mechanism: 'wallet-signature', backupKey: await deriveBackupKey(sig, signer.address, ns.id) }
+  : { mechanism: 'recovery-code', code: newRecoveryCode() };
+const me = await LinksAccount.setup({ prover, client, namespace: ns.id, store }, status.circuit_id, signer, 'Verify', recovery);
+console.log('account registered; balance', (await me.view()).balance);
+
+const request = await me.createRequest({ amount: '1000000', title: 'verify', reference: 'verify-1' });
+const id = request.manifest.request_id;
+const seen = await client.getRequest(id);
+if (seen.status !== 'active' || seen.manifest.amount !== '1000000') throw new Error('request did not round-trip');
+const resolved = await me.resolve(signer.address);
+if (!resolved || resolved.profile.profile_key !== seen.manifest.signer_pubkey) throw new Error('profile does not match the manifest');
+console.log('request', id, 'verifies; pay page https://peal.network/pay/' + id);
+await client.archiveRequest(id);
+console.log('PASS');
+```
+
+What a pass looks like: six lines ending in `PASS`. What each failure means:
+
+- `sepolia/USDC is not available`: the node's chain watcher cannot reach the
+  RPC; nothing you did. Try later.
+- `unauthorized` at `session`: the domain, nonce or issued-at was rejected;
+  the clock on the machine is more than two minutes off, or the message was
+  edited.
+- `invalid_proof` or `wrong_circuit` at `setup`: the keys in the store are for
+  another circuit id; clear the store and let `loadParams` fetch again.
+- `unregistered_receiver` at `createRequest`: `setup` did not finish
+  registering; run again.
+- `profile does not match`: the directory answered with a profile whose key
+  is not the one that signed the manifest. Stop; do not pay such a request.
+
+To verify a payment end to end with funds, run the SDK's own suite against the
+local stack in the repository: `scripts/peal-links/stack.sh up` then
+`pnpm -C packages/links test`. It deposits, pays, claims and withdraws on two
+local chains.
+
+## Building the interface
+
+Match their design system (`reference/ui.md`) and build these states; the
+hosted checkout at `/pay/<id>` shows each of them if you want to see one.
+
+| state | what to show | what not to show |
+| --- | --- | --- |
+| verifying the request | the title and amount only after the manifest and profile verify | anything from the node before verification |
+| connect wallet | one button; the wallet is the whole identity | a sign-up form |
+| first visit | "this wallet has no private account here yet; setting one up asks for one signature" | jargon about commitments |
+| funding | the public deposit, its transaction hash, "credited after 2 confirmations" | a spinner with no hash |
+| approve | the wallet prompt with the amount and the recipient's name; say it is a local approval, not a transaction | a gas estimate (there is none) |
+| proving | "proving, about seven seconds"; keep the tab open | a fake progress bar |
+| delivering | "receipt delivered" or "receipt queued, will retry" (the inbox may be briefly unreachable; the payment already happened) | treating an undelivered receipt as a failed payment |
+| done | the position on the ledger, and that nothing about the amount is public | a chain explorer link for the payment (there is no chain transaction) |
+| errors | the `code` mapped to a sentence: `reserved` (someone else is paying this right now), `not_payable` (expired or already paid), `stale_commitment` (refresh and retry), `unreachable` (the node is down; nothing was spent) | the raw problem+json |
+
+Amounts are formatted from base units with the namespace's decimals, never
+parsed from a float the user typed: read the input as a string, split on the
+decimal point, and build the integer.
+
 ## Money and encodings
 
 - Amounts are decimal strings of integer base units on every boundary:

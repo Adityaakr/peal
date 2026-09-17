@@ -41,6 +41,17 @@ for the vintage camera listing, closing Monday at 6pm, reserve $50</code></pre>
     until Friday"</em> · <em>"let people vote on this without seeing a running tally"</em> ·
     <em>"my agents keep front running each other, seal their actions until the round ends"</em>.</p>
 
+    <h3>And for private payments</h3>
+    <p>Say <em>"let customers pay my shop privately"</em> or <em>"add a payment link that keeps
+    the amount off the chain"</em> and the skill switches engines to
+    <a href="#/developers/links">Peal Private Links</a>. The same discipline, a different path:
+    it decides whether the account belongs to your business (one account in your server, your
+    own encrypted store) or to each user (in their browser, their wallet), points the checkout at
+    the hosted pay page rather than rebuilding it, writes the request and sync code from a tested
+    recipe, and runs a verification script against the node that signs in, registers, creates a
+    request and reads it back the way a payer would. It also carries the words it must not use:
+    trustless, unlinkable, audited, mainnet.</p>
+
     <p class="dev-note">If piping a script to a shell is not something you do, read
     <a href="${esc(shown)}/skill/install.sh" target="_blank" rel="noopener">install.sh</a> first.
     It is four <code>curl</code> commands and a <code>mkdir</code>; it writes nothing else and runs

@@ -108,3 +108,28 @@ ok    nothing was discarded
   timezone rather than in UTC.
 - The results view handles `bids === null` as "still open" rather than as
   "nobody bid".
+
+
+## Verifying a Peal Private Links integration
+
+The sealed-submission script above does not touch the private ledger. For
+Peal Private Links run the script in `reference/links.md` ("Verify before you
+say it is done"): it reads the node, signs in, sets up an account, creates a
+request, reads it back the way a payer would and checks the manifest against
+the directory profile. It needs a throwaway key and no funds, and prints `PASS`.
+
+Then, in the application itself:
+
+- Open the pay URL the app produced in a browser. The hosted page must show the
+  title and amount you set, and the shop's display name. If it shows "could not
+  verify this request", the manifest or profile did not round-trip.
+- Amounts in your database are integer strings in base units and match the
+  receipt's `amount` exactly. A float anywhere in the path is a bug, even if
+  the numbers look right today.
+- The wallet store and device keys survive a restart of your process: stop it,
+  start it, and `LinksAccount.unlock` succeeds without recovering from the
+  node backup.
+- The sync job runs from a scheduler, not from a request handler, and logs the
+  balance it read.
+- The words in the user-facing copy: no "trustless", "unlinkable", "audited"
+  or "mainnet". Sepolia, test funds, committee-attested withdrawals.

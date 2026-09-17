@@ -7520,6 +7520,16 @@ body.docs-page main {
   background: var(--border);
 }
 
+/* A sentence under a group heading, for the group that is served by a
+   different node than the rest of the page. */
+.api-group-note {
+  margin: -6px 0 22px;
+  max-width: 72ch;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
 .api-endpoint {
   margin: 0 0 18px;
   border: 1px solid var(--accent-border);

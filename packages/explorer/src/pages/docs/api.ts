@@ -10,7 +10,7 @@
  */
 import type { DocsPage } from '../../docs';
 import { esc } from '../../util';
-import { ENDPOINTS, GROUPS, type Endpoint, type Param } from './api-spec';
+import { ENDPOINTS, GROUPS, GROUP_NOTES, type Endpoint, type Param } from './api-spec';
 import { base, client, shown } from './runner';
 import { Payer, meteredPath, payAndFetch, type Receipt } from '../../x402';
 
@@ -19,7 +19,8 @@ import { Payer, meteredPath, payAndFetch, type Receipt } from '../../x402';
  * Reading a round needs a round. Without this a caller has to run the first
  * endpoint, copy an id out of the response and paste it into the second, which
  * is enough friction that most people never press the second button. */
-const remembered: Partial<Record<'round' | 'seal', string>> = {};
+type Carry = NonNullable<Param['carry']>;
+const remembered: Partial<Record<Carry, string>> = {};
 
 function methodClass(m: string): string {
   return m === 'POST' ? 'api-m-post' : 'api-m-get';
@@ -161,6 +162,7 @@ export const apiReference: DocsPage = {
         <span>${ENDPOINTS.filter((e) => e.group === g).length} endpoints</span>
         <span class="api-group-rule"></span>
       </div>
+      ${GROUP_NOTES[g] ? `<p class="api-group-note">${esc(GROUP_NOTES[g]!)}${g === 'Private Links' ? ' <a href="#/developers/links-api">Private Links API</a> has every route; <a href="#/developers/links">Peal Private Links</a> is the picture.' : ''}</p>` : ''}
       ${ENDPOINTS.filter((e) => e.group === g).map(endpointHtml).join('')}`,
     ).join('')}
 
@@ -270,7 +272,8 @@ export const apiReference: DocsPage = {
           : 'Off. Every endpoint on this page is free and needs no wallet.';
       }
       for (const b of Array.from(root.querySelectorAll<HTMLButtonElement>('[data-run]'))) {
-        b.textContent = on ? 'pay and run' : 'run';
+        const target = ENDPOINTS.find((x) => x.id === b.dataset.run);
+        b.textContent = on && !target?.unmetered ? 'pay and run' : 'run';
       }
       if (on) void refreshBalance();
     };
@@ -300,7 +303,7 @@ export const apiReference: DocsPage = {
     // Ids flow forward, so the page can be worked down without copying. A round
     // id only fills fields that want a round: offering it to `GET /v1/seals/{id}`
     // produced a 404 on a button somebody had just pressed.
-    const offerId = (kind: 'round' | 'seal', value: string): void => {
+    const offerId = (kind: Carry, value: string): void => {
       remembered[kind] = value;
       for (const e of ENDPOINTS) {
         const param = e.params.find((p) => p.carry === kind);
@@ -391,7 +394,8 @@ export const apiReference: DocsPage = {
             );
           }
 
-          const paid = paidMode();
+          // The Peal Links node has no metered twin; the switch does not apply.
+          const paid = paidMode() && !e.unmetered;
           const url = `${base}${paid ? meteredPath(path) : path}${query ? `?${query}` : ''}`;
           const started = performance.now();
           let receipt: Receipt | null = null;
@@ -424,10 +428,16 @@ export const apiReference: DocsPage = {
             pretty = JSON.stringify(parsed, null, 2);
             // A response can carry both: POST /v1/seals returns the seal's
             // own hash and the round it made.
-            const { id, round_id: roundId } = parsed as { id?: string; round_id?: string };
+            const { id, round_id: roundId, namespaces, manifest } = parsed as {
+              id?: string; round_id?: string; namespaces?: { id: string }[]; manifest?: { request_id?: string };
+            };
             if (roundId?.startsWith('cond_')) offerId('round', roundId);
             if (id?.startsWith('cond_')) offerId('round', id);
             else if (id && /^[0-9a-f]{64}$/.test(id)) offerId('seal', id);
+            // The Peal Links node: its status names the namespaces, and a
+            // request names its own id.
+            if (namespaces?.[0]?.id) offerId('namespace', namespaces[0].id);
+            if (manifest?.request_id) offerId('request', manifest.request_id);
           } catch {
             if (!text.trim()) pretty = '(no body)';
           }
@@ -441,7 +451,7 @@ export const apiReference: DocsPage = {
           showReceipt(e.id, null);
         } finally {
           btn.disabled = false;
-          btn.textContent = paidMode() ? 'pay and run' : 'run';
+          btn.textContent = paidMode() && !e.unmetered ? 'pay and run' : 'run';
         }
       };
       btn.addEventListener('click', () => void onRun());

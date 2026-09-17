@@ -157,3 +157,44 @@ The free routes stay free. See `reference/payments.md`.
 50 requests a second per IP, bursting to 400. Every response carries
 `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`, so a client
 never has to be refused to learn its budget.
+
+
+## Peal Private Links (`/links/v1`)
+
+A different node, mounted at `https://peal.network/links/v1`. JSON in and out,
+errors as `application/problem+json`. Amounts are decimal strings of integer
+base units (one exception below); 32-byte ids are 64 lowercase hex characters
+without `0x`. Full field lists: `https://peal.network/developers/links-api`.
+The public reads can be run from `https://peal.network/developers/api`.
+
+Three kinds of authentication: none; a session (`Authorization: Bearer` from a
+wallet sign-in, EIP-4361 message, 12 hours, externally owned accounts only);
+an account signature (ed25519 by the private account's spending key, in the
+body, or in the `x-peal-inbox-auth` header for inbox reads).
+
+| route | auth | what |
+| --- | --- | --- |
+| `GET /status` | none | namespaces (id, label, chain, token, decimals, gateway, confirmations, available), `circuit_id`, `signers`, `signer_threshold`, per-ledger `seq` and roots |
+| `GET /params`, `GET /params/{name}` | none | the proving key index and the key bytes (`op.pk`, `op.vk`, `deposit.pk`, `deposit.vk`), served by digest with an immutable cache header |
+| `GET /ledger/{ns}` | none | `seq`, `receipt_count`, `state_root`, `receipt_root`, `recent_roots`, `minted_total` |
+| `GET /ledger/{ns}/accounts/{acct}` | none | the account's current commitment and `updated_seq` |
+| `POST /ledger/{ns}/register` | account signature | a new account: `namespace`, `pubkey`, `randomness`, `signature` |
+| `POST /ledger/{ns}/ops` | account signature | one operation: `account`, `com`, `com_new`, `receipt`, `root`, a 128-byte `proof`, `pubkey`, `signature`; returns the receipt's `position` |
+| `GET /ledger/{ns}/receipts/{pos}/path?size=` | none | a Merkle path for a receipt |
+| `GET /ledger/{ns}/history?from=&limit=` | none | the records: `register`, `op`, `mint` |
+| `GET /ledger/{ns}/accounting` | none | `minted_total`, `withdrawn_total`, `outstanding_liability` |
+| `GET /auth/nonce`, `POST /auth/session`, `GET /auth/me` | none, none, session | sign-in: nonce (10 min), `{message, signature}` to `{token, address, expires_at}`, who am I |
+| `POST /requests`, `GET /requests` | session (+ account signature on create) | create a signed manifest; list the caller's requests |
+| `GET /requests/{id}?intent=` | none | what a payer reads: `manifest`, `status`, `reserved` |
+| `POST /requests/{id}/reserve` | none | `{intent_id}`: a 10-minute soft lock |
+| `POST /requests/{id}/fulfill` | account signature | the receiver's acknowledgement |
+| `POST /requests/{id}/archive` | session | owner only |
+| `PUT /directory`, `GET /directory/{ns}/{address}` | session | publish an EIP-712 `PealLinksAccount` profile; look one up (60 per minute) |
+| `POST /inbox/keys`, `GET /inbox/keys/{ns}/{acct}` | account signature, none | bind and read an encryption key |
+| `POST /inbox/{ns}/{acct}`, `GET /inbox/{ns}/{acct}?after=` | none, `x-peal-inbox-auth` | deliver an encrypted receipt (8 KiB); read the inbox (200 per page) |
+| `POST /deposits/intents`, `GET /deposits/intents/{ns}/{receipt}` | proof, none | register a deposit intent before the chain call; poll it. `amount` here is a JSON number, the one exception |
+| `POST /withdrawals`, `GET /withdrawals/{ns}/{position}` | account signature, none | claim a burn and receive the signer certificate; read its status and `tx_hash` |
+| `GET /healthz` | none | at the root, not under `/links/v1` |
+
+The SDK (`peal-links`) makes every call above; a client in another language
+needs the wasm prover for the writes and can use the reads directly.

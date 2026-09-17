@@ -261,3 +261,14 @@ Add no new stylesheet unless there is nothing to reuse.
 
 Then run the end to end check in `reference/verify.md`. A page that looks right
 and does not seal is worse than one that looks wrong.
+
+
+## A private payment page
+
+If the integration is Peal Private Links, the states are different and there
+are more of them: verifying the request, connect wallet, first visit, funding,
+approve, proving, delivering, done, and the errors. The table is in
+`reference/links.md` ("Building the interface"). Everything above about
+finding and matching their design system applies unchanged; the hosted
+checkout at `https://peal.network/pay/<id>` is the reference for what each
+state must say, not for how it should look in their product.
