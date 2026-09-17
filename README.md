@@ -1,259 +1,271 @@
 # Peal, the programmable disclosure network
 
-Peal is reveal-later encryption as a network. You seal a payload to a committee,
-name a cue (a deadline or a block height), and when the cue fires the whole batch
-opens at once, for everyone, guaranteed. Nothing is readable early, not by the
-operators and not by us, and no one ever sends a reveal transaction.
+Peal is a network for information that has to stay hidden until a moment you name, and for money that stays hidden after it moves. Two cryptographic engines, one product surface.
 
-This repo is three things:
+- **Reveal-later encryption.** Seal a payload to a committee, name a cue (a deadline or a block height), and when the cue fires the whole batch opens at once, for everyone, guaranteed. Nobody reads it early, and nobody ever sends a reveal transaction. This runs sealed-bid auctions, an encrypted mempool, and private agent actions.
+- **Private payments.** Peal Private Links: share a link, get paid from any wallet, and the amount and the parties never appear on a chain. Payments are zero-knowledge proofs on a small ledger built for them; only deposits and withdrawals touch the chain.
 
-- **the disclosure network** ([`bte-sdk`](packages/sdk), a Rust coordinator and
-  operator nodes) that any dapp can integrate for sealed bids, hidden votes, or
-  fair launches,
-- **Peal Live** ([`peal-live`](packages/live)), a sealed auction anyone can enter
-  with no wallet, no sign in and no gas, built as the smallest thing that puts
-  the network in front of people who have never heard of it, and
-- **the encrypted mempool**, a live end-to-end demo that puts Peal in front of a
-  swap and shows a real MEV sandwich vanish, on a real chain, with every step
-  verifiable, and
-- **private actions** ([`peal-actions`](packages/actions)), the intent shape for
-  autonomous agents: an agent signs what it wants done and the worst terms it
-  will take, that intent stays encrypted until its place in the batch is
-  committed, and it settles with a receipt the agent can verify without trusting
-  us.
+Live at **[peal.network](https://peal.network)**. Everything below is in this repository.
 
-```ts
-import { BteClient } from 'bte-sdk';
+| product | what it does | where |
+|---|---|---|
+| Peal Private Links | private payment links and transfers, USDC on Ethereum Sepolia today | [peal.network/#/bonsai](https://peal.network/#/bonsai) · app at `#/bonsai/app` |
+| Encrypted mempool | the same swap in a public and a sealed mempool, live on Tempo, a real sandwich bot loses | [peal.network/#/encrypted-mempool](https://peal.network/#/encrypted-mempool) |
+| SealBid | escrowed, on-chain sealed-bid token auctions with one uniform clearing price | [peal.network/#/auction](https://peal.network/#/auction) |
+| Peal Live | a sealed auction anyone can enter with no wallet, no sign-in, no gas | [peal.network/#/create](https://peal.network/#/create) |
+| Private actions | agent intents that stay encrypted until their place in the batch is committed | [peal.network/#/execution](https://peal.network/#/execution) |
+| The disclosure network | the API and SDK every product above is built on | [peal.network/developers](https://peal.network/developers) |
 
-const client = new BteClient({ url: 'http://localhost:8080' });
-const conditionId = await client.condition({ in: 60 });
-await client.seal('sealed bid: 42', conditionId);
-
-const reveal = await client.waitForReveal(conditionId);
-for (const slot of reveal.slots.filter((s) => !s.isDummy)) {
-  console.log('revealed on cue:', slot.text);
-}
+```mermaid
+flowchart TB
+    subgraph products["Products"]
+        PL["Peal Private Links<br/>private payment links"]
+        EM["Encrypted mempool"]
+        SB["SealBid auctions"]
+        LV["Peal Live"]
+        PA["Private actions"]
+    end
+    subgraph engines["Engines"]
+        BTE["Reveal-later encryption<br/>batched threshold encryption, 3 of 5 operators"]
+        BON["Private ledger<br/>Bonsai construction, ZK-Pari proofs"]
+    end
+    subgraph chains["Chains"]
+        SEP["Ethereum Sepolia"]
+        TMP["Tempo Moderato"]
+    end
+    EM --> BTE
+    SB --> BTE
+    LV --> BTE
+    PA --> BTE
+    PL --> BON
+    BON -- "deposits and withdrawals<br/>through a gateway contract" --> SEP
+    BON -.-> TMP
+    BTE -- "settlement and anchors" --> TMP
 ```
 
-That is the whole integration. Your users never send a reveal transaction, so
-there is no "the winner never opened their commitment", no reveal-deadline
-griefing, and no trusted auctioneer sitting on plaintexts.
+---
+
+## Contents
+
+- [Peal Private Links](#peal-private-links)
+- [The encrypted mempool](#the-encrypted-mempool)
+- [SealBid](#sealbid)
+- [Peal Live](#peal-live)
+- [Private actions](#private-actions)
+- [How reveal-later encryption works](#how-reveal-later-encryption-works)
+- [How the private ledger works](#how-the-private-ledger-works)
+- [Trust model, honestly](#trust-model-honestly)
+- [Run it locally](#run-it-locally)
+- [Deployment](#deployment)
+- [Repository map](#repository-map)
+- [Tests](#tests)
+- [Credits and license](#credits-and-license)
+
+---
+
+## Peal Private Links
+
+One link, a private payment. You create a payment request (an amount in one asset, a title, an optional reference and expiry), share the link or its QR code, and receive the payment into a private balance. The payer needs nothing but a wallet. Between deposit and withdrawal, nothing about the payment is on any chain: not the amount, not the two parties, not whether it was a send or a receive.
+
+It is built on **Bonsai**, Commonware's account-based private payment construction, with the **ZK-Pari** proof system. Every account on the ledger is one 32-byte commitment. A payment changes two commitments and appends one receipt, proven by a 128-byte proof made in the payer's browser in a few seconds.
+
+### The flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant R as Receiver (wallet)
+    participant N as Peal Links node
+    participant P as Payer (wallet + browser)
+    participant L as Private ledger
+    participant C as Chain (gateway contract)
+
+    R->>N: connect wallet, sign one account authorization
+    N-->>R: private account registered, receiving profile published
+    R->>N: create request (amount, title) signed by the account
+    N-->>R: link peal.network/pay/…
+    R-->>P: share the link
+    P->>N: open link, verify the request signature and the receiver's profile
+    opt private balance short
+        P->>C: approve + deposit (public, credited after a few blocks)
+        C-->>N: Deposit event, tagged with a commitment
+        N-->>P: balance credited, claimed with a proof
+    end
+    P->>P: wallet confirms a local payment intent
+    P->>P: browser proves the payment (about 7 s)
+    P->>L: proof + envelope
+    L-->>L: verify, record one commitment
+    P->>N: encrypted receipt to the receiver's inbox
+    R->>N: come back online, decrypt and verify the receipt
+    R->>L: claim (a proof), balance grows
+    opt withdraw
+        R->>L: burn with a proof
+        L-->>R: certificate from the settlement signers
+        R->>C: withdraw(certificate), public
+    end
+```
+
+### One wallet, private by default
+
+Your existing EVM wallet is the only identity anyone sees. On first use it signs one EIP-712 authorization for a private account and one recovery message; from then on it is the thing you connect, the thing people pay, and the thing that recovers you.
+
+- **Receiving profile.** A signed record in the node's directory maps your `0x` address to your private account, so anyone can pay a plain address, and every client verifies the wallet's signature before paying.
+- **Recovery.** Wallets that sign deterministically derive a backup key from a signature; the rest get a recovery code shown once. The node keeps an encrypted, versioned backup that only your wallet (or your code) can open.
+- **Several wallets, one device.** Each wallet keeps its own account; several tabs of one browser share it safely through a lock and a versioned store.
+
+### Who sees what
+
+| who | sees | does not see |
+|---|---|---|
+| the public ledger | which account acted, and when | the amount, the other party, send or receive |
+| the backing chain | deposits and withdrawals: address, amount, token | which private account a deposit went to, any payment in between |
+| the payer | the amount, your display name and wallet address | your balance, your other payments |
+| the receiver | the amount and, for a direct send, who paid | the payer's balance or history |
+| Peal's directory | which wallet owns which private account | payments, amounts, balances |
+| Peal's services | request titles and amounts you publish, encrypted receipts, timing, IP | receipt contents, spending keys, balances |
+
+Full observer matrix and threats: [docs/peal-links/THREAT_MODEL.md](docs/peal-links/THREAT_MODEL.md).
+
+### What is deployed
+
+| network | assets | gateway | status |
+|---|---|---|---|
+| Ethereum Sepolia | USDC (Circle testnet), tUSD (faucet token) | `0xC141Bc6AaED24258276dC203050AD148ec95C1fC` | live behind peal.network |
+| Tempo Moderato | PathUSD, tUSD | `0xE747A08e7cFea2574bCc9A0a8FCb6E02a68D6F39` | run on demand with `testnet.sh` |
+
+Testnet funds only. Mainnet is blocked on purpose; see [Trust model](#trust-model-honestly) and [docs/peal-links/MAINNET_READINESS.md](docs/peal-links/MAINNET_READINESS.md).
+
+### Where the code is
+
+| part | path |
+|---|---|
+| Bonsai core: pinned circuits, wallet journal, ledger state transition, deposits, withdrawals | [`crates/peal-bonsai`](crates/peal-bonsai) |
+| node: ledger API, requests, directory, encrypted inbox, backups, chain watcher, settlement signers | [`crates/peal-links-node`](crates/peal-links-node) |
+| consensus: Commonware `simplex` over the ledger (three local validators) | [`crates/peal-links-consensus`](crates/peal-links-consensus) |
+| browser wallet: proving, envelopes, backups, compiled to wasm | [`crates/peal-links-wasm`](crates/peal-links-wasm) |
+| TypeScript SDK `peal-links` | [`packages/links`](packages/links) |
+| gateway and test token | [`contracts/src/links`](contracts/src/links) |
+| landing, dashboard, checkout | [`packages/explorer/src/pages`](packages/explorer/src/pages) (`bonsai-landing.ts`, `bonsai-app.ts`, `pay.ts`) |
+| spec, decisions, build log, benchmarks, operations | [`docs/peal-links`](docs/peal-links) |
+
+The SDK in four calls, from its own tests:
+
+```ts
+import { LinksAccount, newIntentId } from 'peal-links';
+
+// receiver: one wallet signature authorizes a private account behind the wallet
+const bob = await LinksAccount.setup(opts, circuitId, walletSigner, 'Bob', recovery);
+const request = await bob.createRequest({ amount: '1250000000', title: 'Logo files' });
+
+// payer: the wallet confirms a local intent, the browser proves the payment
+const paid = await alice.pay({ request }, newIntentId(), { intent, signature });
+
+// receiver, whenever next online: verify the encrypted receipt, claim it
+await bob.syncInbox();
+await bob.claimAll();
+```
+
+---
+
+## The encrypted mempool
+
+The same swap sent into two mempools at once, live on **Tempo Moderato (chain 42431)**, and you sign nothing.
+
+```mermaid
+flowchart LR
+    U["Your swap"] --> PUB["Public mempool<br/>order readable while pending"]
+    U --> SEAL["Peal lane<br/>order sealed to the committee"]
+    PUB --> BOT["Searcher bot<br/>buys ahead, you fill worse, sells back"]
+    BOT --> W["you receive less than quoted"]
+    SEAL --> CUE["cue fires, batch opens"]
+    CUE --> EXE["PealMempool.executeBatch<br/>checks the revealed batch's merkle root"]
+    EXE --> Q["you receive the quote"]
+```
+
+- On the **public** side a real searcher bot with its own key reads your order and wraps a sandwich around it.
+- On the **peal** side the chain sees only a ciphertext hash, so there is nothing to sandwich. At the cue the batch opens and your swap fills at the quoted price.
+
+Nothing is a mock-up: both pools are real contracts, the searcher is real, and the sealed order settles through `PealMempool.executeBatch`, which re-derives the batch's merkle root and rejects anything else. A relayer sponsors both submissions so the visitor signs nothing.
+
+| contract | role |
+|---|---|
+| `DemoToken` | mintable ERC-20 (mUSDC, mETH) |
+| `SwapPool` | constant-product pool, 0.3% fee; both lanes reset to identical reserves before each swap |
+| `PublicBuilder` | an unprotected mempool: orders deferred and broadcast in the clear, `sandwich()` wraps one atomically |
+| `PealMempool` | `commitSealed` emits only a hash; `executeBatch` settles only the revealed batch |
+
+Services in [`packages/mempool-agents`](packages/mempool-agents): the **relayer** (sponsored gateway, resets pools), the **searcher** (the bot), the **settler** (calls `executeBatch` after the reveal). Deployed addresses: [`packages/mempool-agents/deployments/42431.json`](packages/mempool-agents/deployments/42431.json). Deployment recipe: [docs/deploy-mempool-railway.md](docs/deploy-mempool-railway.md).
+
+---
+
+## SealBid
+
+Escrowed, on-chain sealed-bid token auctions on Tempo Moderato. An issuer funds a supply and sets a price ladder; bidders escrow quantity times their maximum price; everyone who wins pays one uniform clearing price.
+
+Each bid is sealed in the bidder's browser with batched threshold encryption and committed beside a salted commitment. There is no commit-reveal: the commitment only binds the decrypted bid to its bidder, the encryption is what hides it. At the close the batch opens, the settler ([`packages/sealbid-settler`](packages/sealbid-settler)) registers the committee-signed reveal root and processes every bid, and the contract checks each revealed bid against its commitment. Nobody keeps a salt and nobody sends a reveal transaction.
+
+Contracts, client and trust assumptions: [`docs/auctionkit`](docs/auctionkit); the wiring decision is [0005](docs/auctionkit/decisions/0005-wire-bte.md); going live: [docs/deploy-sealbid-settler.md](docs/deploy-sealbid-settler.md). Client: [`packages/auctionkit`](packages/auctionkit).
 
 ---
 
 ## Peal Live
 
-A seller names an item and a close time and gets a link. Anyone who opens it
-types a number and hits bid: no wallet, no sign in, no gas, nothing to install.
-The bid is sealed in the bidder's own browser, so the seller cannot read it
-before the close and neither can anyone else bidding. At the close the whole
-batch opens at once and the page ranks it.
+A seller names an item and a close time and gets a link. Anyone who opens it types a number and bids: no wallet, no sign-in, no gas. The bid is sealed in the bidder's browser, so the seller cannot read it before the close and neither can other bidders. At the close the whole batch opens and the page ranks it.
 
-The point is what it does not need. A bidder brings nothing, and a seller does
-not either: the terms ride in the URL fragment, so an auction is a link and
-needs no backend to exist. `peal.network/shoonya` works because
-[`PealNames`](contracts/src/PealNames.sol) on Tempo maps a name to those terms,
-once and permanently.
+The terms ride in the URL fragment, so an auction is a link and needs no backend to exist. `peal.network/shoonya` works because [`PealNames`](contracts/src/PealNames.sol) on Tempo maps a name to those terms, once and permanently.
 
-Three things it deliberately does not claim:
-
-- **Nothing is escrowed.** It settles who bid the most, not the payment. The
-  board is a queue rather than a winner, so a bid nobody honours costs the
-  seller one line rather than the sale.
-- **The close is our coordinator's clock**, not something the operators check.
-- **The committee's keys came from one setup we ran**, so this is a fair reveal
-  rather than a trustless one, and the pages say so in those words.
-
-Contact details are the exception that proves the rule: everything sealed into a
-bid is published when the batch opens, so they are encrypted to a key only the
-seller holds rather than hidden in the interface.
-[`packages/live`](packages/live) is the pure half, 217 tests, no DOM and no
-network.
-
-## SealBid
-
-The escrowed, on-chain sealed-bid auction, live on Tempo Moderato. An issuer
-funds a supply and sets a price ladder; bidders escrow quantity times their
-maximum price and everyone who wins pays one uniform clearing price. Each bid is
-sealed in the bidder's browser with **batched threshold encryption (BTE)**, the
-same primitive as everything else here: the bid page encrypts quantity, price
-and salt to the auction's condition under the committee's public parameters and
-commits the ciphertext hash beside a salted commitment. There is no
-commit-reveal in it. The commitment only binds the decrypted bid to its bidder;
-BTE is what hides it. At the close the batch opens, a
-settler ([`packages/sealbid-settler`](packages/sealbid-settler)) registers the
-committee-signed reveal root and processes every bid, and the contract checks
-each revealed bid against the commitment its bidder posted before the close.
-Nobody keeps a salt and nobody sends a reveal transaction. The contracts, the
-client and the trust assumptions are in [`docs/auctionkit`](docs/auctionkit);
-decision [0005](docs/auctionkit/decisions/0005-wire-bte.md) is where the
-sealing was wired in, and [`docs/deploy-sealbid-settler.md`](docs/deploy-sealbid-settler.md)
-is how the settler goes live.
-
-## Peal Links
-
-Private payment links on the Bonsai construction (Commonware's account-based
-private payments with the ZK-Pari SNARK). Someone creates a payment request,
-shares the link or QR code, and receives a payment into a private balance on
-a Peal-run ledger; the payer's browser makes the proof. Deposits and
-withdrawals go through an ERC-20 gateway on a backing chain and are public;
-everything between them is inside commitments and 128-byte proofs.
-
-- Landing `#/bonsai`, app `#/bonsai/app`, checkout `#/pay/<id>`.
-- Core crate [`crates/peal-bonsai`](crates/peal-bonsai) (pinned upstream
-  circuits, wallet journal, ledger STF), node
-  [`crates/peal-links-node`](crates/peal-links-node), wasm wallet
-  [`crates/peal-links-wasm`](crates/peal-links-wasm), SDK
-  [`packages/links`](packages/links), gateway
-  [`contracts/src/links`](contracts/src/links).
-- Run it: `scripts/peal-links/stack.sh up` (two anvil chains, gateways, node,
-  explorer), then open http://localhost:5173/#/bonsai. Tests:
-  `pnpm -C packages/links test`, `pnpm -C packages/explorer test:e2e`.
-- What the demo trusts, and what stands between it and real money:
-  [`docs/peal-links/MAINNET_READINESS.md`](docs/peal-links/MAINNET_READINESS.md).
-  The full build log is [`docs/peal-links/BUILD_STATUS.md`](docs/peal-links/BUILD_STATUS.md).
-
-Validator mode: `PEAL_LINKS_VALIDATORS=3 scripts/peal-links/stack.sh reset` runs the ledger as three local Commonware simplex validators (`docs/peal-links/decisions/0010-simplex-consensus-over-the-ledger.md`); `scripts/peal-links/stack.sh consensus` shows that they agree.
-
-One wallet, private by default (`docs/peal-links/SPEC-ADDENDUM-one-wallet.md`): a person connects their existing EVM wallet, signs one account authorization, and pays or receives privately; the Bonsai account, keys, proofs and receipts stay behind the interface. A signed receiving profile in the node's directory lets others pay a plain `0x` address; recovery uses a deterministic wallet signature or a recovery code (decisions 0011 to 0013).
-
-## The encrypted mempool
-
-The flagship demo. It is the same swap sent into two mempools at once, live on
-**Tempo Testnet (Moderato, chain 42431)**, and you sign nothing.
-
-- On the **public** side your order sits in the mempool in the clear. A real
-  searcher bot reads it and wraps a sandwich around it: it buys ahead of you to
-  push the price, lets you fill at the worse rate, and sells back. You get less
-  than your quote, and the difference becomes its profit.
-- On the **peal** side your order is sealed through the real committee. The chain
-  sees only a ciphertext hash, so there is nothing to sandwich. At the cue the
-  whole batch opens at once, and your swap fills at the quoted price.
-
-Nothing here is a mock-up. Both pools are real contracts, the searcher is a real
-bot with its own key, and the sealed order is settled on-chain by
-`PealMempool.executeBatch`, which re-derives the batch's merkle root and rejects
-anything that is not the revealed batch. The browser signs nothing; a relayer
-sponsors both submissions.
-
-### What the page shows
-
-1. **A DEX swap.** Pick an amount and a direction (USDC to ETH or back), see the
-   live quote, hit swap.
-2. **The outcome, side by side.** The public lane comes back sandwiched, the peal
-   lane comes back whole, and a banner shows exactly how much Peal kept for you.
-   Both lanes start from identical reserves (the relayer resets them before every
-   swap), so the only difference between them is the sandwich.
-3. **How the public mempool takes your money.** A three-step pipeline animating
-   the sandwich: your order is public, the searcher jumps ahead, you fill worse.
-4. **How Peal keeps your order private.** A four-step pipeline animating the
-   batched threshold encryption, filled with the real artifacts from your swap:
-   the ciphertext hash, the 3-of-5 committee, your order hidden as 1 real slot
-   among 63 decoys, the verified operator shares, the merkle root, and the
-   on-chain settlement. A link opens the full batch, slot by slot, with every
-   operator's pairing check.
-
-Everything is verifiable on the Tempo explorer. The deployed contract addresses
-are in [`packages/mempool-agents/deployments/42431.json`](packages/mempool-agents/deployments/42431.json).
-
-### The contracts
-
-Four Solidity contracts, 23 Foundry tests, in [`contracts/`](contracts):
-
-| contract | role |
-|---|---|
-| `DemoToken` | mintable ERC-20 (mUSDC, mETH); reserves are token balances |
-| `SwapPool` | constant-product x*y=k pool, 0.3% fee, gated to one builder; `adminSetReserves` resets both lanes to identical reserves each swap |
-| `PublicBuilder` | models an unprotected mempool: orders are deferred and broadcast in the clear, and `sandwich()` wraps one atomically |
-| `PealMempool` | `commitSealed` emits only a hash; `executeBatch` re-derives the batch's merkle root (matching the coordinator and the SDK byte for byte) and settles only the revealed batch |
-
-### The services
-
-Three off-chain agents in [`packages/mempool-agents`](packages/mempool-agents),
-plus the SPA:
-
-- **relayer**, the sponsored no-wallet gateway. Submits the public order (in the
-  clear) and the peal commitment (a hash) on the visitor's behalf, resets both
-  pools to identical reserves before each swap (`/prepare`), and serves the read
-  endpoints the browser needs.
-- **searcher**, a real bot with its own key. Reads each public order, sizes a
-  sandwich to your slippage floor, and submits real front-run and back-run
-  transactions when profitable. On the peal lane it sees only a hash and does
-  nothing.
-- **settler**, the coordinator's on-chain arm. Watches the coordinator's reveals
-  and calls `executeBatch`, which the contract binds to the revealed batch.
-
-### Run it locally
-
-Point the agents at Tempo and at a running coordinator (a local devnet, or the
-hosted one). Keys live in `.secrets/tempo-keys.env` (gitignored) and are read
-from the environment. Each key needs pathUSD for gas from the
-[Tempo faucet](https://tempo.xyz/developers/docs/quickstart/faucet).
-
-```bash
-cd packages/mempool-agents
-CHAIN_ID=42431 RELAYER_PRIVATE_KEY=0x..  pnpm relayer   # serves on :8799
-CHAIN_ID=42431 SEARCHER_PRIVATE_KEY=0x.. pnpm searcher
-CHAIN_ID=42431 DEPLOYER_PRIVATE_KEY=0x.. COORDINATOR_URL=<coordinator> pnpm settler
-```
-
-Then the explorer, pointed at the relayer (`VITE_RELAYER_URL`, default
-`http://localhost:8799`) and a coordinator for sealing (`VITE_BTE_URL`, or the
-vite `/v0` proxy):
-
-```bash
-BTE_URL=<coordinator> pnpm -C packages/explorer dev   # open /#/encrypted-mempool
-```
-
-To change which swap sizes get sandwiched, adjust the pool depth in one place,
-`TARGET_BASE` / `TARGET_QUOTE` in `packages/mempool-agents/src/relayer.ts`
-(shallower pool means smaller swaps get sandwiched), and restart the relayer. No
-contract redeploy.
-
-### Deploy to Railway
-
-Each service deploys from its own directory. The agents are a standalone image
-selected by a `START` env var; the explorer builds the SPA from a repo-root
-context. Full recipe, every environment variable, and which key goes where:
-[docs/deploy-mempool-railway.md](docs/deploy-mempool-railway.md).
-
-### The honest gap
-
-The committee is dealer-trusted and its operators do not yet verify the cue for
-themselves, so today a dishonest operator could read a sealed order early. That
-is survivable in a demo, where there is no real money on the table, and it is
-exactly the decentralisation work on the roadmap. The cryptography and the
-on-chain settlement are real; the committee's trust model is not there yet.
+What it does not claim: nothing is escrowed (it settles who bid the most, not the payment), the close is the coordinator's clock, and the committee's keys came from one setup we ran. [`packages/live`](packages/live) is the pure half: no DOM, no network.
 
 ---
 
-## How the disclosure network works
+## Private actions
+
+The intent shape for autonomous agents. An agent signs what it wants done and the worst terms it will accept; that intent stays encrypted until its position in the batch is committed; it settles with a receipt the agent can verify without trusting the operator. Positions are a pure function of the ciphertext set (sorted hashes), so there is no executor discretion to abuse.
+
+Package: [`packages/actions`](packages/actions) (`peal-actions`: the envelope, EIP-712 signing, ordering commitment, receipt verification). Architecture and privacy model: [docs/private-actions-architecture.md](docs/private-actions-architecture.md), [docs/private-actions-privacy-model.md](docs/private-actions-privacy-model.md), gaps: [docs/private-actions-gaps.md](docs/private-actions-gaps.md).
+
+Every network route is also mounted at `/v1/x402`, answering `402 Payment Required` with a price until shown an on-chain payment, so an agent with no account can still be a customer: [peal.network/developers/x402](https://peal.network/developers/x402).
+
+---
+
+## How reveal-later encryption works
+
+Built on Commonware's [batched threshold encryption](https://commonware.xyz/blogs/bte) ([simple-bte](https://github.com/commonwarexyz/simple-bte), paper [eprint 2026/760](https://eprint.iacr.org/2026/760)), used unmodified as a dependency.
 
 ![peal architecture](docs/img/architecture.svg)
 
-Peal is built on commonware's
-[batched threshold encryption](https://commonware.xyz/blogs/bte)
-([simple-bte](https://github.com/commonwarexyz/simple-bte), paper:
-[eprint 2026/760](https://eprint.iacr.org/2026/760) by Guru Vamsi Policharla).
+```mermaid
+sequenceDiagram
+    autonumber
+    participant D as Your app (wasm)
+    participant C as Coordinator
+    participant O as Operators (5, threshold 3)
+    participant A as Anyone
 
-1. **Seal.** Your dapp encrypts a payload in wasm, client-side, to a committee of
-   5 operators with threshold 3. The ciphertext costs 64 bytes of overhead and
-   can be posted anywhere.
-2. **Cue.** A condition fires: a clock time, or an Ethereum block height. The
-   batch freezes at 64 slots (padded with marked dummies), positions assigned by
-   ciphertext hash. The expensive FFT work starts immediately, before any
-   operator has responded.
-3. **Reveal.** Each operator posts **one 48-byte share for the whole batch**,
-   however many ciphertexts it holds. Every share is publicly verifiable with a
-   pairing check. Any 3 valid shares recover all 64 plaintexts at once, published
-   with a merkle root you can pin on-chain.
+    D->>D: seal the payload to the committee (64 bytes overhead)
+    D->>C: post the ciphertext against a condition (a time or a block height)
+    Note over C: the cue fires: batch frozen at 64 slots,<br/>positions by ciphertext hash, dummies fill the rest
+    C->>C: pre-decrypt (the expensive part, before any share arrives)
+    O->>C: one 48-byte share each for the whole batch
+    C->>C: verify every share with a pairing check
+    Note over C: any 3 valid shares recover all 64 plaintexts
+    C-->>A: plaintexts and a merkle root, pinnable on chain
+```
 
-Before the cue nobody can read anything. After it, everybody can. That asymmetry
-is the product.
+Before the cue nobody can read anything. After it, everybody can. That asymmetry is the product.
 
-## The numbers
+```ts
+import { BteClient } from 'bte-sdk';
 
-Measured with criterion at B=64, n=5, t=3 (M-series laptop, single process):
+const client = new BteClient({ url: 'https://peal.network' });
+const conditionId = await client.condition({ in: 60 });
+await client.seal('sealed bid: 42', conditionId);
+
+const reveal = await client.waitForReveal(conditionId);
+for (const slot of reveal.slots.filter((s) => !s.isDummy)) console.log(slot.text);
+```
+
+Measured with criterion at B=64, n=5, t=3 on a laptop:
 
 | operation | cost |
 |---|---|
@@ -263,117 +275,173 @@ Measured with criterion at B=64, n=5, t=3 (M-series laptop, single process):
 | pre-decrypt (hidden before shares arrive) | 245 ms |
 | finalize after t shares | 37 ms |
 
-In line with the paper's single-thread numbers (121.5 ms @ B=32, 593.63 ms @
-B=128). The reveal your users feel is the 37 ms, because the 245 ms was pipelined
-while shares were still in flight. None of the encrypted-mempool latency is
-crypto: an operator does about 5 ms of work and emits a 48-byte share to open a
-whole batch.
+`BteAnchor.sol` records ciphertext commitments per condition and the reveal's merkle root; the SDK recomputes the root from revealed payloads and checks it against the chain (`verifyAnchor`).
 
-## Quickstart (the disclosure network)
+---
 
-Prereqs: rust stable, node 20+, pnpm, docker,
-[just](https://github.com/casey/just), wasm-pack. Foundry only for the on-chain
-anchor and the mempool contracts.
+## How the private ledger works
+
+```mermaid
+flowchart TB
+    subgraph wallet["In the browser (never leaves the device)"]
+        K["spending key, account opening"]
+        T["private tree of claimed receipts"]
+        PR["prover (wasm)"]
+    end
+    subgraph node["Peal Links node"]
+        API["requests, directory, inbox, backups"]
+        W["chain watcher"]
+        S["settlement signers (2 of 3)"]
+    end
+    subgraph ledger["Ledger state (replicable by simplex validators)"]
+        ACC["one 32-byte commitment per account"]
+        RCP["receipt log (Merkle tree, recent roots)"]
+    end
+    GW["Gateway contract<br/>deposit(token, amount, tag) · withdraw(certificate)"]
+
+    PR -- "128-byte proof: my commitment changed correctly,<br/>a receipt was appended" --> ledger
+    GW -- "Deposit event" --> W
+    W -- "credit by tag, proven by the deposit relation" --> ledger
+    S -- "certificate over a burned amount" --> GW
+    API <--> wallet
+```
+
+- **Send**: publishes a sealed receipt into the log and moves the sender's commitment down by the amount, proven by the operation relation.
+- **Receive**: proves a receipt at some position under a recent root is yours and unclaimed, and moves your commitment up; the nullifier is the position itself and is never published.
+- **Operation hiding**: every operation publishes the same record shape and appends one receipt (a receive appends an unspendable dummy). Observers see the acting account and nothing else.
+- **Deposits** carry a commitment tag; the watcher credits them after the configured confirmations and the wallet claims with a proof. **Withdrawals** burn with a proof and are released by a certificate the signers issue; any wallet can submit it, the tokens go to the certificate's recipient.
+
+The construction is the paper's; what Peal added (deposits, withdrawals, identities, delivery, backups, consensus, a product) is listed in [docs/peal-links/RESEARCH.md](docs/peal-links/RESEARCH.md), and every design choice has a decision record under [docs/peal-links/decisions](docs/peal-links/decisions).
+
+---
+
+## Trust model, honestly
+
+**Reveal-later encryption (v0).** A single trusted dealer runs the ceremony: it samples the secret, deals Shamir shares to the operators, publishes the public parameters and drops the secret. A dealer compromised at ceremony time can read everything sealed under that committee. There is no DKG yet, no resharing, and the committee can censor by refusing to reveal (you see it stall; you cannot force it). The operators do not yet verify the cue for themselves, so a dishonest operator asked early by a dishonest coordinator could contribute a share early; the fix is operators checking the cue against the chain, and it is the decentralisation work on the roadmap. What you do not have to trust: operators below the threshold learn nothing, shares are publicly verifiable so a lying operator cannot corrupt a reveal, and the coordinator never sees plaintext before the cue. Details in [SECURITY.md](SECURITY.md), [spec/DEVIATIONS.md](spec/DEVIATIONS.md) and [spec/ROADMAP.md](spec/ROADMAP.md).
+
+**Private payments.** The privacy engine is real and the flows are real; the gaps are in who holds the keys around it:
+
+| area | today | needed before real money |
+|---|---|---|
+| proving keys | generated on one machine, no ceremony | a multi-party ceremony, circuit id pinned |
+| upstream circuits | a pinned prototype revision, one open PR, unreviewed | external review |
+| security proof | the paper defers one property (simulation extractability) | a proof, or a written risk acceptance |
+| withdrawals | released by 2 of 3 signer keys held by the node | independent signers with HSMs, then proof-verified settlement on chain |
+| validators | three local processes (or one hosted node) | independent operators, epochs, durable delivery |
+| review | none | circuits, ledger, gateway, node |
+
+The app refuses a mainnet namespace with the signer fixture, and the checklist lives in [docs/peal-links/MAINNET_READINESS.md](docs/peal-links/MAINNET_READINESS.md).
+
+---
+
+## Run it locally
+
+Prerequisites: Rust stable, Node 20+, pnpm 11, [just](https://github.com/casey/just), wasm-pack, Foundry (`~/.foundry/bin`). Docker is optional; the local stacks run without it.
 
 ```bash
 git clone https://github.com/Adityaakr/peal-network
 cd peal-network
-just setup     # toolchain + deps
-just demo      # boots a 5-operator network, runs a sealed-bid auction
+just setup            # toolchain, submodules, cargo fetch, pnpm install
 ```
 
-`just demo` starts one coordinator, runs the dealer ceremony, brings up 5
-operator nodes, seals 8 bids, and crowns the winner after the 60 second cue. The
-explorer (`pnpm -C packages/explorer dev`) shows every condition flipping from
-ciphertext hashes to plaintexts, with the per-operator share log. Full
-walkthrough: [docs/quickstart.md](docs/quickstart.md).
-
-## Paying per call (optional)
-
-The API needs no key, no account and no payment. Every route is also mounted at
-`/v1/x402`, which answers HTTP 402 with a price until it is shown an on-chain
-payment, so a caller that cannot hold an account can still be a customer:
+**The disclosure network** (coordinator, ceremony, five operators, a sealed-bid demo):
 
 ```bash
-curl -sS -X POST https://peal.network/v1/x402/rounds \
-  -H 'content-type: application/json' -d '{"opens_in":60}'
-# 402 Payment Required, with the price and where to send it
+just demo             # seals 8 bids, opens them after the 60 s cue
+just demo-byzantine   # operator 2 posts bad shares; they fail the pairing check
+pnpm -C packages/explorer dev   # the explorer, every condition live
 ```
 
-Pay, then retry the same request carrying `X-PAYMENT: base64(json({"txHash":...}))`.
-The free API at `/v1` is unchanged by any of it. Details:
-[peal.network/developers/x402](https://peal.network/developers/x402).
-
-## Try to break it
-
-- **Read before the reveal.** `GET /v0/reveals/:id` is 404 until the cue. There
-  is no plaintext anywhere: the coordinator stores ciphertexts, the operators
-  hold Shamir shares of powers of tau. Below t shares, decryption does not exist.
-- **Kill n-t operators.** `docker compose stop node4 node5`. The reveal still
-  lands: any 3 of 5 shares recover the batch.
-- **Kill more.** The condition goes `stalled`, loudly, in the API and the
-  explorer. Restart a node and the reveal completes. No silent hangs.
-- **Submit garbage shares.** `just demo-byzantine` runs operator 2 with
-  `--byzantine`. The bad share fails the public pairing check, is stored flagged,
-  never counts toward t, and the reveal succeeds from the 3 honest shares.
-- **Maul a ciphertext.** Flip a bit in someone's sealed blob: that one slot is
-  flagged corrupt at reveal time, the other 63 are untouched.
-- **Restart mid-flow.** Kill the coordinator between freeze and reveal; it
-  recomputes the pipelined work and finishes. Nodes are stateless beyond their
-  keystore.
-
-## Anchor it on-chain (optional)
-
-`BteAnchor.sol` records ciphertext commitments per condition and lets the
-coordinator publish the reveal's merkle root. The SDK recomputes the root from
-revealed payloads and checks it against the chain (`verifyAnchor`), so your app
-does not have to trust the coordinator's word:
+**Peal Private Links** on two local chains with three consensus validators:
 
 ```bash
-just demo-anchored   # local anvil, or Sepolia with SEPOLIA_RPC_URL + ANCHOR_PRIVATE_KEY
+PEAL_LINKS_VALIDATORS=3 scripts/peal-links/stack.sh up   # anvil A and B, gateways, validators, explorer on :5176
+open http://localhost:5176/#/bonsai/app
+scripts/peal-links/stack.sh consensus                     # the three validators agree
+scripts/peal-links/demo.sh                                # request, deposit, pay, claim, withdraw, end to end
 ```
 
-## Trust model, honestly
+**Peal Private Links on a public testnet** (a deployer key with testnet gas in `.dev-state/peal-links/sepolia-deployer.key`, never in git):
 
-v0 uses a **single trusted dealer**: `bte-cli ceremony` samples tau, deals Shamir
-shares of each power to the operators, publishes public parameters, and drops
-tau. A dealer compromised at ceremony time can read everything sealed under that
-committee. There is no DKG yet, no resharing, and the committee can censor by
-refusing to reveal (you will see it stall; you cannot force it).
+```bash
+NETWORK=sepolia scripts/peal-links/testnet.sh deploy   # gateway + faucet token on Sepolia
+NETWORK=sepolia scripts/peal-links/testnet.sh allow 0x1c7d4b196cb0c7b01d743fbc6116a902379c7238   # Circle's testnet USDC
+NETWORK=sepolia scripts/peal-links/testnet.sh up       # node on :8795, explorer on :5173
+NETWORK=sepolia scripts/peal-links/testnet.sh fund 0xYourWallet   # test token plus gas
+NETWORK=tempo   scripts/peal-links/testnet.sh up       # Tempo Moderato: node :8796, explorer :5175
+```
 
-What you do NOT have to trust: operators below the threshold learn nothing,
-shares are publicly verifiable so a lying operator cannot corrupt a reveal, and
-the coordinator never sees plaintext before the cue. Details in
-[SECURITY.md](SECURITY.md), every divergence from the paper in
-[spec/DEVIATIONS.md](spec/DEVIATIONS.md), the path to trustlessness (DKG,
-EIP-2537 on-chain verification, staking) in [spec/ROADMAP.md](spec/ROADMAP.md).
+---
 
-## Repo map
+## Deployment
+
+The live site runs on Railway as a few services from this repository.
+
+```mermaid
+flowchart LR
+    U["peal.network"] --> EX["bte-explorer<br/>docker/Dockerfile.railway<br/>Caddy + coordinator + 5 operator nodes<br/>volume /bte-state"]
+    EX -- "/links/*" --> PN["peal-links<br/>docker/Dockerfile.links<br/>node, volume /var/lib/peal-links"]
+    PN --> SEP["Ethereum Sepolia<br/>gateway, USDC, tUSD"]
+    EX --> TMP["Tempo Moderato<br/>mempool, SealBid, PealNames"]
+    AG["mempool-agents<br/>relayer · searcher · settler"] --> TMP
+    ST["sealbid-settler"] --> TMP
+```
+
+- The explorer service must name `docker/Dockerfile.railway` explicitly in its settings; it proxies `/links/*` to the node through `LINKS_UPSTREAM`.
+- The node service builds `docker/Dockerfile.links` (config in [`railway.links.json`](railway.links.json)), keeps its stores and proving material on one volume, takes the settlement signer keys from `PEAL_LINKS_SIGNER_KEYS`, and listens on `[::]:$PORT` for Railway's private network. Profile: [`config/peal-links.railway-sepolia.json`](config/peal-links.railway-sepolia.json).
+- Recipes: [docs/peal-links/OPERATIONS.md](docs/peal-links/OPERATIONS.md) (hosting the node), [docs/deploy-mempool-railway.md](docs/deploy-mempool-railway.md), [docs/deploy-sealbid-settler.md](docs/deploy-sealbid-settler.md), [docs/deploy-railway.md](docs/deploy-railway.md).
+
+No secrets live in the repository: signer keys, deployer keys and local state stay under `.dev-state/` and `.secrets/`, both ignored by git and by Docker builds.
+
+---
+
+## Repository map
 
 | path | what |
 |---|---|
 | `crates/bte-crypto` | the only crate touching group elements; wraps simple-bte |
-| `crates/bte-coordinator` | registry, condition engine, aggregator, REST, sqlite |
-| `crates/bte-node` | operator binary (encrypted keystore, outbound-only) |
-| `crates/bte-cli` | ceremony, committee init, e2e driver |
-| `packages/sdk` | `bte-sdk` on npm: TS + inlined wasm, zero bundler config |
-| `packages/live` | `peal-live`: the pure half of Peal Live, no DOM and no network |
-| `packages/explorer` | the disclosure explorer, Peal Live, and the encrypted-mempool demo |
-| `packages/auctionkit` | client for the escrowed, on-chain sealed-bid auctions |
-| `packages/actions` | `peal-actions`: the agent intent envelope, EIP-712 signing, ordering commitment and receipt verification |
+| `crates/bte-coordinator` | registry, condition engine, aggregator, REST, prerendered pages, sqlite |
+| `crates/bte-node` | operator binary: encrypted keystore, outbound only |
+| `crates/bte-cli` | ceremony, committee init, end-to-end driver |
+| `crates/bte-wasm` | wasm bindings for sealing and share verification |
+| `crates/peal-bonsai` | Bonsai private-payment core over the pinned ZK-Pari circuits |
+| `crates/peal-links-node` | the Peal Links node |
+| `crates/peal-links-consensus` | Commonware simplex consensus over the ledger |
+| `crates/peal-links-wasm` | the browser wallet: proving, envelopes, backups |
+| `packages/sdk` | `bte-sdk`: TypeScript plus inlined wasm, no bundler config |
+| `packages/links` | `peal-links`: the Peal Private Links SDK |
+| `packages/explorer` | the site: landing pages, explorer, Peal Live, the mempool demo, Peal Private Links |
+| `packages/live` | `peal-live`: the pure half of Peal Live |
+| `packages/auctionkit` | client for SealBid |
+| `packages/actions` | `peal-actions`: agent intents |
 | `packages/mempool-agents` | relayer, searcher, settler for the mempool demo |
-| `contracts/` | `BteAnchor.sol`, `PealNames.sol`, and the mempool contracts (DemoToken, SwapPool, PublicBuilder, PealMempool) |
-| `solana/` | a native Solana program that checks a Peal inclusion proof on chain; self-contained, not deployed |
-| `demos/` | sealed-bid auction, byzantine run, anchored variant |
-| `docs/deploy-mempool-railway.md` | deploying the mempool demo to Railway |
+| `packages/sealbid-settler` | the committee's on-chain arm for SealBid |
+| `contracts/` | `BteAnchor`, `PealNames`, the mempool contracts, `links/PealLinksGateway`, `auctionkit/` |
+| `config/` | node profiles: local, Sepolia, Tempo, the hosted Sepolia profile |
+| `scripts/peal-links/` | `stack.sh` (local), `testnet.sh` (Sepolia, Tempo), `demo.sh` |
+| `docker/`, `railway/` | images and Railway service configs |
+| `docs/` | product docs, decisions, build logs, deployment recipes |
+| `solana/` | a native program that checks a Peal inclusion proof on chain; self-contained, not deployed |
+| `extension/` | the browser extension |
 
-## Credits
+---
 
-The cryptography is entirely [commonware](https://commonware.xyz)'s work:
-[commonwarexyz/simple-bte](https://github.com/commonwarexyz/simple-bte) by Guru
-Vamsi Policharla ([eprint 2026/760](https://eprint.iacr.org/2026/760)), used
-unmodified as a dependency. Peal adds the network around it: coordinator,
-operator nodes, wire formats, SDK, explorer, the on-chain anchor, and the
-encrypted-mempool demo.
+## Tests
+
+```bash
+cargo test --workspace                                   # Rust: crypto, coordinator, Bonsai core, consensus (deterministic, four simulated validators)
+cargo test -p peal-bonsai --release                      # pinned ZK-Pari send and receive on the persistent ledger
+pnpm -r test                                             # TypeScript: SDKs, Peal Live, actions
+cd contracts && forge test                               # Solidity: anchor, names, mempool, gateway, auctions
+pnpm -C packages/explorer test:e2e                       # Playwright against the local stack: the one-wallet flow, edge cases, screenshots
+```
+
+Continuous integration runs `cargo fmt --check`, `cargo clippy -D warnings` and the workspace tests on every push.
+
+---
+
+## Credits and license
+
+The cryptography is Commonware's: [simple-bte](https://github.com/commonwarexyz/simple-bte) by Guru Vamsi Policharla ([eprint 2026/760](https://eprint.iacr.org/2026/760)) for reveal-later encryption, and the Bonsai construction with ZK-Pari ([eprint 2026/1987](https://eprint.iacr.org/2026/1987), prototype pinned by revision) for private payments. Peal is not affiliated with or endorsed by Commonware. Peal adds the network around them: coordinator, operator nodes, the private ledger node and consensus, wire formats, SDKs, contracts, and the products.
 
 Apache-2.0. See [NOTICE](NOTICE).
