@@ -3468,3 +3468,82 @@ a.pla-ministat:hover {
   font-size: 13.5px;
   color: var(--accent);
 }
+
+/* ---- the welcome screen: centred in the page ---- */
+
+.pla-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  max-width: 520px;
+  margin: 10vh auto 0;
+  padding: 24px 16px;
+}
+
+.pla-welcome-dot {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  margin-bottom: 6px;
+}
+
+.pla-welcome-avatar {
+  width: 56px;
+  height: 56px;
+  font-size: 18px;
+  margin-bottom: 6px;
+}
+
+.pla-welcome-title {
+  margin: 0;
+  font-family: var(--pl-body);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.pla-welcome-kicker {
+  margin: -6px 0 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.pla-welcome-sub {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.pla-welcome-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.pla-welcome-form {
+  width: 100%;
+  text-align: left;
+  margin-top: 6px;
+}
+
+.pla-welcome-form .pla-form-actions {
+  align-items: center;
+}
+
+.pla-welcome .pl-notice {
+  width: 100%;
+  text-align: left;
+}
+
+.pla-btn-lg {
+  min-height: 50px;
+  padding: 0 28px;
+  font-size: 15.5px;
+  border-radius: 999px;
+  margin-top: 8px;
+}

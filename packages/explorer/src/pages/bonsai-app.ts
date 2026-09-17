@@ -19,8 +19,8 @@ import QRCode from 'qrcode';
 import type { LinksAccount, NamespaceInfo, PaymentRequest, WalletView } from 'peal-links';
 import { claimTestFunds, depositOnChain, ensureGas, LinksApiError, testFundsSource, tokenBalance, withdrawOnChain } from 'peal-links';
 import type { Address, EIP1193Provider } from 'viem';
-import { connectInjected, onAuthChange, resumeInjected, session } from '../auth';
-import { connectorChoices, connectorLine } from '../links/connectors';
+import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
+import { connectorLine } from '../links/connectors';
 import { esc } from '../util';
 import { describeError, formatUnits, fmtTime, parseUnits, shortHex } from '../links/format';
 import {
@@ -371,14 +371,15 @@ function onboarding(): string {
   const l = links();
   const evm = session();
   if (!evm.address) {
+    const injected = injectedProvider() !== null;
     return `
-      ${head(`Welcome to ${BRAND}`, 'Your existing wallet is your payment identity here. Peal keeps a private account behind it.')}
       ${notices()}
-      <div class="pla-card pla-card-narrow">
-        <div class="pla-card-body">
-          <p class="pla-p">Payments between Peal users hide the amount and the parties. Deposits and withdrawals are public on the chain, like any token transfer. Nothing to install, no second address to manage.</p>
-          ${connectorChoices('pl')}
-        </div>
+      <div class="pla-welcome">
+        <span class="pla-brand-dot pla-welcome-dot" aria-hidden="true"></span>
+        <h1 class="pla-welcome-title">Welcome to ${BRAND}</h1>
+        <p class="pla-welcome-sub">Your wallet is your payment identity. Peal keeps a private account behind it: payments between Peal users hide the amount and the parties, and there is nothing to install or remember.</p>
+        <button type="button" class="pla-btn pla-btn-dark pla-btn-lg" id="pl-login-injected" aria-label="Use browser wallet" ${injected ? '' : 'disabled'}>${icon('wallet')} Connect wallet</button>
+        <p class="pla-welcome-note">${injected ? 'MetaMask, Rabby or another browser wallet. Deposits and withdrawals are public on the chain, like any token transfer.' : `No browser wallet found. <a class="pla-link" href="https://metamask.io/download" target="_blank" rel="noreferrer">Get MetaMask</a>, then reload this page.`}</p>
       </div>`;
   }
   if (page.tab === 'restore') return restorePage();
@@ -392,10 +393,10 @@ function onboarding(): string {
       break;
     case 'needs-recovery-code':
       body = `
-        <p class="pla-p">This wallet already has private payments on ${BRAND}. Its backup is protected by the recovery code you saved when you set it up.</p>
-        <form id="pl-recovery-code" class="pla-form">
+        <p class="pla-welcome-sub">This wallet already has private payments on ${BRAND}. Its backup is protected by the recovery code you saved when you set it up.</p>
+        <form id="pl-recovery-code" class="pla-form pla-welcome-form">
           ${field('Recovery code', input('name="code" required autocomplete="off" placeholder="PEAL-XXXXX-XXXXX-XXXXX-XXXXX"'))}
-          <div class="pla-form-actions"><button type="submit" class="pla-btn pla-btn-dark pla-btn-block">Open my account</button><a class="pla-btn pla-btn-block" href="${hashFor('restore')}">Import a backup file instead</a></div>
+          <div class="pla-form-actions"><button type="submit" class="pla-btn pla-btn-dark pla-btn-lg pla-btn-block">Open my account</button><a class="pla-link" href="${hashFor('restore')}">Import a backup file instead</a></div>
         </form>`;
       break;
     case 'no-backup':
@@ -405,14 +406,19 @@ function onboarding(): string {
       break;
     default:
       body = `
-        <p class="pla-p">${l.hasStoredAccount ? 'Your private account is on this device. Continue to unlock it; no signature is needed.' : `First time here: your wallet will confirm one ${BRAND} message that authorizes a private account for it, and one recovery message so the account can be recovered from any device.`}</p>
+        <p class="pla-welcome-sub">${l.hasStoredAccount ? 'Your private account is on this device. Continue to unlock it; no signature is needed.' : `First time here: your wallet will confirm one ${BRAND} message that authorizes a private account for it, and one recovery message so the account can be recovered from any device.`}</p>
         ${l.setupDetail ? `<div class="pl-notice pl-notice-warn">${esc(l.setupDetail)}</div>` : ''}
-        <div class="pla-form-actions"><button type="button" class="pla-btn pla-btn-dark pla-btn-block" id="pl-activate">Continue with this wallet</button><a class="pla-btn pla-btn-block" href="${hashFor('restore')}">Import a backup file</a></div>`;
+        <button type="button" class="pla-btn pla-btn-dark pla-btn-lg" id="pl-activate">Continue with this wallet</button>
+        <p class="pla-welcome-note"><a class="pla-link" href="${hashFor('restore')}">Import a backup file</a> · <button type="button" class="pla-link" id="pl-disconnect">Use a different wallet</button></p>`;
   }
   return `
-    ${head('Private payments', `Wallet ${esc(shortHex(evm.address, 6, 4))} is connected. One step to open its private account.`)}
     ${notices()}
-    <div class="pla-card pla-card-narrow"><div class="pla-card-body">${body}</div></div>`;
+    <div class="pla-welcome">
+      <span class="pla-avatar pla-welcome-avatar" aria-hidden="true">${esc(evm.address.slice(2, 4))}</span>
+      <h1 class="pla-welcome-title">${esc(shortHex(evm.address, 6, 4))}</h1>
+      <p class="pla-welcome-kicker">${connectorLine()}</p>
+      ${body}
+    </div>`;
 }
 
 // ---- overview -------------------------------------------------------------
