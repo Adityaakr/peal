@@ -227,8 +227,7 @@ function visible(): string {
            <tr><td data-label="who">Peal's services</td><td data-label="sees">request titles and amounts you publish, when a request is viewed, encrypted receipt envelopes, submission times and IP addresses</td><td data-label="does not see">the contents of receipts, your spending key, your balance</td></tr>
          </tbody>
        </table>
-     </div>
-     <p class="ml-foot pl-ld-fine">not hidden: that your account was active, the timing of your submissions, and the metadata of the connection you submit over. Peal's directory links your wallet to your private account so others can pay your address; that is a service that knows the link, not cryptographic unlinkability. Peal Links does not claim anonymity or metadata privacy. Withdrawals are released by a committee of signers rather than verified by a proof on the chain, and the product says so wherever it appears. The full observer matrix is in the repository under <code>docs/peal-links/THREAT_MODEL.md</code>.</p>`,
+     </div>`,
   );
 }
 
