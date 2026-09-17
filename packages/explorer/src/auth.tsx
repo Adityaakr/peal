@@ -64,6 +64,7 @@ function logout(): void {
   if (state.source === 'injected') {
     try {
       localStorage.removeItem(INJECTED_FLAG);
+      sessionStorage.setItem(CHOOSE_FLAG, '1');
     } catch {
       /* storage unavailable */
     }
@@ -103,6 +104,10 @@ export function injectedProvider(): Eip1193Like | null {
  * session state the Privy bridge uses, so pages need not know which one is
  * active. */
 const INJECTED_FLAG = 'peal-links:wallet';
+/** Set when the person disconnected on purpose: the next connect must let
+ * them pick an account, not silently return the one the wallet already
+ * authorized for this site. */
+const CHOOSE_FLAG = 'peal-links:wallet-choose';
 
 /** Reconnect a browser wallet the person connected before, without a
  * prompt (`eth_accounts` answers only for sites already authorized), so a
@@ -128,6 +133,29 @@ export async function resumeInjected(): Promise<Address | null> {
 export async function connectInjected(method: 'eth_requestAccounts' | 'eth_accounts' = 'eth_requestAccounts'): Promise<Address> {
   const provider = injectedProvider();
   if (!provider) throw new Error('no browser wallet found');
+  let choose = false;
+  try {
+    choose = method === 'eth_requestAccounts' && sessionStorage.getItem(CHOOSE_FLAG) === '1';
+  } catch {
+    /* storage unavailable */
+  }
+  if (choose) {
+    // After "switch wallet" the site is still authorized for the old
+    // account, so `eth_requestAccounts` would hand it straight back. Asking
+    // for the permission again opens the wallet's account picker (EIP-2255).
+    // Wallets without it fall through to the plain request.
+    try {
+      await provider.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
+    } catch (e) {
+      const code = (e as { code?: number }).code;
+      if (code === 4001) throw e; // the person closed the picker: not a connect
+    }
+    try {
+      sessionStorage.removeItem(CHOOSE_FLAG);
+    } catch {
+      /* storage unavailable */
+    }
+  }
   const accounts = (await provider.request({ method })) as string[];
   const address = accounts[0] as Address | undefined;
   if (!address) throw new Error('the wallet returned no account');
