@@ -129,6 +129,9 @@ export class LinksAccount {
   private readonly publicClient?: PublicClient;
   /** Hex key that seals backups, or null before recovery is set up. */
   private backupKey: string | null;
+  /** The locked wallet blob this instance last wrote or read, so another
+   * tab's newer save can be told apart from our own. */
+  private lastSaved: string | null = null;
 
   private constructor(opts: AccountOptions, wallet: string, storageKey: string, backupKey: string | null) {
     this.prover = opts.prover;
@@ -212,7 +215,9 @@ export class LinksAccount {
     const wallet = await opts.prover.unlockWallet(locked, storageKey);
     const sealedBackup = await opts.store.get(key(opts.namespace, 'backup-key'));
     const backupKey = sealedBackup ? await openWithDevice(dk, sealedBackup) : null;
-    return new LinksAccount(opts, wallet, storageKey, backupKey);
+    const acct = new LinksAccount(opts, wallet, storageKey, backupKey);
+    acct.lastSaved = locked;
+    return acct;
   }
 
   /** A fresh browser: fetch the latest backup the node holds for the
@@ -281,6 +286,58 @@ export class LinksAccount {
   private async save(): Promise<void> {
     const locked = await this.prover.lockWallet(this.wallet, this.storageKey);
     await this.store.set(key(this.namespace, 'wallet'), locked);
+    this.lastSaved = locked;
+  }
+
+  // ---- several tabs, one account ------------------------------------------------
+  //
+  // Tabs of the same browser share the store but each holds its own copy of
+  // the wallet. An operation therefore takes a lock named for the account
+  // and reloads the copy another tab may have saved before it runs, so two
+  // tabs never prove from the same state and a tab left open does not
+  // overwrite newer state with old.
+
+  private async locked<T>(fn: () => Promise<T>): Promise<T> {
+    const name = `peal-links:${this.namespace}:${(await this.view()).account}`;
+    const locks = typeof navigator !== 'undefined' ? (navigator as { locks?: LockManager }).locks : undefined;
+    if (!locks) {
+      await this.refreshFromStore();
+      return fn();
+    }
+    return locks.request(name, async () => {
+      await this.refreshFromStore();
+      return fn();
+    });
+  }
+
+  /** Reload the wallet from the store when another tab saved a newer copy. */
+  async refreshFromStore(): Promise<boolean> {
+    const locked = await this.store.get(key(this.namespace, 'wallet'));
+    if (!locked || locked === this.lastSaved) return false;
+    this.wallet = await this.prover.unlockWallet(locked, this.storageKey);
+    this.lastSaved = locked;
+    return true;
+  }
+
+  /** Replace the wallet with the node's backup when that one is newer. The
+   * backups carry a monotonic sequence, so a stale copy can never win. */
+  async refreshFromBackup(): Promise<boolean> {
+    if (!this.backupKey) return false;
+    const stored = await this.client.backup(this.namespace).catch(() => null);
+    if (!stored || stored.seq <= (await this.backupSeq())) return false;
+    const blob = JSON.parse(stored.blob) as { sealed: string };
+    this.wallet = await this.prover.unlockWallet(blob.sealed, this.backupKey);
+    await this.save();
+    return true;
+  }
+
+  /** Monotonic per wallet: the profile version first (a wallet that sets a
+   * new account up publishes a higher version and its backups must win),
+   * then this account's state version. */
+  private async backupSeq(): Promise<number> {
+    const v = await this.view();
+    const profile = await this.profile();
+    return (profile?.version ?? 1) * 2 ** 32 + v.history.length + v.receipts.length + (v.registered ? 1 : 0);
   }
 
   view(): Promise<WalletView> {
@@ -303,15 +360,11 @@ export class LinksAccount {
    * that triggered them; the next state change tries again. */
   async backupNow(): Promise<boolean> {
     if (!this.backupKey) return false;
-    const v = await this.view();
     const profile = await this.profile();
     const mechanism: RecoveryMechanism = profile?.recovery ?? 'wallet-signature';
     const sealed = await this.prover.lockWallet(this.wallet, this.backupKey);
     const wrapped = mechanism === 'recovery-code' ? await this.store.get(key(this.namespace, 'backup-wrapped')) : null;
-    // Monotonic per wallet: the profile version first (a wallet that sets a
-    // new account up publishes a higher version and its backups must win),
-    // then this account's state version.
-    const seq = (profile?.version ?? 1) * 2 ** 32 + v.history.length + v.receipts.length + (v.registered ? 1 : 0);
+    const seq = await this.backupSeq();
     try {
       await this.client.putBackup(this.namespace, { seq, mechanism, blob: JSON.stringify(wrapped ? { sealed, wrapped } : { sealed }) });
       return true;
@@ -418,7 +471,11 @@ export class LinksAccount {
   /** Prepare a deposit of `amount` base units: proves R_dep, saves the
    * opening locally, registers the intent with the node, and returns the
    * receipt commitment the on-chain deposit must carry. */
-  async prepareDeposit(amount: string, reference: string | null = null): Promise<{ receipt: string; amount: string }> {
+  prepareDeposit(amount: string, reference: string | null = null): Promise<{ receipt: string; amount: string }> {
+    return this.locked(() => this.prepareDepositUnlocked(amount, reference));
+  }
+
+  private async prepareDepositUnlocked(amount: string, reference: string | null = null): Promise<{ receipt: string; amount: string }> {
     const r = await this.prover.prepareDeposit(this.wallet, amount, reference);
     this.wallet = r.wallet;
     await this.saveAndBackup();
@@ -428,7 +485,11 @@ export class LinksAccount {
 
   /** Check pending deposits against the node and record mints. Returns the
    * receipts that were credited during this call. */
-  async syncDeposits(): Promise<string[]> {
+  syncDeposits(): Promise<string[]> {
+    return this.locked(() => this.syncDepositsUnlocked());
+  }
+
+  private async syncDepositsUnlocked(): Promise<string[]> {
     const v = await this.view();
     const credited: string[] = [];
     for (const receipt of v.pending_deposits) {
@@ -450,7 +511,11 @@ export class LinksAccount {
   }
 
   /** Pull new inbox envelopes, decrypt them, and record the receipts. */
-  async syncInbox(): Promise<number> {
+  syncInbox(): Promise<number> {
+    return this.locked(() => this.syncInboxUnlocked());
+  }
+
+  private async syncInboxUnlocked(): Promise<number> {
     const v = await this.view();
     const cursorKey = key(this.namespace, 'inbox-cursor');
     let after = Number((await this.store.get(cursorKey)) ?? '0');
@@ -475,7 +540,11 @@ export class LinksAccount {
   }
 
   /** Verify every discovered receipt against the ledger. */
-  async verifyReceipts(): Promise<void> {
+  verifyReceipts(): Promise<void> {
+    return this.locked(() => this.verifyReceiptsUnlocked());
+  }
+
+  private async verifyReceiptsUnlocked(): Promise<void> {
     const v = await this.view();
     let changed = false;
     for (let i = 0; i < v.receipts.length; i++) {
@@ -491,7 +560,11 @@ export class LinksAccount {
 
   /** Claim held receipt `idx` (must be `unclaimed`). Returns the position of
    * the operation's own receipt (the dummy). */
-  async claim(idx: number): Promise<number> {
+  claim(idx: number): Promise<number> {
+    return this.locked(() => this.claimUnlocked(idx));
+  }
+
+  private async claimUnlocked(idx: number): Promise<number> {
     const { json } = await this.fetchPath((await this.view()).receipts[idx]!.position);
     const out = await this.prover.receive(this.wallet, idx, json);
     this.wallet = out.wallet;
@@ -500,14 +573,18 @@ export class LinksAccount {
   }
 
   /** Claim every verified, unclaimed receipt. Returns how many were claimed. */
-  async claimAll(): Promise<number> {
+  claimAll(): Promise<number> {
+    return this.locked(() => this.claimAllUnlocked());
+  }
+
+  private async claimAllUnlocked(): Promise<number> {
     let n = 0;
     for (;;) {
       const v = await this.view();
       if (v.pending) break;
       const idx = v.receipts.findIndex((r) => r.status === 'unclaimed');
       if (idx < 0) break;
-      await this.claim(idx);
+      await this.claimUnlocked(idx);
       n++;
     }
     return n;
@@ -615,7 +692,11 @@ export class LinksAccount {
    * wallet's local approval (when given), reserve a request, prove and
    * submit the send, then deliver the encrypted opening to the receiver's
    * inbox. */
-  async pay(target: PaymentTarget, intentId: string, approval?: PaymentApproval): Promise<PayResult> {
+  pay(target: PaymentTarget, intentId: string, approval?: PaymentApproval): Promise<PayResult> {
+    return this.locked(() => this.payUnlocked(target, intentId, approval));
+  }
+
+  private async payUnlocked(target: PaymentTarget, intentId: string, approval?: PaymentApproval): Promise<PayResult> {
     const d = await this.targetDetails(target);
     const v = await this.view();
     if (v.pending) throw new Error('an operation is pending; reconcile first');
@@ -696,7 +777,11 @@ export class LinksAccount {
    * backing chain. The caller submits the certificate to the gateway with
    * a wallet (`withdrawOnChain`). Returns the burn position and the
    * certificate. */
-  async withdraw(amount: string, recipient: string): Promise<{ position: number; certificate: WithdrawalCertificate }> {
+  withdraw(amount: string, recipient: string): Promise<{ position: number; certificate: WithdrawalCertificate }> {
+    return this.locked(() => this.withdrawUnlocked(amount, recipient));
+  }
+
+  private async withdrawUnlocked(amount: string, recipient: string): Promise<{ position: number; certificate: WithdrawalCertificate }> {
     const v = await this.view();
     if (v.pending) throw new Error('an operation is pending; reconcile first');
     if (BigInt(v.balance) < BigInt(amount)) throw new Error('insufficient balance');
@@ -748,11 +833,21 @@ export class LinksAccount {
   }
 
   /** One sync pass: deposits, inbox, verification, outbox. */
-  async sync(): Promise<{ credited: number; discovered: number }> {
-    const credited = (await this.syncDeposits()).length;
-    const discovered = await this.syncInbox();
-    await this.verifyReceipts();
-    await this.flushOutbox();
-    return { credited, discovered };
+  /** Pull everything new, and check this copy of the wallet against the
+   * ledger. A copy that is behind (another tab or device acted for the
+   * account) is brought forward from the node's backup; `stale` says so. */
+  sync(): Promise<{ credited: number; discovered: number; stale: boolean }> {
+    return this.locked(async () => {
+      let stale = false;
+      const v0 = await this.view();
+      if (v0.registered && !v0.pending && (await this.reconcile()) === 'conflict') {
+        stale = await this.refreshFromBackup();
+      }
+      const credited = (await this.syncDepositsUnlocked()).length;
+      const discovered = await this.syncInboxUnlocked();
+      await this.verifyReceiptsUnlocked();
+      await this.flushOutbox();
+      return { credited, discovered, stale };
+    });
   }
 }

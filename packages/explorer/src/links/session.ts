@@ -132,6 +132,16 @@ async function storedAccountFor(namespace: NamespaceInfo | null): Promise<boolea
   return namespace && scoped ? LinksAccount.exists(scoped, namespace.id) : false;
 }
 
+/** Re-read whether the connected wallet has an account on this device and
+ * publish it. Pages call this after resuming a wallet, before deciding to
+ * unlock by themselves, so they never act on the flag from before the
+ * wallet was known. */
+export async function refreshStoredAccount(): Promise<boolean> {
+  const hasStoredAccount = await storedAccountFor(state.namespace);
+  publish({ hasStoredAccount });
+  return hasStoredAccount;
+}
+
 // The wallet decides which slice of the store is in play: when the
 // connected address changes (connect, disconnect, or the wallet switching
 // accounts), lock whatever was open and re-read whether the new wallet has

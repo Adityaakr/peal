@@ -205,3 +205,49 @@ test('two wallets in one browser each keep their own private account', async ({ 
   await expect(page.getByText(new RegExp(`browser wallet 0x${firstAddress.slice(2, 8)}`, 'i'))).toBeVisible();
   await ctx.close();
 });
+
+test('two tabs of one browser share the account without one falling behind', async ({ browser }) => {
+  test.setTimeout(420_000);
+  const receiverKey = await freshWallet(0n);
+  const payerKey = await freshWallet();
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await injectWallet(ctx, receiverKey, { chainId: 31337 });
+  const a = await ctx.newPage();
+  await a.goto('/#/bonsai/app');
+  await a.getByRole('button', { name: 'Use browser wallet' }).click();
+  await a.getByRole('button', { name: 'Continue with this wallet' }).click();
+  await expect(a.getByText('private payments on', { exact: true })).toBeVisible({ timeout: 180_000 });
+  await a.getByRole('button', { name: 'New payment link' }).click();
+  await a.locator('#pl-request-form input[name="title"]').fill('Two tabs');
+  await a.locator('#pl-request-form input[name="amount"]').fill('3.00');
+  await a.locator('#pl-request-form').getByRole('button', { name: 'Create link' }).click();
+  const url = await a.locator('#pl-link-url').inputValue({ timeout: 60_000 });
+  await a.getByRole('button', { name: 'Done' }).click();
+  // A second tab on the same account, open at the same time.
+  const b = await ctx.newPage();
+  await b.goto('/#/bonsai/app');
+  await expect(b.getByText('private payments on', { exact: true })).toBeVisible({ timeout: 180_000 });
+
+  const payerCtx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await injectWallet(payerCtx, payerKey, { chainId: 31337 });
+  const p = await payerCtx.newPage();
+  await p.goto(url.replace(/^https?:\/\/[^/]+/, ''));
+  await p.getByRole('button', { name: 'Use browser wallet' }).click();
+  await p.getByRole('button', { name: /Continue with wallet/ }).click();
+  await p.getByRole('button', { name: /^(Approve and pay|Pay) 3\.00/ }).click({ timeout: 180_000 });
+  await expect(p.getByText('Payment sent.')).toBeVisible({ timeout: 300_000 });
+  await payerCtx.close();
+
+  // Whichever tab claims first, both must end up showing the balance on
+  // their overview, and neither may report a failed claim.
+  for (const page of [a, b]) {
+    await page.getByRole('link', { name: 'Overview' }).click();
+    await expect(page.locator('.pl-balance', { hasText: 'private balance' }).locator('.pl-balance-amount')).toContainText('3.00', { timeout: 180_000 });
+  }
+  await a.waitForTimeout(12_000);
+  for (const page of [a, b]) {
+    await expect(page.locator('.pl-notice-bad')).toHaveCount(0);
+    await expect(page.locator('.pl-balance', { hasText: 'private balance' }).locator('.pl-balance-amount')).toContainText('3.00');
+  }
+  await ctx.close();
+});
