@@ -89,3 +89,32 @@ The deployed explorer (`packages/explorer/Dockerfile`, service `bte-explorer`) p
 - **Variables** on the node service: `PEAL_LINKS_SIGNER_KEYS` = the JSON array of the three settlement signer keys the Sepolia gateway was deployed with (the contents of `.dev-state/peal-links/sepolia/signers.json` on the deploying machine; the gateway checks certificates against exactly these signers, so no other keys work), and `PEAL_LINKS_AUTH_DOMAINS` = the explorer's Railway hostname (e.g. `bte-explorer-production.up.railway.app`). `peal.network` and `www.peal.network` are already in the baked profile `config/peal-links.railway-sepolia.json`. Nothing else: the profile carries the Sepolia gateway, both tokens and the start block; `PORT` comes from the platform; dev-mint stays off.
 - **Variable on the explorer service**: `LINKS_UPSTREAM` = `<node service name>.railway.internal:8790` (private networking, IPv6; the node listens on `[::]`).
 - The ledger on the hosted node starts empty. Deposits made to the gateway from the laptop's node are known only to that node's ledger; on the hosted one they show in the log as observed but not credited and stay in the gateway (testnet funds).
+
+
+## Check that the hosted node keeps its state across deploys
+
+The node writes its proving keys to `params_dir` on first start and loads them
+from there afterwards; the ledger, requests, directory, inbox and backups live
+under `data_dir`. On Railway both are under `/var/lib/peal-links`, so the
+service's volume must be mounted at exactly that path. If it is mounted
+elsewhere, or not at all, every deploy starts a fresh node: new keys, an empty
+ledger, no accounts, no backups, and deposits already sitting in the gateway
+have no ledger record to be claimed against.
+
+The check, before and after any redeploy:
+
+```
+curl -s https://peal.network/links/v1/params | jq '.files | map_values(.digest)'
+```
+
+The four digests must not change between deploys. If they do, the volume is
+not at `/var/lib/peal-links`: open the `peal-links` service in Railway,
+Settings, Volumes, and set the mount path. The next deploy generates keys one
+last time and then keeps them.
+
+Seen on 2026-09-17: `deposit.pk` went from `60703611…` to `5edfb57b…` between
+two pushes to `main`, which is how this was found. A browser that had cached
+the old file under the node's one-year immutable cache header then reported
+"parameter file deposit.vk does not match its digest"; the SDK now puts the
+digest in the query string so a key change is a new cache entry, and retries
+once past the cache before reporting a mismatch.

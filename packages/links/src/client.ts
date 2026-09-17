@@ -228,12 +228,25 @@ export class NodeClient {
     return this.call('/params');
   }
 
-  /** Download one parameter file and check its digest against the index. */
+  /** Download one parameter file and check its digest against the index.
+   *
+   * The node serves these as immutable for a year, which is right for bytes
+   * that never change and wrong for a URL that does not name them: when a node
+   * is set up again its keys change, the path stays the same, and a browser
+   * that cached the old file kept handing it back until the app reported
+   * "does not match its digest" for ever. The digest therefore goes into the
+   * query string, so a new key is a new cache entry, and a mismatch is retried
+   * once past every cache before it is reported. */
   async paramFile(name: string, expectedDigest: string): Promise<Uint8Array> {
-    const buf = await this.call<ArrayBuffer>(`/params/${name}`, { raw: true, headers: { accept: 'application/octet-stream' } });
-    const bytes = new Uint8Array(buf);
-    const digest = await sha256Hex(bytes);
-    if (digest !== expectedDigest) throw new LinksApiError(0, 'digest_mismatch', `parameter file ${name} does not match its digest`);
+    const path = `/params/${name}?digest=${expectedDigest}`;
+    const headers = { accept: 'application/octet-stream' };
+    let bytes = new Uint8Array(await this.call<ArrayBuffer>(path, { raw: true, headers }));
+    if ((await sha256Hex(bytes)) !== expectedDigest) {
+      bytes = new Uint8Array(await this.call<ArrayBuffer>(path, { raw: true, headers, cache: 'reload' }));
+      if ((await sha256Hex(bytes)) !== expectedDigest) {
+        throw new LinksApiError(0, 'digest_mismatch', `parameter file ${name} does not match its digest`);
+      }
+    }
     return bytes;
   }
 
