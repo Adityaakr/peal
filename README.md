@@ -1,11 +1,28 @@
-# Peal, the programmable disclosure network
+<h1 align="center">Peal</h1>
+<h3 align="center">Sealed until the moment you name. Private after the money moves.</h3>
 
-Peal is a network for information that has to stay hidden until a moment you name, and for money that stays hidden after it moves. Two cryptographic engines, one product surface.
+<p align="center">
+  <a href="https://peal.network">peal.network</a> ·
+  <a href="https://peal.network/developers">developers</a> ·
+  <a href="https://peal.network/developers/links">private links</a> ·
+  <a href="https://peal.network/developers/links-api">API</a> ·
+  <a href="https://peal.network/skill/SKILL.md">agent skill</a>
+</p>
 
-- **Reveal-later encryption.** Seal a payload to a committee, name a cue (a deadline or a block height), and when the cue fires the whole batch opens at once, for everyone, guaranteed. Nobody reads it early, and nobody ever sends a reveal transaction. This runs sealed-bid auctions, an encrypted mempool, and private agent actions.
-- **Private payments.** Peal Private Links: share a link, get paid from any wallet, and the amount and the parties never appear on a chain. Payments are zero-knowledge proofs on a small ledger built for them; only deposits and withdrawals touch the chain.
+Peal is a network for two kinds of secrets. Information that must stay unreadable until a deadline, then open for everyone at once: bids, votes, orders, agent intents. And payments that stay private after they settle: a link anyone can pay from a wallet, with the amount and the parties on no chain. One site, two cryptographic engines, everything in this repository, and every claim below is something you can run.
 
-Live at **[peal.network](https://peal.network)**. Everything below is in this repository.
+**Reveal-later encryption.** Seal a payload to a committee and name a cue, a time or a block height. Nobody can read it early, not the operators, not the server, not the other participants. When the cue fires the whole batch opens at once, with a proof, and nobody had to come back to reveal. This runs sealed-bid auctions, an encrypted mempool where a real sandwich bot loses, and private agent actions.
+
+**Private payments.** Peal Private Links: create a request, share the link, get paid into a private balance. Each payment is a zero-knowledge proof on a ledger that stores one commitment per account and nothing else. The ledger learns which account acted; it does not learn the amount, the other party, or whether it was a send or a receive. Only deposits and withdrawals touch the chain.
+
+## Sixty seconds
+
+- **Get paid privately.** Open [the app](https://peal.network/#/bonsai/app), connect a wallet on Sepolia, create a request, share the link. Test funds only; the app has a faucet for its test token.
+- **Watch a sandwich bot lose.** [The encrypted mempool](https://peal.network/#/encrypted-mempool) sends the same swap into a public and a sealed lane on Tempo, live, and you sign nothing.
+- **Run a sealed auction with no wallet.** [Peal Live](https://peal.network/#/create): name an item and a close time, get a link, anyone bids by typing a number.
+- **Build on it.** Three calls seal, wait and read: the [quickstart](https://peal.network/developers/quickstart) runs them from the page. For private payments, the [SDK](https://peal.network/developers/links-sdk) and the [API](https://peal.network/developers/links-api). For a coding agent, `curl -fsSL https://peal.network/skill/install.sh | sh`.
+
+## What is here
 
 | product | what it does | where |
 |---|---|---|
@@ -42,6 +59,10 @@ flowchart TB
     BON -.-> TMP
     BTE -- "settlement and anchors" --> TMP
 ```
+
+## What is real, and what is not yet
+
+Real: the cryptography on both sides, every product on the site, the settlement contracts, the two live networks. Not yet: the trust model around them. The reveal committee's keys came from one dealer we ran, withdrawals from the private ledger are released by signers whose keys live in one process, and nothing has been audited. That is why everything runs on testnets and the node refuses a mainnet namespace beside its fixtures. [Trust model, honestly](#trust-model-honestly) has the full list, and so does every page on the site: Peal never says trustless, unlinkable, or mainnet.
 
 ---
 
