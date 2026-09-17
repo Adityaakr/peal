@@ -16,7 +16,7 @@
 // Money actions are pages with a form, and the page never repaints under
 // a form the person has started filling in.
 import QRCode from 'qrcode';
-import type { LinksAccount, NamespaceInfo, PaymentRequest, WalletView } from 'peal-links';
+import type { LinksAccount, NamespaceInfo, PaymentRequest, WalletView, WithdrawalCertificate } from 'peal-links';
 import { claimTestFunds, depositOnChain, ensureGas, LinksApiError, testFundsSource, tokenBalance, withdrawOnChain } from 'peal-links';
 import type { Address, EIP1193Provider } from 'viem';
 import { connectInjected, injectedProvider, onAuthChange, resumeInjected, session } from '../auth';
@@ -120,7 +120,7 @@ interface PageState {
   /** An address that has not activated private receiving (invitation). */
   invite: string | null;
   walletTokenBalance: string | null;
-  withdrawals: Array<{ position: number; amount: string; recipient: string; status: string; tx_hash: string | null }>;
+  withdrawals: Array<{ position: number; amount: string; recipient: string; status: string; tx_hash: string | null; certificate: WithdrawalCertificate | null }>;
 }
 
 const initial = (): PageState => ({
@@ -588,7 +588,7 @@ function historyRow(h: WalletView['history'][number], i: number): string {
   const out = h.kind === 'send';
   return `<li><button type="button" class="pla-row" data-open-history="${i}">
     <span class="pla-row-ic ${out ? 'pla-row-ic-out' : 'pla-row-ic-in'}">${icon(out ? 'up' : 'down')}</span>
-    <span class="pla-row-main"><b>${historyLabel(h)}</b><i>${out ? 'Sent' : 'Received'} · ${esc(fmtTime(h.at))}</i></span>
+    <span class="pla-row-main"><b>${historyLabel(h)}</b><i>${out ? 'Sent' : 'Received'} · ${esc(fmtTime(h.at))}${h.reference?.startsWith('withdraw:') && page.withdrawals.find((w) => w.position === h.position && w.status !== 'confirmed') ? ` · <span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>not yet released on chain</span>` : ''}</i></span>
     <span class="pla-row-side"><b class="${out ? 'pla-neg' : 'pla-pos'}">${money(h.amount, ns, out ? '−' : '+')}</b></span>
     <span class="pla-row-chev">${icon('chev')}</span>
   </button></li>`;
@@ -948,13 +948,13 @@ function drawerFor(d: Drawer): string {
         ...(wd
           ? ([
               ['Recipient', `<span class="pl-mono">${esc(wd.recipient)}</span>`],
-              ['Settlement', wd.status === 'confirmed' ? `<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>confirmed on chain</span>` : `<span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(wd.status.replace('_', ' '))}</span>`],
+              ['Settlement', wd.status === 'confirmed' ? `<span class="pl-status pl-status-ok"><span class="pl-status-dot"></span>released on chain</span>` : wd.status === 'certificate_ready' ? `<span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>signed, not yet released on chain</span>` : `<span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(wd.status.replace('_', ' '))}</span>`],
               ['Transaction', wd.tx_hash ? `<a class="pla-link" href="${esc(ns.explorer_url)}/tx/${esc(wd.tx_hash)}" target="_blank" rel="noreferrer"><span class="pl-mono">${esc(shortHex(wd.tx_hash, 8, 6))}</span> ${icon('ext')}</a>` : '—'],
             ] as Array<[string, string]>)
           : []),
       ])}
-      <p class="pla-note">${out ? 'The proof was made on this device; the ledger checked it and kept one commitment. The amount and the other party never appeared on the chain.' : 'The sender proved the payment on their device; you claimed the receipt here. Nobody else can read this entry.'}</p>`;
-    foot = '';
+      <p class="pla-note">${wd && wd.status !== 'confirmed' ? 'The amount has left your private balance and the signers have certified the release, but the transaction that pays the recipient on chain has not been confirmed. If your wallet shows it pending, speed it up or cancel it there; then submit the release again here. Any wallet can submit it; the tokens always go to the recipient in the certificate.' : out ? 'The proof was made on this device; the ledger checked it and kept one commitment. The amount and the other party never appeared on the chain.' : 'The sender proved the payment on their device; you claimed the receipt here. Nobody else can read this entry.'}</p>`;
+    foot = wd && wd.status !== 'confirmed' && wd.certificate ? `<button type="button" class="pla-btn pla-btn-dark" data-release="${wd.position}">Release on chain</button>` : '';
   }
   return `
     <div class="pla-scrim" data-drawer-close></div>
@@ -1118,13 +1118,13 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     page.recovery = profile?.recovery ?? null;
     // Withdrawals: every send whose reference is a withdraw marker.
     const burns = page.view.history.filter((h) => h.kind === 'send' && h.reference?.startsWith('withdraw:') && h.position !== null);
-    const withdrawals = [];
+    const withdrawals: PageState['withdrawals'] = [];
     for (const b of burns) {
       try {
         const w = await client.withdrawal(l.namespace!.id, b.position!);
-        withdrawals.push({ position: b.position!, amount: w.amount, recipient: w.recipient, status: w.status, tx_hash: w.tx_hash });
+        withdrawals.push({ position: b.position!, amount: w.amount, recipient: w.recipient, status: w.status, tx_hash: w.tx_hash, certificate: { message: w.message, signatures: w.signatures } });
       } catch {
-        withdrawals.push({ position: b.position!, amount: b.amount, recipient: b.reference!.slice('withdraw:'.length), status: 'not yet settled', tx_hash: null });
+        withdrawals.push({ position: b.position!, amount: b.amount, recipient: b.reference!.slice('withdraw:'.length), status: 'not yet settled', tx_hash: null, certificate: null });
       }
     }
     page.withdrawals = withdrawals;
@@ -1357,6 +1357,18 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
         const r = v.receipts[idx]!;
         await l.account!.claim(idx);
         if (r.reference && /^[a-z2-7]{24}$/.test(r.reference)) await l.account!.acknowledge(r.reference, r.position).catch(() => {});
+      });
+    } else if (btn.dataset.release !== undefined) {
+      const wd = page.withdrawals.find((w) => w.position === Number(btn.dataset.release));
+      const ns = l.namespace!;
+      const evm = session();
+      if (!wd?.certificate || !evm.address || !evm.provider) return;
+      page.drawer = null;
+      void run('submitting the release to the chain: confirm it in your wallet', async () => {
+        await ensureWalletChain(ns);
+        await ensureGas(ns, evm.address as Address);
+        const hash = await withdrawOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, wd.certificate!);
+        page.notice = `Withdrawal released on ${ns.chain_name} (tx ${shortHex(hash, 8, 6)}) to ${shortHex(wd.recipient, 6, 4)}.`;
       });
     } else if (btn.dataset.archive) {
       const id = btn.dataset.archive;

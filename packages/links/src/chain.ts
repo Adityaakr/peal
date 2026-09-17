@@ -60,6 +60,31 @@ export async function tokenBalance(ns: NamespaceInfo, owner: Address, provider?:
  * 30M; unused gas is not charged. */
 export const TX_GAS: Record<number, bigint> = { 42431: 29_000_000n };
 
+/** Fee fields for a wallet write on a chain with an EIP-1559 fee market.
+ * Wallets estimate from the last block, and on a testnet whose base fee
+ * moves between blocks that estimate is often too low to be mined for a
+ * long time; the person then sees a transaction that "never goes". This
+ * gives the transaction headroom: twice the current base fee plus a tip of
+ * at least 1.5 gwei. The wallet still shows the fee and lets the person
+ * change it. Chains without a base fee (no fee market) get nothing. */
+export async function feeOverrides(pc: PublicClient): Promise<{ maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint }> {
+  try {
+    const block = await pc.getBlock();
+    const base = block.baseFeePerGas;
+    if (base === null || base === undefined) return {};
+    let tip = 1_500_000_000n;
+    try {
+      const est = await pc.estimateFeesPerGas();
+      if (est.maxPriorityFeePerGas && est.maxPriorityFeePerGas > tip) tip = est.maxPriorityFeePerGas;
+    } catch {
+      /* the default tip */
+    }
+    return { maxFeePerGas: base * 2n + tip, maxPriorityFeePerGas: tip };
+  } catch {
+    return {};
+  }
+}
+
 /** Chains whose gas is an ERC-20 the chain itself hands out through an RPC
  * method: `tempo_fundAddress` on Tempo Moderato. */
 const GAS_FAUCET: Record<number, { method: string; token: Address }> = {
@@ -104,11 +129,11 @@ export async function depositOnChain(ns: NamespaceInfo, provider: EIP1193Provide
   const allowance = await pc.readContract({ address: token, abi: ERC20_ABI, functionName: 'allowance', args: [from, gateway] });
   let approveHash: Hex | null = null;
   if (allowance < amount) {
-    approveHash = await wc.writeContract({ address: token, abi: ERC20_ABI, functionName: 'approve', args: [gateway, amount], gas: TX_GAS[ns.chain_id] });
+    approveHash = await wc.writeContract({ address: token, abi: ERC20_ABI, functionName: 'approve', args: [gateway, amount], gas: TX_GAS[ns.chain_id], ...(await feeOverrides(pc)) });
     await pc.waitForTransactionReceipt({ hash: approveHash });
   }
   const receipt = `0x${receiptHex}` as Hex;
-  const depositHash = await wc.writeContract({ address: gateway, abi: GATEWAY_ABI, functionName: 'deposit', args: [token, amount, receipt], gas: TX_GAS[ns.chain_id] });
+  const depositHash = await wc.writeContract({ address: gateway, abi: GATEWAY_ABI, functionName: 'deposit', args: [token, amount, receipt], gas: TX_GAS[ns.chain_id], ...(await feeOverrides(pc)) });
   await pc.waitForTransactionReceipt({ hash: depositHash });
   return { approveHash, depositHash };
 }
@@ -137,6 +162,7 @@ export async function withdrawOnChain(ns: NamespaceInfo, provider: EIP1193Provid
       cert.signatures as Hex[],
     ],
     gas: TX_GAS[ns.chain_id],
+    ...(await feeOverrides(pc)),
   });
   await pc.waitForTransactionReceipt({ hash });
   return hash;
@@ -182,7 +208,7 @@ export async function faucet(ns: NamespaceInfo, provider: EIP1193Provider, from:
   const chain = chainFor(ns);
   const wc = createWalletClient({ account: from, chain, transport: custom(provider) });
   const pc = createPublicClient({ chain, transport: custom(provider) });
-  const hash = await wc.writeContract({ address: ns.token_address as Address, abi: ERC20_ABI, functionName: 'faucet', args: [to, amount], gas: TX_GAS[ns.chain_id] });
+  const hash = await wc.writeContract({ address: ns.token_address as Address, abi: ERC20_ABI, functionName: 'faucet', args: [to, amount], gas: TX_GAS[ns.chain_id], ...(await feeOverrides(pc)) });
   await pc.waitForTransactionReceipt({ hash });
   return hash;
 }
