@@ -247,29 +247,81 @@ function uses(): string {
   );
 }
 
-function developers(): string {
-  const code = `<span class="c">// packages/links: the sequence the app runs, from the SDK's own tests</span>
-<span class="c">// receiver: one wallet signature authorizes a private account behind the wallet</span>
-const bob = await LinksAccount.setup(opts, circuitId, walletSigner, 'Bob', recovery);
+function developers(status: LinksStatus | null): string {
+  const origin = typeof window === 'undefined' ? 'https://peal.network' : window.location.origin;
+  const sdk = `<span class="c">// receiver: one wallet signature, then a</span>
+<span class="c">// request with no popup</span>
+const bob = await LinksAccount.setup(
+  opts, circuitId, signer, 'Bob', recovery);
 const request = await bob.createRequest({
-  amount: '1250000000', title: 'Logo files', reference: 'INV-7',
+  amount: '1250000000', title: 'Logo files',
 });
 
-<span class="c">// payer: the wallet confirms a local payment intent, the browser proves the payment</span>
-const paid = await alice.pay({ request }, newIntentId(), { intent, signature });
+<span class="c">// payer: the wallet approves a local intent,</span>
+<span class="c">// the browser proves the payment</span>
+await alice.pay({ request }, newIntentId(),
+  { intent, signature });
 
-<span class="c">// receiver, whenever they are next online: verify the encrypted receipt, claim it</span>
-await bob.syncInbox();
+<span class="c">// receiver, whenever next online</span>
+await bob.sync();
 await bob.claimAll();`;
-  return section(
-    'for-developers',
-    'for developers',
-    'a wallet, a ledger, and a proof between them.',
-    `<p class="ml-p">the core is a Rust crate over the pinned upstream ZK-Pari circuits, compiled to WebAssembly and driven by a typed TypeScript SDK. a wallet holds the account opening and its private list of claimed receipts; the ledger holds one commitment per account and verifies every operation. amounts are integer base units everywhere.</p>
-     <pre class="pl-code pl-ld-code">${code}</pre>
-     ${tryRow('#/bonsai/app', 'open the app', '#pl-visible', 'what the ledger learns')}
-     <p class="ml-foot pl-ld-fine">the ledger is replicated by Commonware <code>simplex</code> consensus in this build. The proving keys come from a local setup rather than a ceremony, the upstream circuits are a pinned prototype revision, and settlement is committee-attested. All of it is recorded in the repository under <code>docs/peal-links/MAINNET_READINESS.md</code>.</p>`,
-  );
+  const api = `BASE=${esc(origin)}/links/v1
+
+<span class="c"># the node: namespaces, circuit, signers</span>
+curl $BASE/status
+
+<span class="c"># the public ledger: a proof per record,</span>
+<span class="c"># no amounts, no counterparties</span>
+curl $BASE/ledger/{ns}/history
+
+<span class="c"># what a payer reads when a link opens</span>
+curl $BASE/requests/{id}`;
+  // The live half of the API card: what the node answered when this page was
+  // rendered, so the numbers beside the curl are the ones the curl returns.
+  const live = status
+    ? `<dl class="pl-ld-live">
+        <div><dt>namespaces</dt><dd>${status.namespaces.map((n) => esc(n.label)).join(', ')}</dd></div>
+        <div><dt>circuit</dt><dd><code>${esc(status.circuit_id.slice(0, 16))}…</code></dd></div>
+        <div><dt>signers</dt><dd>${status.signers.length}, threshold ${status.signer_threshold}</dd></div>
+        <div><dt>ledger</dt><dd>${status.ledgers.map((l) => `seq ${l.seq}, ${l.receipt_count} receipts`).join(' · ')}</dd></div>
+      </dl>`
+    : `<p class="pl-ld-live-off">the node is not reachable from this page right now, so nothing is shown in its place.</p>`;
+  return `
+    <section id="for-developers" class="ml-section">
+      <div class="ml-wrap scroll-reveal">
+        <p class="ml-sec-kicker pl-ld-kicker">for developers</p>
+        <h2 class="ml-story-h2 pl-ld-h2">a wallet, a ledger, and a proof between them.</h2>
+        <div class="pl-ld-body">
+          <p class="ml-p">the core is a Rust crate over the pinned ZK-Pari circuits, compiled to WebAssembly and driven by a typed TypeScript SDK. a wallet holds the account opening and its private list of claimed receipts; the ledger holds one commitment per account and verifies every operation; an HTTP API sits between them for anything that is not a proof. amounts are integer base units everywhere.</p>
+        </div>
+        <div class="pl-ld-dev">
+          <article class="pl-ld-dev-card">
+            <p class="pl-ld-dev-kicker">SDK · <code>peal-links</code></p>
+            <h3>every step is one call</h3>
+            <p>setup, requests, funding, paying, claiming, withdrawing. proofs, envelopes, backups and the wallet signatures are handled. runs in a page, a worker or Node.</p>
+            <pre class="pl-code pl-ld-code">${sdk}</pre>
+            <p class="pl-ld-dev-links"><a href="#/developers/links-sdk">SDK reference</a><a href="#/developers/links">how a payment moves</a></p>
+          </article>
+          <article class="pl-ld-dev-card">
+            <p class="pl-ld-dev-kicker">HTTP API · <code>/links/v1</code></p>
+            <h3>JSON in, JSON out, any language</h3>
+            <p>public reads need nothing; writes carry a proof or an account signature; requests, the profile and backups take a wallet sign-in. errors are problem+json with a stable code.</p>
+            <pre class="pl-code pl-ld-code">${api}</pre>
+            ${live}
+            <p class="pl-ld-dev-links"><a href="#/developers/links-api">API reference</a><a href="#/developers/api#private-links">run it in the playground</a></p>
+          </article>
+          <article class="pl-ld-dev-card pl-ld-dev-card-wide">
+            <p class="pl-ld-dev-kicker">agents</p>
+            <h3>hand it to an agent</h3>
+            <p>one skill carries the procedure, a shop recipe, the verification script and the words not to use.</p>
+            <pre class="pl-code pl-ld-code">curl -fsSL ${esc(origin)}/skill/install.sh | sh</pre>
+            <p class="pl-ld-dev-links"><a href="#/developers/agents">use it from an agent</a><a href="${esc(origin)}/skill/reference/links.md">the reference file</a></p>
+          </article>
+        </div>
+        ${tryRow('#/developers/links', 'read the developer guide', 'https://github.com/Adityaakr/peal-network', 'the source')}
+        <p class="ml-foot pl-ld-fine">the ledger is replicated by Commonware <code>simplex</code> consensus; the circuits are pinned by revision; every design decision has a record under <code>docs/peal-links/decisions</code> in the repository.</p>
+      </div>
+    </section>`;
 }
 
 function faq(status: LinksStatus | null): string {
@@ -321,8 +373,8 @@ export function bonsaiLandingHtml(status: LinksStatus | null): string {
         ${how()}
         ${oneWallet()}
         ${visible()}
+        ${developers(status)}
         ${uses()}
-        ${developers()}
         ${faq(status)}
         ${close(status)}
       </div>
