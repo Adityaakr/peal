@@ -502,7 +502,6 @@ No secrets live in the repository: signer keys, deployer keys and local state st
 | `skills/` | the agent skill served at `/skill` |
 | `docker/`, `railway/` | images and Railway service configs |
 | `docs/` | product docs, decisions, build logs, deployment recipes |
-| `solana/` | a native program that checks a Peal inclusion proof on chain |
 | `extension/` | the browser extension |
 
 ---
