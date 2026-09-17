@@ -94,19 +94,30 @@ function markPaid(requestId: string, position: number): void {
   }
 }
 
-/** Funding in progress for this request: survives a reload so the page
- * resumes waiting for the credit instead of starting a second deposit. */
-function fundingMarker(requestId: string): string | null {
+/** Funding in progress for this request: the deposit intent's receipt and
+ * the transaction that carried it. Survives a reload so the page resumes
+ * waiting for the credit instead of making a second deposit. It is written
+ * only once the deposit is on chain; a rejected or failed send leaves no
+ * marker, so the next attempt deposits again. */
+interface Funding {
+  receipt: string;
+  tx: string;
+}
+
+function fundingMarker(requestId: string): Funding | null {
   try {
-    return sessionStorage.getItem(`peal-links:funding:${requestId}`);
+    const raw = sessionStorage.getItem(`peal-links:funding:${requestId}`);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<Funding>;
+    return v && typeof v.receipt === 'string' && typeof v.tx === 'string' ? { receipt: v.receipt, tx: v.tx } : null;
   } catch {
     return null;
   }
 }
 
-function setFundingMarker(requestId: string, receipt: string | null): void {
+function setFundingMarker(requestId: string, f: Funding | null): void {
   try {
-    if (receipt) sessionStorage.setItem(`peal-links:funding:${requestId}`, receipt);
+    if (f) sessionStorage.setItem(`peal-links:funding:${requestId}`, JSON.stringify(f));
     else sessionStorage.removeItem(`peal-links:funding:${requestId}`);
   } catch {
     /* storage unavailable */
@@ -418,8 +429,22 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
       let balance = (await account.view()).balance;
       if (BigInt(balance) < BigInt(req.manifest.amount)) {
         s.stage = 'funding';
-        let receipt = fundingMarker(requestId);
-        if (!receipt) {
+        // A deposit already on chain from an earlier attempt or before a
+        // reload is resumed, but only after the chain confirms it exists
+        // and succeeded; anything else starts a fresh deposit.
+        let marker = fundingMarker(requestId);
+        if (marker) {
+          const pc = publicClientFor(ns, evm.provider as unknown as EIP1193Provider);
+          const rc = await pc.getTransactionReceipt({ hash: marker.tx as `0x${string}` }).catch(() => null);
+          if (!rc || rc.status !== 'success') {
+            setFundingMarker(requestId, null);
+            marker = null;
+          }
+        }
+        let receipt: string;
+        if (marker) {
+          receipt = marker.receipt;
+        } else {
           const unit = 10n ** BigInt(ns.decimals);
           const need = BigInt(req.manifest.amount) - BigInt(balance);
           const topUp = ((need + unit - 1n) / unit) * unit; // whole units, so the balance reads cleanly
@@ -427,13 +452,13 @@ export function renderPay(root: HTMLElement, requestId: string): () => void {
           paint();
           const prepared = await account.prepareDeposit(topUp.toString(), `for link ${requestId.slice(0, 8)}`);
           receipt = prepared.receipt;
-          setFundingMarker(requestId, receipt);
           s.busy = 'adding funds: confirm the approval and the deposit in your wallet';
           paint();
           await ensureGas(ns, evm.address as Address);
-          await depositOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, topUp, receipt);
+          const tx = await depositOnChain(ns, evm.provider as unknown as EIP1193Provider, evm.address as Address, topUp, receipt);
+          setFundingMarker(requestId, { receipt, tx: tx.depositHash });
         }
-        s.busy = `adding funds: waiting for ${ns.confirmations} confirmation${ns.confirmations === 1 ? '' : 's'} on ${ns.chain_name} and the ledger credit (this can take minutes on slower chains)`;
+        s.busy = `adding funds: deposit is on ${ns.chain_name}, waiting for ${ns.confirmations} confirmation${ns.confirmations === 1 ? '' : 's'} and the ledger credit (this can take minutes on slower chains)`;
         paint();
         let credited = false;
         for (let i = 0; i < 300 && !stale; i++) {
