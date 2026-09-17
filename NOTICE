@@ -1,8 +1,7 @@
-bte — reveal-later encryption network
-Copyright 2026 the bte authors
+Peal, the programmable confidentiality layer for digital markets
+Copyright 2026 the Peal authors
 
-This product builds on the batched threshold encryption scheme and prototype by
-the Commonware team:
+This product builds on two constructions by the Commonware team:
 
   - simple-bte (https://github.com/commonwarexyz/simple-bte), dual-licensed
     Apache-2.0 / MIT. All pairing math, group FFTs, and the BTE scheme itself
@@ -10,5 +9,16 @@ the Commonware team:
   - "Batched Threshold Encryption: A Simple Construction", Guru Vamsi
     Policharla, IACR eprint 2026/760 (https://eprint.iacr.org/2026/760), and
     the accompanying write-up at https://commonware.xyz/blogs/bte.
+  - The Bonsai private payment construction with the ZK-Pari proof system,
+    "Bonsai" (IACR eprint 2026/1987, https://eprint.iacr.org/2026/1987) and the
+    zk-pari prototype (https://github.com/guruvamsi-policharla/zk-pari),
+    dual-licensed Apache-2.0 / MIT, pinned by revision and used as a dependency.
+
+Peal is not affiliated with or endorsed by Commonware.
 
 Licensed under the Apache License, Version 2.0.
+
+The name "Peal", the Peal logo and the peal.network domain identify the
+hosted network and are not covered by this license (Apache License, Section 6).
+Forks and products built on this code are welcome; they should not present
+themselves as Peal or as endorsed by Peal without permission.
