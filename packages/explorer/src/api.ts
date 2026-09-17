@@ -87,8 +87,20 @@ async function get<T>(path: string): Promise<T> {
   const type = res.headers.get('content-type') ?? '';
   if (!type.includes('application/json')) {
     const where = BASE || window.location.origin;
+    // An empty 502/503/504 is the edge answering for a coordinator it could
+    // not reach (the hosted site is Caddy in front of the coordinator, and an
+    // unreachable upstream comes back as a bare 502). That is a different
+    // failure from an HTML page, which is a dev server holding the port, and
+    // the advice for one is wrong for the other.
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      throw new Error(
+        `${where} answered ${path} with ${res.status}: the edge is up but could not reach the coordinator behind it. ` +
+          `on the hosted site that means the service is running without its coordinator ` +
+          `(check its Dockerfile path and deploy log); locally, start the devnet with just compose-up`,
+      );
+    }
     throw new Error(
-      `${where} answered ${path} with ${type.split(';')[0] || 'no content type'}, not JSON. ` +
+      `${where} answered ${path} with ${type.split(';')[0] || 'no content type'} (status ${res.status}), not JSON. ` +
         `that is not the bte coordinator. it usually means another dev server holds the port. ` +
         `restart with: BTE_URL=http://localhost:<coordinator port> pnpm dev`,
     );

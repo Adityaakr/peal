@@ -380,3 +380,7 @@ Trust model of the demo: proofs are real (ZK-Pari over BLS12-381, verified by th
 
 ### Next step
 None required for the local build. Open items are in MAINNET_READINESS.md; the largest remaining engineering items are validators on separate machines with independent operators, `marshal` adoption for durable ordered delivery, and a public testnet run.
+
+## 2026-09-17: README rewrite
+
+`README.md` rewritten for the whole repository (commit `2ec8832`, merged to `main` as `9dc58f0`): both engines (reveal-later encryption, the Bonsai private ledger), every product, Peal Private Links as it stands today (Sepolia live behind peal.network, hosted node on Railway, one wallet, observer table, gateway addresses on Sepolia and Tempo), the trust model of both engines side by side with the mainnet blockers, local/testnet/Railway recipes, repository map and test commands. Six Mermaid diagrams (product map, payment sequence, mempool flow, reveal sequence, ledger components, Railway topology); each rendered with `@mermaid-js/mermaid-cli` 11 (exit 0). Every relative link checked against the tree (all exist; `spec/` is present). Addresses and paper ids checked against this log and `RESEARCH.md`.

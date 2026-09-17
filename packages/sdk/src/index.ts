@@ -94,9 +94,18 @@ export class BteClient {
     });
     const contentType = resp.headers.get('content-type') ?? '';
     if (!contentType.includes('application/json')) {
+      // A bare 502/503/504 is an edge that could not reach its coordinator,
+      // not a wrong address; say so rather than sending the caller to check
+      // a url that is right.
+      if (resp.status === 502 || resp.status === 503 || resp.status === 504) {
+        throw new Error(
+          `${this.url || 'this origin'} answered ${path} with ${resp.status}: ` +
+            `the edge is up but the coordinator behind it is unreachable.`,
+        );
+      }
       throw new Error(
         `${this.url || 'this origin'} answered ${path} with ` +
-          `${contentType.split(';')[0] || 'no content type'}, not JSON. ` +
+          `${contentType.split(';')[0] || 'no content type'} (status ${resp.status}), not JSON. ` +
           `that is not a bte coordinator; check the url/port.`,
       );
     }

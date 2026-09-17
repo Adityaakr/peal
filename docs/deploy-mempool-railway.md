@@ -90,6 +90,30 @@ used to come from a root `railway.json`; when that file moved, the service
 fell back to the standalone image, which has no coordinator, and every
 `/v0` call on the live site failed until the path was set by hand.
 
+How to tell which image is running, from the outside and from the log:
+
+- `curl -sD - https://peal.network/v0/committees/default` answers `502` with
+  an empty body and no `via: 1.1 Caddy` header, while `/links/v1/status`
+  answers `200` with that header. Caddy is up, its `/links` upstream is set,
+  and its `/v0` upstream is the Caddyfile default `coordinator:8080`, a host
+  that does not exist on Railway. `/` still renders because the Caddyfile's
+  `handle_errors` serves the static shell when the coordinator is unreachable.
+- The deploy log shows Caddy ("admin endpoint started", "serving initial
+  configuration") within a second of "Starting Container" and nothing else.
+  The devnet image's entrypoint (`docker/start-railway.sh`) starts the
+  coordinator, waits for its health check, runs `committee-init` and five
+  operator nodes, and only then starts Caddy, so a healthy devnet log begins
+  with those lines. A Caddy-only log is `docker/Dockerfile.web`.
+
+The fix is one setting on the `bte-explorer` service: the service variable
+`RAILWAY_DOCKERFILE_PATH=docker/Dockerfile.railway` (Railway reads it at build
+time; it is the documented way to name a Dockerfile that is not at the root),
+or the same path in Settings -> Build -> Dockerfile Path, then a redeploy.
+After the build, the deploy log starts with the coordinator and the
+`committee-init` output, and the `curl` above returns JSON with the `via`
+header. `BTE_UPSTREAM` must stay unset on this service: the entrypoint sets it
+to the in-container coordinator.
+
 The coordinator and relayer URLs are inlined at build time, so set them as
 **build variables**:
 
