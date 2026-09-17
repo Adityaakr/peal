@@ -13,7 +13,7 @@ Railway service so they scale and restart independently.
 
 | service    | directory                 | what it is                                    |
 |------------|---------------------------|-----------------------------------------------|
-| coordinator| `docker/Dockerfile.railway` (root `railway.json`) | the BTE devnet (already deployed) |
+| coordinator| `docker/Dockerfile.railway` (`railway/devnet.json`) | the BTE devnet (already deployed) |
 | relayer    | `packages/mempool-agents` | sponsored, no-wallet gateway + `/prepare`     |
 | searcher   | `packages/mempool-agents` | the real sandwich bot                         |
 | settler    | `packages/mempool-agents` | opens the sealed batch on-chain               |
@@ -77,9 +77,9 @@ shell. A reader with no JavaScript, which is most agent fetchers, gets the artic
 the app boots over it in a browser. The devnet-in-a-box edge does the same
 through the coordinator (`names.rs` prefers the prerendered file too). The explorer imports the `bte-sdk` workspace package, so
 the build context is the **repo root** (leave Root Directory empty). Point the
-service at this Dockerfile with a config file instead of the repo-root
-`railway.json` (which builds the devnet): set the service's **Config File** to
-`railway.explorer.json`, or set `RAILWAY_DOCKERFILE_PATH=packages/explorer/Dockerfile`.
+service at this Dockerfile: set the service's **Config File** to
+`railway.explorer.json`, set `RAILWAY_DOCKERFILE_PATH=packages/explorer/Dockerfile`,
+or set the Dockerfile path in the dashboard (Settings -> Build).
 
 The coordinator and relayer URLs are inlined at build time, so set them as
 **build variables**:
