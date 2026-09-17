@@ -524,4 +524,12 @@ Continuous integration runs `cargo fmt --check`, `cargo clippy -D warnings` and 
 
 The cryptography is Commonware's: [simple-bte](https://github.com/commonwarexyz/simple-bte) by Guru Vamsi Policharla ([eprint 2026/760](https://eprint.iacr.org/2026/760)) for reveal-later encryption, and the Bonsai construction with ZK-Pari ([eprint 2026/1987](https://eprint.iacr.org/2026/1987), pinned by revision) for private payments. Peal is not affiliated with or endorsed by Commonware. Peal adds the network around them: coordinator, operator nodes, the private ledger node and consensus, wire formats, SDKs, contracts, and the products.
 
-Apache-2.0. See [NOTICE](NOTICE).
+**License.** Apache-2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE). Use it, fork it, build on it, ship it commercially; keep the notices. The name Peal, the logo and peal.network identify the hosted network and are not part of the grant, so a fork should carry its own name.
+
+## Contact
+
+Built by [Adityaakr](https://github.com/Adityaakr).
+
+- **Building on Peal, integrating it, or want a feature?** Open an [issue](https://github.com/Adityaakr/peal-network/issues) or a pull request.
+- **Partnerships, commercial support, running a node or a committee for your product:** reach out through GitHub, and this section will carry a direct line shortly.
+- **Found a security problem?** [SECURITY.md](SECURITY.md) has the disclosure process. Please do not open a public issue for it.
