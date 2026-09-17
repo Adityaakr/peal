@@ -62,7 +62,7 @@ flowchart TB
 
 ## What is real, and what is not yet
 
-Real: the cryptography on both sides, every product on the site, the settlement contracts, the two live networks. Not yet: the trust model around them. The reveal committee's keys came from one dealer we ran, withdrawals from the private ledger are released by signers whose keys live in one process, and nothing has been audited. That is why everything runs on testnets and the node refuses a mainnet namespace beside its fixtures. [Trust model, honestly](#trust-model-honestly) has the full list, and so does every page on the site: Peal never says trustless, unlinkable, or mainnet.
+Real: the cryptography on both sides, every product on the site, the settlement contracts, the two live networks. Not yet: the trust model around them. The reveal committee's keys came from one dealer we ran, withdrawals from the private ledger are released by signers whose keys live in one process, and nothing has been audited. That is why everything runs on testnets and the node refuses a mainnet namespace beside its fixtures. [SECURITY.md](SECURITY.md) and [docs/peal-links/MAINNET_READINESS.md](docs/peal-links/MAINNET_READINESS.md) have the full list, and so does every page on the site: Peal never says trustless, unlinkable, or mainnet.
 
 ---
 
@@ -75,7 +75,6 @@ Real: the cryptography on both sides, every product on the site, the settlement 
 - [Private actions](#private-actions)
 - [How reveal-later encryption works](#how-reveal-later-encryption-works)
 - [How the private ledger works](#how-the-private-ledger-works)
-- [Trust model, honestly](#trust-model-honestly)
 - [Run it locally](#run-it-locally)
 - [Deployment](#deployment)
 - [Repository map](#repository-map)
@@ -154,7 +153,7 @@ Full observer matrix and threats: [docs/peal-links/THREAT_MODEL.md](docs/peal-li
 | Ethereum Sepolia | USDC (Circle testnet), tUSD (faucet token) | `0xC141Bc6AaED24258276dC203050AD148ec95C1fC` | live behind peal.network |
 | Tempo Moderato | PathUSD, tUSD | `0xE747A08e7cFea2574bCc9A0a8FCb6E02a68D6F39` | run on demand with `testnet.sh` |
 
-Testnet funds only. Mainnet is blocked on purpose; see [Trust model](#trust-model-honestly) and [docs/peal-links/MAINNET_READINESS.md](docs/peal-links/MAINNET_READINESS.md).
+Testnet funds only. Mainnet is blocked on purpose; see [docs/peal-links/MAINNET_READINESS.md](docs/peal-links/MAINNET_READINESS.md).
 
 ### For developers
 
@@ -342,25 +341,6 @@ flowchart TB
 - **Deposits** carry a commitment tag; the watcher credits them after the configured confirmations and the wallet claims with a proof. **Withdrawals** burn with a proof and are released by a certificate the signers issue; any wallet can submit it, the tokens go to the certificate's recipient.
 
 The construction is the paper's; what Peal added (deposits, withdrawals, identities, delivery, backups, consensus, a product) is listed in [docs/peal-links/RESEARCH.md](docs/peal-links/RESEARCH.md), and every design choice has a decision record under [docs/peal-links/decisions](docs/peal-links/decisions).
-
----
-
-## Trust model, honestly
-
-**Reveal-later encryption (v0).** A single trusted dealer runs the ceremony: it samples the secret, deals Shamir shares to the operators, publishes the public parameters and drops the secret. A dealer compromised at ceremony time can read everything sealed under that committee. There is no DKG yet, no resharing, and the committee can censor by refusing to reveal (you see it stall; you cannot force it). The operators do not yet verify the cue for themselves, so a dishonest operator asked early by a dishonest coordinator could contribute a share early; the fix is operators checking the cue against the chain, and it is the decentralisation work on the roadmap. What you do not have to trust: operators below the threshold learn nothing, shares are publicly verifiable so a lying operator cannot corrupt a reveal, and the coordinator never sees plaintext before the cue. Details in [SECURITY.md](SECURITY.md), [spec/DEVIATIONS.md](spec/DEVIATIONS.md) and [spec/ROADMAP.md](spec/ROADMAP.md).
-
-**Private payments.** The privacy engine is real and the flows are real; the gaps are in who holds the keys around it:
-
-| area | today | needed before real money |
-|---|---|---|
-| proving keys | generated on one machine, no ceremony | a multi-party ceremony, circuit id pinned |
-| upstream circuits | a pinned prototype revision, one open PR, unreviewed | external review |
-| security proof | the paper defers one property (simulation extractability) | a proof, or a written risk acceptance |
-| withdrawals | released by 2 of 3 signer keys held by the node | independent signers with HSMs, then proof-verified settlement on chain |
-| validators | three local processes (or one hosted node) | independent operators, epochs, durable delivery |
-| review | none | circuits, ledger, gateway, node |
-
-The app refuses a mainnet namespace with the signer fixture, and the checklist lives in [docs/peal-links/MAINNET_READINESS.md](docs/peal-links/MAINNET_READINESS.md).
 
 ---
 
