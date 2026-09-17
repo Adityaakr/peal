@@ -1076,7 +1076,10 @@ async fn put_profile(
     }
     let now = product::now();
     if profile.issued_at > now + 600 || profile.issued_at + 3600 < now {
-        return Err(Problem::bad_request("bad_profile", "issued_at must be close to now"));
+        return Err(Problem::bad_request(
+            "bad_profile",
+            "issued_at must be close to now",
+        ));
     }
     if profile.expiry <= now {
         return Err(Problem::bad_request("bad_profile", "already expired"));
@@ -1123,7 +1126,9 @@ async fn put_profile(
     }
     Ok((
         StatusCode::CREATED,
-        Json(json!({ "hash": hash, "version": profile.version, "verified": verified.method, "block": verified.block })),
+        Json(
+            json!({ "hash": hash, "version": profile.version, "verified": verified.method, "block": verified.block }),
+        ),
     ))
 }
 
@@ -1151,11 +1156,14 @@ async fn get_profile(
     let id = parse_ns(&app, &ns)?;
     let address = address.to_lowercase();
     if !peal_bonsai::manifest::is_evm_address(&address) {
-        return Err(Problem::bad_request("malformed", "address must be a 0x address"));
+        return Err(Problem::bad_request(
+            "malformed",
+            "address must be a 0x address",
+        ));
     }
     let conn = app.product.lock().expect("product lock");
-    let stored = db(crate::directory::latest(&conn, &hex::encode(id), &address))?
-        .ok_or_else(|| {
+    let stored =
+        db(crate::directory::latest(&conn, &hex::encode(id), &address))?.ok_or_else(|| {
             Problem::not_found(
                 "not_registered",
                 "this address has not activated private receiving on Peal Links",
@@ -1192,10 +1200,15 @@ async fn get_backup(
     let session = require_session(&app, &headers)?;
     let id = parse_ns(&app, &ns)?;
     let conn = app.product.lock().expect("product lock");
-    let (b, created_at) =
-        db(crate::directory::latest_backup(&conn, &hex::encode(id), &session.address.to_lowercase()))?
-            .ok_or_else(|| Problem::not_found("no_backup", "no backup is stored for this wallet"))?;
-    Ok(Json(json!({ "seq": b.seq, "mechanism": b.mechanism, "blob": b.blob, "created_at": created_at })))
+    let (b, created_at) = db(crate::directory::latest_backup(
+        &conn,
+        &hex::encode(id),
+        &session.address.to_lowercase(),
+    ))?
+    .ok_or_else(|| Problem::not_found("no_backup", "no backup is stored for this wallet"))?;
+    Ok(Json(
+        json!({ "seq": b.seq, "mechanism": b.mechanism, "blob": b.blob, "created_at": created_at }),
+    ))
 }
 
 // ---- withdrawals -----------------------------------------------------------

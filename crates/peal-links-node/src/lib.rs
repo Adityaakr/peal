@@ -4,8 +4,8 @@
 pub mod api;
 pub mod auth;
 pub mod config;
-pub mod directory;
 pub mod consensus;
+pub mod directory;
 pub mod evm;
 pub mod ledger_actor;
 pub mod problem;
