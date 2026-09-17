@@ -30,6 +30,9 @@ import { limits as limitsDocs } from './pages/docs/limits';
 import { network as networkDocs } from './pages/docs/network';
 import { x402Page } from './pages/docs/x402';
 import { roadmap } from './pages/docs/roadmap';
+import { privateLinks } from './pages/docs/links';
+import { privateLinksSdk } from './pages/docs/links-sdk';
+import { privateLinksApi } from './pages/docs/links-api';
 import { renderSealView } from './pages/seal-view';
 import { renderBonsaiLanding } from './pages/bonsai-landing';
 import { renderBonsaiApp } from './pages/bonsai-app';
@@ -150,7 +153,7 @@ const PAGE_PATHS = new Set([
   'developers', 'developers/quickstart', 'developers/agents', 'developers/howitworks',
   'developers/auctions', 'developers/createauction', 'developers/usecases',
   'developers/api', 'developers/x402', 'developers/limits', 'developers/network',
-  'developers/roadmap',
+  'developers/roadmap', 'developers/links', 'developers/links-sdk', 'developers/links-api',
   'protocol', 'mempool', 'auction', 'stakeholder-tokens', 'execution', 'philosophy', 'create', 'app',
   'bonsai', 'bonsai/app',
 ]);
@@ -355,6 +358,12 @@ function route(): void {
     cleanup = renderDocs(root, networkDocs, hash);
   } else if (hash === '#/developers/roadmap') {
     cleanup = renderDocs(root, roadmap, hash);
+  } else if (hash === '#/developers/links') {
+    cleanup = renderDocs(root, privateLinks, hash);
+  } else if (hash === '#/developers/links-sdk') {
+    cleanup = renderDocs(root, privateLinksSdk, hash);
+  } else if (hash === '#/developers/links-api') {
+    cleanup = renderDocs(root, privateLinksApi, hash);
   } else if (hash === '#/developers/createauction') {
     cleanup = renderCreateAuctionDocs(root);
   } else if (hash === '#/philosophy') {

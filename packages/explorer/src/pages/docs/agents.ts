@@ -8,7 +8,7 @@ export const agents: DocsPage = {
   lede: 'Install one skill and your agent can add Peal to an application without reading any of this first.',
   html: `
     <h2 id="install">Install</h2>
-    <p>Four markdown files into <code>.claude/skills/peal/</code> in your project. No package, no
+    <p>Ten markdown files into <code>.claude/skills/peal/</code> in your project. No package, no
     registry, no account.</p>
     <pre class="doc-code"><code>curl -fsSL ${esc(shown)}/skill/install.sh | sh</code></pre>
     <p>Then ask for what you want, in your own words:</p>
@@ -85,6 +85,13 @@ for the vintage camera listing, closing Monday at 6pm, reserve $50</code></pre>
       <li><strong>reference/auctions.md</strong>: the money rules, contact details and the check
       code.</li>
       <li><strong>reference/errors.md</strong>: every error code and every limit, as tables.</li>
+      <li><strong>reference/ui.md</strong>: matching the app's design system, and the states an
+      interface for sealed submissions needs.</li>
+      <li><strong>reference/payments.md</strong>: charging per call with x402, and copying the
+      pattern into your own API.</li>
+      <li><strong>reference/links.md</strong>: Peal Private Links: private payment links and
+      transfers through the SDK and the <code>/links/v1</code> API, with the trust model an agent
+      must not overstate.</li>
     </ul>
 
     <h2 id="other-tools">Other tools</h2>

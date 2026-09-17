@@ -61,5 +61,8 @@ const payloads = await peal.getPayloads(id);   // all of them, at once</code></p
       first, and it is a few calls rather than a project.</li>
       <li><a href="#/developers/api">API reference</a> has every endpoint, the error codes and
       the rate limits.</li>
+      <li><a href="#/developers/links">Peal Private Links</a> is the other engine: private
+      payments on a zero-knowledge ledger, with an <a href="#/developers/links-sdk">SDK</a> and an
+      <a href="#/developers/links-api">API</a> of its own.</li>
     </ul>`,
 };

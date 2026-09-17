@@ -23,6 +23,9 @@ import { limits } from './pages/docs/limits';
 import { network } from './pages/docs/network';
 import { x402Page } from './pages/docs/x402';
 import { roadmap } from './pages/docs/roadmap';
+import { privateLinks } from './pages/docs/links';
+import { privateLinksSdk } from './pages/docs/links-sdk';
+import { privateLinksApi } from './pages/docs/links-api';
 import { createAuctionDocsPage } from './pages/docs-create-auction';
 import { protocolHtml } from './pages/protocol';
 import { sealbidLandingHtml } from './pages/sealbid-landing';
@@ -54,6 +57,9 @@ const PAGES: [string, DocsPage][] = [
   ['developers/limits', limits],
   ['developers/network', network],
   ['developers/roadmap', roadmap],
+  ['developers/links', privateLinks],
+  ['developers/links-sdk', privateLinksSdk],
+  ['developers/links-api', privateLinksApi],
 ];
 
 export function prerenderDocs(): PrerenderedDoc[] {

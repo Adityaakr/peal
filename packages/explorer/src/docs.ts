@@ -60,6 +60,7 @@ export const DOCS_NAV: DocsGroup[] = [
       { label: 'Sealed bid auctions', href: '#/developers/auctions' },
       { label: 'Create an auction', href: '#/developers/createauction' },
       { label: 'What to build', href: '#/developers/usecases' },
+      { label: 'Peal Private Links', href: '#/developers/links' },
     ],
   },
   {
@@ -67,6 +68,8 @@ export const DOCS_NAV: DocsGroup[] = [
     items: [
       { label: 'API reference', href: '#/developers/api' },
       { label: 'Metered calls (x402)', href: '#/developers/x402' },
+      { label: 'Private Links SDK', href: '#/developers/links-sdk' },
+      { label: 'Private Links API', href: '#/developers/links-api' },
       { label: 'Limits and errors', href: '#/developers/limits' },
     ],
   },
