@@ -81,6 +81,15 @@ service at this Dockerfile: set the service's **Config File** to
 `railway.explorer.json`, set `RAILWAY_DOCKERFILE_PATH=packages/explorer/Dockerfile`,
 or set the Dockerfile path in the dashboard (Settings -> Build).
 
+**What actually serves peal.network** (2026-09-17): the `bte-explorer` Railway
+service builds `docker/Dockerfile.railway`, the devnet-in-a-box (coordinator,
+five operator nodes and Caddy in one container, state on a volume at
+`/bte-state`), with `LINKS_UPSTREAM` pointing at the `peal-links` service for
+`/links/*`. Its Dockerfile path must be set explicitly in the dashboard. It
+used to come from a root `railway.json`; when that file moved, the service
+fell back to the standalone image, which has no coordinator, and every
+`/v0` call on the live site failed until the path was set by hand.
+
 The coordinator and relayer URLs are inlined at build time, so set them as
 **build variables**:
 
