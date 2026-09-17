@@ -43,6 +43,9 @@ export interface LinksStatus {
   consensus: null | { validator: string; validators: string[]; height: number; head: string; state_root: string };
   namespaces: NamespaceInfo[];
   ledgers: Array<{ namespace: string; seq: number; receipt_count: number; state_root: string; receipt_root: string }>;
+  /** The settlement signers' addresses and how many of them certify a withdrawal. */
+  signers: string[];
+  signer_threshold: number;
 }
 
 /** The signed request manifest a payer verifies before paying. */
