@@ -33,7 +33,8 @@ COPY docker/start-links.sh /usr/local/bin/start-links
 ENV PEAL_LINKS_CONFIG=/etc/peal-links/railway-sepolia.json
 ENV PEAL_LINKS_DATA_DIR=/var/lib/peal-links/data
 ENV PEAL_LINKS_PARAMS_DIR=/var/lib/peal-links/params
-VOLUME ["/var/lib/peal-links"]
+# No VOLUME instruction: Railway rejects it and mounts its own volume at
+# /var/lib/peal-links; docker compose mounts one there as well.
 EXPOSE 8790
 HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD curl -fsS "http://127.0.0.1:${PORT:-8790}/healthz" || exit 1
 ENTRYPOINT ["start-links"]
