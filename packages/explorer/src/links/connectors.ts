@@ -1,31 +1,24 @@
-// The wallet chooser shown wherever Peal Links asks for a wallet: the pay
-// page and the dashboard. Both connectors are always listed so a payer sees
-// the choice at a glance. A browser wallet (MetaMask, Rabby and friends)
-// spends the funds the person already holds; the Privy wallet is an
-// embedded wallet behind an email sign-in for people without an extension.
-// Either one ends up in the same session state, so the rest of the product
-// never needs to know which was picked.
+// The wallet chooser shown wherever Peal Private Links asks for a wallet:
+// the pay page and the dashboard. One connector: a browser wallet
+// (MetaMask, Rabby and friends), which spends the funds the person already
+// holds. Privy's embedded wallet stays wired in the session module for the
+// rest of the site, but Peal Private Links no longer offers it.
 import { injectedProvider, session } from '../auth';
 import { shortHex } from './format';
 import { esc } from '../util';
 
-/** Two option cards. `prefix` namespaces the button ids per page
- * (`pay-login-injected` / `pay-login`, `pl-login-injected` / `pl-login`). */
+/** The browser wallet card. `prefix` namespaces the button id per page
+ * (`pay-login-injected`, `pl-login-injected`). When no extension is
+ * present the card says so and points at one. */
 export function connectorChoices(prefix: string): string {
   const injected = injectedProvider() !== null;
-  const browserHint = injected
-    ? 'MetaMask, Rabby or another extension · pays with the funds you already hold'
-    : 'no wallet extension detected in this browser';
   return `
-    <div class="pl-connectors" role="group" aria-label="choose a wallet">
+    <div class="pl-connectors pl-connectors-one" role="group" aria-label="connect a wallet">
       <button type="button" class="pl-connector" id="${prefix}-login-injected" aria-label="Use browser wallet"${injected ? '' : ' disabled'}>
-        <span class="pl-connector-name">Browser wallet</span>
-        <span class="pl-connector-hint">${esc(browserHint)}</span>
+        <span class="pl-connector-name">${injected ? 'Connect browser wallet' : 'No browser wallet found'}</span>
+        <span class="pl-connector-hint">${injected ? 'MetaMask, Rabby or another extension · pays with the funds you already hold' : 'install a wallet extension such as MetaMask, then reload this page'}</span>
       </button>
-      <button type="button" class="pl-connector" id="${prefix}-login" aria-label="Use Privy wallet">
-        <span class="pl-connector-name">Privy wallet</span>
-        <span class="pl-connector-hint">sign in with email · an embedded wallet, nothing to install</span>
-      </button>
+      ${injected ? '' : `<a class="pl-connector-alt" href="https://metamask.io/download" target="_blank" rel="noreferrer">Get MetaMask</a>`}
     </div>`;
 }
 

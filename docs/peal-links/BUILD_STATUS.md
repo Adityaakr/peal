@@ -350,6 +350,9 @@ User feedback: rename to "Peal Private Links", a way back from every page, Ether
 Every flow and identifier the browser suites rely on is kept; the "Withdraw" and "Add funds" actions are now links styled as pills, which Playwright's role queries still find by name.
 Evidence: `pnpm -C packages/explorer test:e2e` (against :5176) 31 passed, exit 0, after two regressions the suite caught in the first run of this pass were fixed (the action pills had become links, so "New payment link", "Add funds" and "Withdraw" were no longer buttons for role queries and keyboard users; and the balance test hooks matched the whole balance block, so the incoming figure read the private balance). Commit `e1f9ab2` recorded the pass before these fixes; this commit is the one the evidence belongs to; `docs/peal-links/evidence/phase-g/v2app-{desk,phone}-*.png` inspected (connect, overview, more menu, new link, link created, links list with the drawer open, send, withdraw, activity, settings; no horizontal overflow at 1280 or 390; `page.goBack()` from settings returns to activity).
 
+### Browser wallet only  [2026-09-17]
+User decision: Peal Private Links offers the browser wallet only. `connectorChoices` shows one card ("Connect browser wallet"; when no extension is present, "No browser wallet found" with a link to MetaMask), the checkout copy no longer mentions Privy, and the keyboard edge test expects the single button. Privy stays wired in `auth.tsx` and the session module for the rest of the site and for wallets that were connected through it before; nothing in the Peal Private Links pages offers it any more. Edge suite 5 passed.
+
 ### Next step
 The checkout page (`#/pay/:id`) in the same style, then hosting for public testers (a reachable node and explorer with HTTPS), then Base Sepolia and Arbitrum Sepolia namespaces. Mainnet stays blocked as recorded in MAINNET_READINESS.md.
 ## Handoff

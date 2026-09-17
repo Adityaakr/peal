@@ -198,7 +198,7 @@ function html(s: PayState): string {
     } else if (s.stage !== 'idle') {
       action = `<div class="pl-notice" role="status"><span class="pl-status pl-status-pending"><span class="pl-status-dot"></span>${esc(s.busy ?? 'working')}</span></div>${stageList(s.stage, needsFunds)}`;
     } else if (!evm.address) {
-      action = `<p class="pl-small" style="margin:0 0 8px">Pay with the wallet you already have, or with a Privy wallet behind your email. Peal keeps a private account behind either; the payment hides the amount and the parties.</p>
+      action = `<p class="pl-small" style="margin:0 0 8px">Pay with the wallet you already have. Peal keeps a private account behind it; the payment hides the amount and the parties.</p>
         ${connectorChoices('pay')}`;
     } else if (!l.account) {
       if (l.setup === 'needs-recovery-code') {

@@ -154,9 +154,8 @@ test('checkout is reachable by keyboard', async ({ browser }) => {
   const page = await ctx.newPage();
   await page.goto(`/#/pay/${req.manifest.request_id}`);
   await expect(page.getByText('verified on this device')).toBeVisible({ timeout: 60_000 });
-  // Tab from the top of the document to the wallet chooser: the first step
-  // of paying must be reachable without a mouse, and both connectors
-  // (browser wallet first, Privy second) must be in the tab order.
+  // Tab from the top of the document to the wallet button: the first step
+  // of paying must be reachable without a mouse.
   const reached: string[] = [];
   for (let i = 0; i < 25; i++) {
     await page.keyboard.press('Tab');
@@ -165,10 +164,9 @@ test('checkout is reachable by keyboard', async ({ browser }) => {
       return el ? `${el.tagName.toLowerCase()}:${(el as HTMLInputElement).name || el.getAttribute('aria-label') || el.textContent?.trim().slice(0, 30) || ''}` : '';
     });
     reached.push(desc);
-    if (desc === 'button:Use Privy wallet') break;
+    if (desc === 'button:Use browser wallet') break;
   }
-  expect(reached.at(-2)).toBe('button:Use browser wallet');
-  expect(reached.at(-1)).toBe('button:Use Privy wallet');
+  expect(reached.at(-1)).toBe('button:Use browser wallet');
   await ctx.close();
 });
 

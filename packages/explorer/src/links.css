@@ -3457,3 +3457,14 @@ a.pla-ministat:hover {
     transition: none;
   }
 }
+
+/* One connector: the card takes the full width; the extension link sits under it. */
+.pl-connectors-one {
+  grid-template-columns: 1fr;
+}
+
+.pl-connector-alt {
+  justify-self: start;
+  font-size: 13.5px;
+  color: var(--accent);
+}
