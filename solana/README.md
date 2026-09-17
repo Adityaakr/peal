@@ -5,7 +5,7 @@ onchain, plus the localnet harnesses that prove it does both.
 
 Self-contained. It is not a member of the root cargo workspace or the pnpm
 workspace, so building or testing anything else in this repo is unaffected by
-this directory existing. That is the same arrangement `vara/reveal-engine` uses.
+this directory existing.
 
 ## Why this is small
 
