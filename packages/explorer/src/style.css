@@ -104,8 +104,23 @@ body {
 }
 
 @media (max-width: 640px) {
+  /* One row, always: the identity takes what is left and wraps its own
+     tagline; the menu control keeps the right edge instead of dropping
+     under the tagline when the two no longer fit side by side. */
   .site-header {
-    padding-top: 20px;
+    padding: 20px 16px 10px;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .site-identity {
+    flex: 1 1 auto;
+  }
+
+  .site-nav {
+    flex: none;
+    margin-top: 2px;
   }
 
   .site-sub {
@@ -324,6 +339,30 @@ body.no-tagline .site-sub {
   .site-menu.is-open {
     transform: translateY(0) translateX(0);
     clip-path: inset(0 0 0 0 round 20px);
+  }
+}
+
+/* On a phone the menu is a list, one link per row, sized to the viewport
+   with a gutter on both sides so no entry is ever clipped at an edge, and
+   scrollable if the viewport is shorter than the list. */
+@media (max-width: 640px) {
+  .site-menu {
+    width: min(calc(100vw - 32px), 320px);
+    max-height: calc(100vh - 110px);
+    overflow: auto;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 2px;
+    padding: 8px;
+    border-radius: 18px;
+    font-size: 15px;
+  }
+
+  .site-menu a {
+    min-height: 42px;
+    padding: 0 14px;
+    border-radius: 12px;
   }
 }
 
