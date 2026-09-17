@@ -285,7 +285,7 @@ function sidebar(): string {
       </div>`;
   return `
     <aside class="pla-side">
-      <a class="pla-brand" href="#/bonsai"><span class="pla-brand-dot"></span><span>${BRAND}</span></a>
+      <a class="pla-brand" href="#/bonsai"><img class="pla-brand-logo" src="/peal-logo.png" alt="" width="32" height="32"><span>${BRAND}</span></a>
       <nav class="pla-nav" aria-label="sections">
         ${SECTIONS.map((s) => `<a class="pla-nav-item${active === s.tab ? ' is-active' : ''}" href="${hashFor(s.tab)}" ${active === s.tab ? 'aria-current="page"' : ''}>${icon(s.icon)}<span>${s.label}</span></a>`).join('')}
       </nav>
@@ -375,7 +375,7 @@ function onboarding(): string {
     return `
       ${notices()}
       <div class="pla-welcome">
-        <span class="pla-brand-dot pla-welcome-dot" aria-hidden="true"></span>
+        <img class="pla-welcome-logo" src="/peal-logo.png" alt="" width="64" height="64">
         <h1 class="pla-welcome-title">Welcome to ${BRAND}</h1>
         <p class="pla-welcome-sub">Your wallet is your payment identity. Peal keeps a private account behind it: payments between Peal users hide the amount and the parties, and there is nothing to install or remember.</p>
         <button type="button" class="pla-btn pla-btn-dark pla-btn-lg" id="pl-login-injected" aria-label="Use browser wallet" ${injected ? '' : 'disabled'}>${icon('wallet')} Connect wallet</button>

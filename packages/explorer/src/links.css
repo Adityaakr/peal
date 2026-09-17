@@ -3547,3 +3547,17 @@ a.pla-ministat:hover {
   border-radius: 999px;
   margin-top: 8px;
 }
+
+.pla-brand-logo {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  object-fit: contain;
+}
+
+.pla-welcome-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  margin-bottom: 6px;
+}
