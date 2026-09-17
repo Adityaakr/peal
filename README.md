@@ -528,8 +528,8 @@ The cryptography is Commonware's: [simple-bte](https://github.com/commonwarexyz/
 
 ## Contact
 
-Built by [Adityaakr](https://github.com/Adityaakr).
+Built by Aditya: [adibuilds.in](https://adibuilds.in) · [x.com/adityakrx](https://x.com/adityakrx) · [github.com/Adityaakr](https://github.com/Adityaakr).
 
 - **Building on Peal, integrating it, or want a feature?** Open an [issue](https://github.com/Adityaakr/peal-network/issues) or a pull request.
-- **Partnerships, commercial support, running a node or a committee for your product:** reach out through GitHub, and this section will carry a direct line shortly.
+- **Partnerships, commercial support, running a node or a committee for your product:** a DM on [X](https://x.com/adityakrx) or the contact on [adibuilds.in](https://adibuilds.in).
 - **Found a security problem?** [SECURITY.md](SECURITY.md) has the disclosure process. Please do not open a public issue for it.
