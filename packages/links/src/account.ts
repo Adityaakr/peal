@@ -170,6 +170,13 @@ export class LinksAccount {
     return 'moved';
   }
 
+  /** Remove every stored key of the account for `namespace` from `store`.
+   * Used when the ledger the account was registered on no longer exists;
+   * the caller decides whether to export first. */
+  static async forget(store: WalletStore, namespace: string): Promise<void> {
+    for (const what of ACCOUNT_KEYS) await store.delete(key(namespace, what));
+  }
+
   // ---- lifecycle -----------------------------------------------------------
 
   /** First use: provision the private account, register it, have the wallet

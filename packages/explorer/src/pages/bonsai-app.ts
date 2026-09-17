@@ -27,6 +27,7 @@ import { describeError, formatUnits, fmtTime, parseUnits, shortHex } from '../li
 import {
   acknowledgeRecoveryCode,
   activate,
+  startOver,
   client,
   disconnect,
   ensureWalletChain,
@@ -422,6 +423,12 @@ function onboarding(): string {
           ${field('Recovery code', input('name="code" required autocomplete="off" placeholder="PEAL-XXXXX-XXXXX-XXXXX-XXXXX"'))}
           <div class="pla-form-actions"><button type="submit" class="pla-btn pla-btn-dark pla-btn-lg pla-btn-block">Open my account</button><a class="pla-link" href="${hashFor('restore')}">Import a backup file instead</a></div>
         </form>`;
+      break;
+    case 'ledger-reset':
+      body = `
+        <div class="pl-notice pl-notice-warn">${esc(l.setupDetail ?? 'the ledger has no record of this account')}</div>
+        <button type="button" class="pla-btn pla-btn-dark pla-btn-lg" id="pl-start-over">Start over with this wallet</button>
+        <p class="pla-welcome-note"><button type="button" class="pla-link" id="pl-disconnect">Use a different wallet</button></p>`;
       break;
     case 'no-backup':
       body = `
@@ -1209,6 +1216,15 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     }
   };
 
+  const doStartOver = () =>
+    run('setting up a new private account for your wallet', async () => {
+      const account = await startOver();
+      if (account) {
+        await refresh();
+        paint();
+      }
+    });
+
   const doActivate = () =>
     run('setting up private payments for your wallet', async () => {
       const account = await activate();
@@ -1331,6 +1347,7 @@ export function renderBonsaiApp(root: HTMLElement): Cleanup {
     } else if (btn.id === 'pl-login') session().login();
     else if (btn.id === 'pl-login-injected') void run('connecting browser wallet', async () => void (await connectInjected()));
     else if (btn.id === 'pl-activate') void doActivate();
+    else if (btn.id === 'pl-start-over') void doStartOver();
     else if (btn.id === 'pl-test-funds') {
       const ns = l.namespace!;
       const evm = session();
