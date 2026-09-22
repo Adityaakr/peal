@@ -110,25 +110,6 @@ function Navbar() {
   );
 }
 
-/** The badge, at 180 wide. Same 250 by 54 artwork, exact ratio kept. */
-function ProductHuntBadge() {
-  return (
-    <a
-      className="product-hunt-badge"
-      href="https://www.producthunt.com/products/peal-network?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-peal-network"
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      <img
-        src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1212832&theme=light&t=1785731867952"
-        alt="Peal Network - secrets that open themselves | Product Hunt"
-        width={180}
-        height={39}
-      />
-    </a>
-  );
-}
-
 function Hero() {
   const ref = useRef<HTMLElement>(null);
   /* The scrub runs from the hero sitting at the top of the viewport to the hero
@@ -183,18 +164,6 @@ function Hero() {
             </a>
           </motion.div>
         </div>
-
-        {/* The badge sits in the corner rather than in the stack under the
-            headline. Bottom right, not top right: the copy is centred and on a
-            phone a top corner badge lands on the second line of the title. */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, delay: 0.5, ease: EASE }}
-          className="peal-hero-badge"
-        >
-          <ProductHuntBadge />
-        </motion.div>
       </div>
     </section>
   );

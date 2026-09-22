@@ -54,49 +54,6 @@
   margin: -7px;
 }
 
-.product-hunt-badge {
-  display: inline-flex;
-  /* 180 by 39 is the 250 by 54 artwork at its exact ratio. The anchor carries
-     the size, so setting width and height on the <img> alone does nothing. */
-  width: 180px;
-  height: 39px;
-  max-width: 100%;
-  pointer-events: auto;
-  transition:
-    filter 160ms ease,
-    transform 160ms ease;
-}
-
-.product-hunt-badge-row {
-  margin-bottom: 20px;
-}
-
-.product-hunt-badge img {
-  display: block;
-  width: 250px;
-  height: 54px;
-  max-width: 100%;
-}
-
-.product-hunt-badge:hover {
-  filter: brightness(0.95);
-}
-
-.product-hunt-badge:active {
-  transform: translateY(1px);
-}
-
-.product-hunt-badge:focus-visible {
-  outline: 3px solid rgb(255 97 84 / 35%);
-  outline-offset: 3px;
-}
-
-@media (max-width: 640px) {
-  .product-hunt-badge-row {
-    margin-bottom: 0;
-  }
-}
-
 /* ---------------------------------------------------------------- the hero --
    A rounded media card rather than a full bleed panel.
    
@@ -221,15 +178,6 @@
   transform: scaleX(1.05);
 }
 
-/* The badge, out of the centred stack and into the corner. */
-.peal-hero-badge {
-  position: absolute;
-  right: 22px;
-  bottom: 20px;
-  z-index: 3;
-  line-height: 0;
-}
-
 @media (max-width: 640px) {
   .peal-hero {
     padding: 76px 14px 0;
@@ -244,17 +192,6 @@
   .peal-hero-cta {
     padding: 12px 26px;
     font-size: 15px;
-  }
-
-  .peal-hero-badge {
-    right: 12px;
-    bottom: 12px;
-  }
-
-  /* 180px of badge in a 362px card crowds the corner it sits in. */
-  .peal-hero-badge .product-hunt-badge {
-    width: 146px;
-    height: 32px;
   }
 }
 
