@@ -1,8 +1,7 @@
 //! Shared application state: sqlite handle, in-memory committee cache
 //! (params + rebuilt recovery keys), and pipelined cross-terms.
 
-use anyhow::{Context, Result};
-use bte_crypto::{PrecomputedCrossTerms, PublicParams, RecoveryKey};
+use anyhow::Result;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
@@ -88,16 +87,13 @@ impl Config {
     }
 }
 
-pub struct Committee {
-    pub params: Arc<PublicParams>,
-    pub rk: Arc<RecoveryKey>,
-}
+pub use crate::scheme::Committee;
 
 pub struct Inner {
     pub db: Mutex<Connection>,
     pub committees: RwLock<HashMap<String, Arc<Committee>>>,
     /// batch_id -> pipelined cross-terms (recomputed after restart if absent).
-    pub cross: Mutex<HashMap<i64, Arc<PrecomputedCrossTerms>>>,
+    pub cross: Mutex<HashMap<i64, Arc<crate::scheme::CrossTerms>>>,
     /// Rate limiter buckets: ip -> (tokens, last_refill_ms).
     pub buckets: Mutex<HashMap<String, (f64, i64)>>,
     /// Shared HTTP client (at_block JSON-RPC polling).
@@ -140,18 +136,13 @@ impl App {
     }
 
     pub fn cache_committee(&self, params_blob: &[u8]) -> Result<String> {
-        let params =
-            PublicParams::from_bytes(params_blob).context("invalid committee params blob")?;
-        let id = hex::encode(params.digest());
-        let committee = Arc::new(Committee {
-            rk: Arc::new(params.recovery_key()),
-            params: Arc::new(params),
-        });
+        let committee = Committee::parse(params_blob)?;
+        let id = hex::encode(committee.digest);
         self.0
             .committees
             .write()
             .unwrap()
-            .insert(id.clone(), committee);
+            .insert(id.clone(), Arc::new(committee));
         Ok(id)
     }
 
@@ -163,12 +154,20 @@ impl App {
     pub fn register_committee(&self, params_blob: &[u8]) -> Result<String> {
         let id = self.cache_committee(params_blob)?;
         let committee = self.committee(&id).expect("just cached");
-        let p = &committee.params;
         let conn = self.0.db.lock().unwrap();
         conn.execute(
-            "INSERT OR IGNORE INTO committees (id, params_blob, params_digest, n, t, b, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![id, params_blob, id, p.n, p.t, p.b, db::unix_now()],
+            "INSERT OR IGNORE INTO committees (id, params_blob, params_digest, n, t, b, scheme, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                id,
+                params_blob,
+                id,
+                committee.n,
+                committee.t,
+                committee.b as i64,
+                committee.scheme.as_str(),
+                db::unix_now()
+            ],
         )?;
         Ok(id)
     }

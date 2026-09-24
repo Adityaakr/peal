@@ -143,6 +143,22 @@ pub fn open(path: &str) -> Result<Connection> {
     conn.execute_batch(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_cts_code ON ciphertexts(code) WHERE code IS NOT NULL;",
     )?;
+    // BTE v1 (transparent setup from a DKG). A committee names its scheme;
+    // rows from before the column existed are v0. A v1 ciphertext's KEM
+    // point is unique per condition, so a sealer cannot enter the same
+    // randomness twice and make the batch's admission check fail for
+    // everyone.
+    conn.execute(
+        "ALTER TABLE committees ADD COLUMN scheme TEXT NOT NULL DEFAULT 'v0'",
+        [],
+    )
+    .ok();
+    conn.execute("ALTER TABLE ciphertexts ADD COLUMN kem_point TEXT", [])
+        .ok();
+    conn.execute_batch(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_cts_kem_point
+           ON ciphertexts(condition_id, kem_point) WHERE kem_point IS NOT NULL;",
+    )?;
     // Private Actions (/v1). Additive: new tables only, so a devnet database
     // created before intents existed opens unchanged.
     conn.execute_batch(crate::intents::SCHEMA)?;

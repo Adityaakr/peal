@@ -203,6 +203,14 @@ impl Ciphertext {
         Sha256::digest(self.to_bytes()).into()
     }
 
+    /// The compressed KEM point `[k]_1`: unique per honest ciphertext, so a
+    /// relay can refuse a second ciphertext with the same randomness.
+    pub fn kem_point_bytes(&self) -> [u8; 48] {
+        compressed(&self.ct1)
+            .try_into()
+            .expect("compressed G1 is 48 bytes")
+    }
+
     /// Everything an operator needs: the points, the proof, and the body hash
     /// the proof was bound to. Bodies never reach operators.
     pub fn header(&self) -> CtHeader {
@@ -226,6 +234,12 @@ pub struct CtHeader {
     pub context_hash: [u8; 32],
     pub body_hash: [u8; 32],
     pub proof: Proof,
+}
+
+/// The context Peal's coordinator expects for a ciphertext sealed to a
+/// condition: the SDK, the wasm seal and the coordinator all use this.
+pub fn condition_context(condition_id: &str) -> Vec<u8> {
+    format!("peal-condition:{condition_id}").into_bytes()
 }
 
 /// The tagged hash of a caller's context bytes.

@@ -2,10 +2,6 @@
 //! collect shares -> finalize -> reveal. Stall detection for liveness.
 
 use anyhow::{Context, Result};
-use bte_crypto::{
-    combine, dummy_payload, finalize, pre_decrypt, seal, PrecomputedCrossTerms, SealedCiphertext,
-    Share,
-};
 use rusqlite::OptionalExtension;
 use serde::Serialize;
 use std::sync::Arc;
@@ -13,6 +9,7 @@ use tracing::{info, warn};
 
 use crate::db::{now_ms, unix_now};
 use crate::merkle;
+use crate::scheme::{self, AnyShare, CrossTerms, Sealed};
 use crate::state::App;
 
 /// One revealed slot, stored as JSON in reveals.payloads_blob.
@@ -113,15 +110,16 @@ async fn block_number(client: &reqwest::Client, url: &str) -> Result<i64> {
     i64::from_str_radix(hex.trim_start_matches("0x"), 16).context("bad block number hex")
 }
 
-/// Freeze: pad to a multiple of B with self-sealed dummies, assign positions,
-/// create batch rows, spawn pre_decrypt per batch (pipelining: this needs no
-/// shares). Real ciphertexts sort first by ct_hash so their positions are a
-/// pure function of the real ct_hash set (invariant 6); dummies fill the tail.
+/// Freeze: add the scheme's decoys (v0 pads to a multiple of B; v1 adds one),
+/// assign positions, create batch rows, spawn pre_decrypt per batch
+/// (pipelining: this needs no shares). Real ciphertexts sort first by ct_hash
+/// so their positions are a pure function of the real ct_hash set (invariant
+/// 6); decoys fill the tail.
 async fn freeze_condition(app: &App, condition_id: &str, committee_id: &str) -> Result<()> {
     let committee = app
         .committee(committee_id)
         .context("unknown committee for frozen condition")?;
-    let b = committee.params.b as usize;
+    let b = committee.b;
 
     // Sort real ciphertexts into position order.
     let mut real: Vec<(String, Vec<u8>)> = {
@@ -133,16 +131,21 @@ async fn freeze_condition(app: &App, condition_id: &str, committee_id: &str) -> 
     };
     real.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // Pad the tail batch with dummies sealed by the coordinator itself.
-    let total = real.len().div_ceil(b).max(1) * b;
+    // Decoys sealed by the coordinator itself fill the tail.
+    let total = real.len() + committee.decoys_for(real.len());
     let mut rng = bte_crypto::os_rng();
     let mut dummies: Vec<(String, Vec<u8>)> = Vec::new();
     while real.len() + dummies.len() < total {
-        let ct = seal(&committee.params, &dummy_payload(&mut rng), &mut rng)
-            .expect("dummy payload is under the cap");
+        let ct = committee.seal_decoy(condition_id, &mut rng);
         dummies.push((hex::encode(ct.hash()), ct.to_bytes()));
     }
     dummies.sort_by(|a, b| a.0.cmp(&b.0));
+    let n_batches = total.div_ceil(b);
+    if committee.scheme == scheme::Scheme::V1 && n_batches != 1 {
+        // Intake caps a v1 condition at b - 1 real ciphertexts, so this is a
+        // bug, not a load condition.
+        anyhow::bail!("v1 condition {condition_id} exceeds one batch");
+    }
 
     let ordered: Vec<(String, Vec<u8>)> = real.into_iter().chain(dummies.clone()).collect();
 
@@ -164,7 +167,7 @@ async fn freeze_condition(app: &App, condition_id: &str, committee_id: &str) -> 
             )?;
         }
         let mut ids = Vec::new();
-        for batch_index in 0..(total / b) {
+        for batch_index in 0..n_batches {
             tx.execute(
                 "INSERT INTO batches (condition_id, batch_index, frozen_at) VALUES (?1, ?2, ?3)",
                 rusqlite::params![condition_id, batch_index as i64, frozen_at],
@@ -184,7 +187,7 @@ async fn freeze_condition(app: &App, condition_id: &str, committee_id: &str) -> 
         // it in the same transaction means there is no window at all — a batch
         // is never frozen-but-uncommitted, even if the process dies here.
         for (batch_index, batch_id) in ids.iter().enumerate() {
-            let slice = &ordered[batch_index * b..(batch_index + 1) * b];
+            let slice = &ordered[batch_index * b..((batch_index + 1) * b).min(total)];
             let mut leaves = Vec::with_capacity(slice.len());
             for (pos_in_batch, (hash, _)) in slice.iter().enumerate() {
                 let global_pos = batch_index * b + pos_in_batch;
@@ -233,9 +236,9 @@ async fn freeze_condition(app: &App, condition_id: &str, committee_id: &str) -> 
     // Pipelining: cross-terms depend only on ciphertexts + params, so they are
     // computed now, before any share exists.
     for (batch_index, batch_id) in batch_ids.iter().enumerate() {
-        let cts: Vec<SealedCiphertext> = ordered[batch_index * b..(batch_index + 1) * b]
+        let cts: Vec<Sealed> = ordered[batch_index * b..((batch_index + 1) * b).min(total)]
             .iter()
-            .map(|(_, blob)| SealedCiphertext::from_bytes(blob).expect("stored blob is valid"))
+            .map(|(_, blob)| Sealed::parse(blob).expect("stored blob is valid"))
             .collect();
         run_pre_decrypt(app, *batch_id, committee_id, cts).await?;
     }
@@ -246,12 +249,11 @@ async fn run_pre_decrypt(
     app: &App,
     batch_id: i64,
     committee_id: &str,
-    cts: Vec<SealedCiphertext>,
+    cts: Vec<Sealed>,
 ) -> Result<()> {
     let committee = app.committee(committee_id).context("unknown committee")?;
     let started = now_ms();
-    let rk = committee.rk.clone();
-    let pre = tokio::task::spawn_blocking(move || pre_decrypt(&rk, &cts))
+    let pre = tokio::task::spawn_blocking(move || scheme::pre_decrypt(&committee, &cts))
         .await
         .context("pre_decrypt task panicked")??;
     let elapsed = now_ms() - started;
@@ -353,13 +355,13 @@ async fn finalize_ready(app: &App) -> Result<()> {
 async fn finalize_batch(app: &App, batch_id: i64) -> Result<()> {
     let (_, committee_id, _, ct_rows) = batch_cts(app, batch_id)?;
     let committee = app.committee(&committee_id).context("unknown committee")?;
-    let cts: Vec<SealedCiphertext> = ct_rows
+    let cts: Vec<Sealed> = ct_rows
         .iter()
-        .map(|(_, _, blob)| SealedCiphertext::from_bytes(blob).expect("stored blob is valid"))
+        .map(|(_, _, blob)| Sealed::parse(blob).expect("stored blob is valid"))
         .collect();
 
     // Cross-terms: cached from freeze time, or recomputed after a restart.
-    let pre: Arc<PrecomputedCrossTerms> = {
+    let pre: Arc<CrossTerms> = {
         let cached = app.0.cross.lock().unwrap().get(&batch_id).cloned();
         match cached {
             Some(p) => p,
@@ -377,30 +379,29 @@ async fn finalize_batch(app: &App, batch_id: i64) -> Result<()> {
         }
     };
 
-    let shares: Vec<Share> = {
+    let shares: Vec<AnyShare> = {
         let conn = app.0.db.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT share_blob FROM shares
              WHERE batch_id = ?1 AND verified = 1
              ORDER BY submitted_at ASC LIMIT ?2",
         )?;
-        let rows = stmt.query_map(rusqlite::params![batch_id, committee.params.t], |r| {
+        let rows = stmt.query_map(rusqlite::params![batch_id, committee.t], |r| {
             r.get::<_, Vec<u8>>(0)
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>()?
             .iter()
-            .map(|blob| Share::from_bytes(blob).expect("stored share is valid"))
+            .map(|blob| AnyShare::parse(blob).expect("stored share is valid"))
             .collect()
     };
 
     let started = now_ms();
-    let rk = committee.rk.clone();
-    let combined = combine(&shares);
     let pre2 = pre.clone();
     let cts2 = cts.clone();
-    let recovered = tokio::task::spawn_blocking(move || finalize(&rk, &pre2, &combined, &cts2))
-        .await
-        .context("finalize task panicked")??;
+    let recovered =
+        tokio::task::spawn_blocking(move || scheme::finalize(&committee, &pre2, &shares, &cts2))
+            .await
+            .context("finalize task panicked")??;
     let elapsed = now_ms() - started;
 
     // Persist per-slot results onto the batch (joined into the reveal later).

@@ -38,7 +38,7 @@ fn setup(n: usize, seed: u64) -> (RoundConfig, Vec<Operator>, HashMap<IdentityKe
         round: 0,
         operators: identities
             .iter()
-            .map(|i| bte_crypto::tbte::dkg::identity_key_of(i))
+            .map(bte_crypto::tbte::dkg::identity_key_of)
             .collect(),
     };
     let mut operators = Vec::new();

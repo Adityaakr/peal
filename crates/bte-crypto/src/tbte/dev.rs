@@ -122,7 +122,8 @@ fn seal_with_randomness(
     let ct2 = (G2Projective::generator() * k).into_affine();
     let x = super::x_of(&ct1);
     let ct3 = (super::ct3_base(params, x) * k).into_affine();
-    let body = b"raw".to_vec();
+    // Long enough to parse as a body (the wire requires at least a tag).
+    let body = b"raw bytes, not a dem output at all".to_vec();
     let body_hash: [u8; 32] = Sha256::digest(&body).into();
     let statement = super::nizk::Statement {
         ct1: &ct1,

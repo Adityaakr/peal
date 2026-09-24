@@ -6,7 +6,7 @@ license.workspace = true
 description = "bte operator node: poll work, compute partials, post shares"
 
 [dependencies]
-bte-crypto = { workspace = true }
+bte-crypto = { workspace = true, features = ["dkg"] }
 anyhow = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
