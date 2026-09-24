@@ -11,6 +11,9 @@ default = ["full"]
 seal-only = []
 # full: ceremony, partial, verify_share, recover, pre_decrypt, finalize.
 full = []
+# dev-dealer: an in-process Shamir dealer for the v1 scheme, used ONLY by
+# tests and benches (the product path is the DKG). Never enabled by a binary.
+dev-dealer = []
 
 [dependencies]
 simple-bte = { workspace = true }
@@ -25,10 +28,14 @@ hex = { workspace = true }
 ark-poly = "0.6.0"
 rand_chacha = { version = "0.3", default-features = false }
 getrandom = "0.2"
+# v1 scheme DEM and KDF (RustCrypto, already in the lock via bte-node).
+chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["alloc"] }
+hkdf = "0.12"
 
 [dev-dependencies]
 criterion = "0.5"
 rand_chacha = "0.3"
+bte-crypto = { path = ".", features = ["full", "dev-dealer"] }
 
 [[bench]]
 name = "bte_ops"

@@ -13,6 +13,10 @@
 
 pub mod wire;
 
+/// BTE v1: the transparent-setup scheme ("DKG Is All You Need"). The v0
+/// simple-bte wrapper below stays for existing committees.
+pub mod tbte;
+
 /// Re-export of the rand version simple-bte's API is built against
 /// (ark-std 0.6 -> rand 0.8). Downstream crates should use this instead of
 /// depending on `rand` directly, so RNG trait versions can never diverge.
@@ -60,6 +64,8 @@ pub enum BteError {
     BatchSize { expected: usize, got: usize },
     #[error("not enough valid shares: need {need}, have {have}")]
     NotEnoughShares { need: usize, have: usize },
+    #[error("invalid ciphertext: {0}")]
+    InvalidCiphertext(String),
 }
 
 /// Public parameters for one committee. Carries ek, the punctured powers of h
