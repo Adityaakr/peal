@@ -361,3 +361,55 @@ async fn a_round_missing_dealers_fails_after_its_deadline() {
     let (_, list) = h.get("/v0/committees").await;
     assert!(list["committees"].as_array().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn a_node_restarted_mid_round_rebuilds_from_the_relay_and_finishes() {
+    let h = harness().await;
+    let operators: Vec<OperatorIdentity> = (0..5).map(|_| OperatorIdentity::generate()).collect();
+    h.start_round(&operators, 60).await;
+    let relay = Relay::new(h.base.clone());
+    let mut drivers = Vec::new();
+    for me in &operators {
+        let rounds = relay.rounds_for(&me.key_hex()).await.unwrap();
+        drivers.push(RoundDriver::new(me, rounds[0].clone()).unwrap());
+    }
+    // One step each: every dealing and most acknowledgements are on the relay.
+    for (me, driver) in operators.iter().zip(drivers.iter_mut()) {
+        driver.step(me, &relay, now()).await.unwrap();
+    }
+    // Operator 2 "crashes": its in-memory state is gone. A fresh driver from
+    // the same identity must regenerate the same dealing (the relay keeps the
+    // first copy, so a different one would be refused as a duplicate and the
+    // acknowledgements already given would not match) and replay the rest.
+    let info = relay.rounds_for(&operators[2].key_hex()).await.unwrap()[0].clone();
+    let before = relay.envelopes(&info.id, 0).await.unwrap().len();
+    drivers[2] = RoundDriver::new(&operators[2], info.clone()).unwrap();
+    let progress = drive(&h, &relay, &operators, &mut drivers, 20).await;
+    assert!(
+        progress.iter().all(|p| *p == Progress::Done),
+        "{progress:?}"
+    );
+    // The restarted node re-posted nothing new before its log: same dealing,
+    // same acknowledgements, all deduplicated by the relay.
+    let after = relay.envelopes(&info.id, 0).await.unwrap();
+    let from_two = after
+        .iter()
+        .filter(|(_, e)| e.from == operators[2].key())
+        .count();
+    // 1 public + 5 private (one to itself) + 5 acks + 1 log.
+    assert_eq!(from_two, 12, "operator 2 has exactly one envelope per slot");
+    assert!(after.len() >= before);
+    let (_, settled) = h.get(&format!("/v0/dkg/rounds/{}", info.id)).await;
+    assert_eq!(settled["status"], json!("complete"));
+    let params_digest = settled["committee_id"].as_str().unwrap();
+    for (i, driver) in drivers.iter().enumerate() {
+        let result = driver.result.as_ref().unwrap();
+        assert_eq!(hex::encode(result.params.digest()), params_digest);
+        let secret = result.secret.as_ref().unwrap();
+        assert_eq!(
+            secret.public_key(),
+            result.params.operator_keys()[secret.party_index as usize - 1],
+            "operator {i}"
+        );
+    }
+}
