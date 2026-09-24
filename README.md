@@ -439,6 +439,7 @@ Those run the v0 ceremony stack. **Scheme v1** (a DKG instead of a ceremony), fi
 ```bash
 just v1-demo                        # scripts/bte/v1-stack.sh demo: DKG through the relay, seal, reveal, down
 scripts/bte/v1-stack.sh up          # leave it running on :8091
+just mempool-v1-demo                # the encrypted mempool on that committee: anvil, contracts, relayer, settler, headless driver
 ```
 
 **Peal Private Links** on two local chains with three consensus validators:

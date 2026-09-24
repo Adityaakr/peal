@@ -43,6 +43,10 @@ test-e2e:
 v1-demo:
     scripts/bte/v1-stack.sh demo
 
+# The encrypted mempool on a v1 committee, locally: anvil + contracts + relayer + settler + the v1 stack, driven headless.
+mempool-v1-demo:
+    scripts/bte/mempool-v1-local.sh demo
+
 # Local dev ceremony for scheme v0 (writes gitignored .dev-ceremony/).
 ceremony:
     BTE_KEYSTORE_PASS=${BTE_KEYSTORE_PASS:-devnet-pass} cargo run --release -p bte-cli -- ceremony --n 5 --t 3 --b 64 --out .dev-ceremony
