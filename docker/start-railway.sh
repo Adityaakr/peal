@@ -13,6 +13,16 @@ export BTE_KEYSTORE_PASS="${BTE_KEYSTORE_PASS:-railway-devnet-v0}"
 export BTE_COORDINATOR_URL="http://localhost:8090"
 export DATABASE_URL="sqlite://${STATE_DIR}/bte.db"
 mkdir -p "$STATE_DIR/ceremony"
+# Operator actions (registering the committee at boot, starting DKG rounds)
+# need the admin token. The image ships BTE_DEV=1, but the coordinator binds
+# 0.0.0.0 behind Caddy, so the dev waiver does not apply here: set
+# BTE_ADMIN_TOKEN as a Railway secret to run DKG rounds from outside, or
+# let this boot mint one that only the in-container committee-init knows.
+if [ -z "${BTE_ADMIN_TOKEN:-}" ]; then
+  BTE_ADMIN_TOKEN="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  echo "BTE_ADMIN_TOKEN not set: minted a per-boot token (DKG rounds need a configured one)"
+fi
+export BTE_ADMIN_TOKEN
 
 # Coordinator pinned to 8090 internally; Caddy owns the public port.
 BTE_LISTEN="0.0.0.0:8090" bte-coordinator &

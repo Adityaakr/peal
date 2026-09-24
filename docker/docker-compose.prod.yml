@@ -30,6 +30,7 @@ services:
     command: bte-coordinator
     environment:
       DATABASE_URL: sqlite:///data/bte.db
+      BTE_ADMIN_TOKEN: ${BTE_ADMIN_TOKEN:-change-me-admin}
       REVEAL_TIMEOUT_SECS: "300"
       # Production rate limits: 5 req/s sustained, burst 30, per IP.
       BTE_RATE_RPS: "5"
@@ -59,6 +60,8 @@ services:
         fi
         bte-cli committee-init --coordinator http://coordinator:8080 --params /ceremony/params.bin
     environment:
+      # Registering the committee needs the coordinator's admin token.
+      BTE_ADMIN_TOKEN: ${BTE_ADMIN_TOKEN:-change-me-admin}
       BTE_KEYSTORE_PASS: ${BTE_KEYSTORE_PASS:-change-me-devnet}
     volumes:
       - ceremony:/ceremony

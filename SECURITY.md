@@ -62,8 +62,13 @@ or `tests/tbte_v1.rs`):
   deadline.
 - Starting a round and registering a committee need `BTE_ADMIN_TOKEN`; the
   `BTE_DEV=1` waiver applies only when the coordinator listens on loopback,
-  so a hosted image built with the dev flag still demands the token. v1
-  committees are made only by DKG rounds, never posted as parameters.
+  so a hosted image built with the dev flag still demands the token. A
+  loopback bind behind a reverse proxy is NOT local-only, so never rely on
+  the waiver in a hosted topology: `docker/start-railway.sh` binds
+  `0.0.0.0` and mints a per-boot token when none is configured (set
+  `BTE_ADMIN_TOKEN` as a Railway secret to start DKG rounds from outside);
+  the compose files pass one to the coordinator and the ceremony service.
+  v1 committees are made only by DKG rounds, never posted as parameters.
 - Share slots belong to verified shares only: a stranger posting garbage
   under every operator index is recorded in the audit log and cannot lock
   an honest operator out; an operator index outside the committee is

@@ -268,14 +268,15 @@ async fn committee_init(coordinator: &str, params_path: &std::path::Path) -> Res
     // Validate locally before shipping.
     let (n, t, b) = describe_params(&blob)?;
     let client = reqwest::Client::new();
-    let resp: serde_json::Value = client
+    // Registering a committee is an operator action: the coordinator wants
+    // BTE_ADMIN_TOKEN unless it runs with BTE_DEV=1 on loopback.
+    let mut req = client
         .post(format!("{coordinator}/v0/committees"))
-        .json(&serde_json::json!({"params_b64": B64.encode(&blob)}))
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+        .json(&serde_json::json!({"params_b64": B64.encode(&blob)}));
+    if let Ok(token) = std::env::var("BTE_ADMIN_TOKEN") {
+        req = req.header("x-bte-admin", token);
+    }
+    let resp: serde_json::Value = req.send().await?.error_for_status()?.json().await?;
     println!(
         "committee registered: id={} (n={n} t={t} B={b})",
         resp["id"].as_str().unwrap_or("?"),

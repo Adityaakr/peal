@@ -29,6 +29,7 @@ services:
     environment:
       BTE_DEV: "1"
       DATABASE_URL: sqlite:///data/bte.db
+      BTE_ADMIN_TOKEN: ${BTE_ADMIN_TOKEN:-devnet-admin}
       REVEAL_TIMEOUT_SECS: "120"
       RUST_LOG: info
       # at_block conditions: Sepolia passthrough + local anvil on the host.
@@ -55,6 +56,8 @@ services:
         fi
         bte-cli committee-init --coordinator http://coordinator:8080 --params /ceremony/params.bin
     environment:
+      # Registering the committee needs the coordinator's admin token.
+      BTE_ADMIN_TOKEN: ${BTE_ADMIN_TOKEN:-devnet-admin}
       BTE_KEYSTORE_PASS: devnet-pass
     volumes:
       - ceremony:/ceremony
