@@ -566,7 +566,7 @@ struct WorkQuery {
 }
 
 /// Frozen batches still missing a share from this operator, headers in
-/// position order (v0: B * 48 bytes; v1: framed 320-byte headers), base64.
+/// position order (v0: B * 48 bytes; v1: framed 325-byte headers), base64.
 /// `scheme` and `committee_id` tell an operator which key to use.
 async fn get_work(
     State(app): State<App>,

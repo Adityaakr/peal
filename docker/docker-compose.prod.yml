@@ -1,5 +1,8 @@
 # bte production/devnet compose: coordinator + 5 nodes + Caddy edge (TLS,
 # reverse proxy, static explorer). See docs/devnet-runbook.md.
+# This runs the scheme v0 ceremony stack (trusted dealer). Scheme v1 replaces
+# the ceremony with a DKG through the coordinator's relay; the local proof is
+# scripts/bte/v1-stack.sh, and no v1 compose file exists yet.
 #
 # For a REAL deployment: run the ceremony on an offline machine and distribute
 # keystores to operator hosts (runbook section 1) instead of using the

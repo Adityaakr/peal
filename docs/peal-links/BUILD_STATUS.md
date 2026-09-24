@@ -392,3 +392,27 @@ Three developer pages (`/developers/links`, `/developers/links-sdk`, `/developer
 ## 2026-09-17: ledger reset handling
 
 Found: the hosted node's proving keys changed between two pushes to `main` (`deposit.pk` `60703611…` to `5edfb57b…`), so its volume was not mounted at `/var/lib/peal-links`; every deploy started a fresh node. The user attached the volume at the right path. Two client fixes: `NodeClient.paramFile` requests `/params/{name}?digest=<digest>` and retries once with `cache: 'reload'` on a mismatch, so the node's one-year immutable cache header cannot strand a browser after a key change; and `activate()` detects a registered account the ledger has no record of, reports it as `setup: 'ledger-reset'`, and `startOver()` forgets the stored account (`LinksAccount.forget`) and sets up a fresh one. Evidence: `e2e/ledger-reset.spec.ts` against a throwaway single node whose data directory the test wipes mid-run (`EXPLORER_URL=http://localhost:5177 LINKS_URL=http://127.0.0.1:8799 …`), 1 passed in 9.0 s, screenshots inspected; `OPERATIONS.md` records the persistence check.
+
+## 2026-09-25: BTE v1, the transparent-setup scheme from a DKG
+
+What was asked: check whether Peal implements "DKG Is All You Need" (Policharla, Commonware, 2026) and implement it end to end. Finding: Peal ran "Simple BTE" (eprint 2026/760, the paper's Table 1 prior work) with a trusted dealer, O(Bn) parameters and a fixed batch of 64. Decision 0015 records the design; the paper's own algorithms are now scheme v1 beside v0.
+
+Built (all on `feat/peal-links`, never pushed):
+- `crates/bte-crypto/src/tbte/`: Figure 1 over BLS12-381 with arkworks (seal with a Fiat-Shamir sigma proof bound to the committee digest, the condition context and the body; partial, verify, combine, per-slot decrypt via the KEM pad), wire `BTE1`, Section 4's quasi-linear cross terms (implemented, proven equal to the naive path, measured slower in arkworks up to B = 1024 so the naive MSM path is the default), the Commonware Feldman/Desmedt DKG wrapper with ed25519 identities and X25519 boxes.
+- `crates/bte-coordinator`: `scheme.rs` dispatches on the wire magic; v1 intake checks the proof, the condition binding and KEM-point uniqueness, caps a condition at one batch; freeze adds one decoy; the DKG relay (`dkg.rs`, `/v0/dkg/*`) stores identity-signed envelopes and settles rounds into registered committees.
+- `crates/bte-node`: encrypted identity, per-committee share store, the round driver (`dkg_client.rs`), v1 work loop beside v0. `crates/bte-cli`: `identity-new`, `identity-show`, `dkg-init`, `dkg-status`, scheme-aware `e2e`.
+- `crates/bte-wasm` + `packages/sdk`: `Params.info().scheme`, `seal_for(conditionId, payload)`, scheme-aware `verifyShare`; v1 fixture `packages/sdk/test/fixtures/params-v1.bin`.
+- `scripts/bte/v1-stack.sh`: coordinator + five node processes + DKG + seal-to-reveal without Docker.
+
+Commands and results (exit 0 unless stated):
+- `cargo test -p bte-crypto`: 20 (tbte) + 4 (tbte_dkg) + 9 (v0 api, golden files unchanged) + 3 (poly unit) passed.
+- `cargo test -p bte-coordinator`: 6 (tbte_v1) + 3 (dkg_relay) + 50 (integration, v0) + 17 (intents_v1) + 30 (unit) passed.
+- `cargo test -p bte-node`: 3 passed. `cargo clippy --workspace --all-targets -- -D warnings`: clean. `cargo fmt --all --check`: clean.
+- `pnpm -C packages/sdk build && npx vitest run` (in packages/sdk): 10 passed.
+- `scripts/bte/v1-stack.sh demo`: DKG round settled (n=5, threshold 4, quorum 4) about one second after the nodes joined; `e2e PASS: 3 payloads revealed, 1 dummies, 5 verified / 0 rejected shares`; pre_decrypt 21 ms, finalize 14 ms for four slots. Log in `.dev-state/bte-v1/logs/` (gitignored).
+- `cargo run --release -p bte-crypto --features full,dev-dealer --example tbte_crossover -- 16 64 128 256 512 1024`: naive/fast ratio 0.19, 0.14, 0.14, 0.18, 0.24, 0.29 (fast is slower at every size).
+
+Residual risks and blockers (also in SECURITY.md): unaudited; the DKG's bounded-reveal argument assumes synchrony (relay deadlines); plain Fiat-Shamir sigma protocol, straight-line extractability not separately proven; no resharing wired; one batch per v1 condition (4095 real ciphertexts); the hosted peal.network committee is still v0 until an operator runs the DKG there (a deployment action, not taken here); the live Tempo contracts are untouched (they only see hashes and merkle roots).
+
+### Next step
+Migrate the hosted committee to v1 (an operator action: five identities, `bte-cli dkg-init` against the Railway coordinator with `BTE_ADMIN_TOKEN`, node deploys with `--identity`), wire resharing through the same Commonware module, and get the v1 core reviewed externally. Smoke for this work: `cargo test -p bte-crypto --test tbte --test tbte_dkg` and `scripts/bte/v1-stack.sh demo`.

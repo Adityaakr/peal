@@ -47,7 +47,9 @@ use ark_ec::hashing::{
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ec::{AffineRepr, CurveGroup, PrimeGroup};
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
-use ark_ff::{Field, Zero};
+#[cfg(feature = "full")]
+use ark_ff::Field;
+use ark_ff::Zero;
 use ark_serialize::CanonicalSerialize;
 use ark_std::rand::{CryptoRng, Rng};
 use ark_std::UniformRand;
@@ -225,7 +227,7 @@ impl Ciphertext {
     }
 }
 
-/// The public part of a ciphertext (320 bytes on the wire).
+/// The public part of a ciphertext (325 bytes on the wire, framed).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CtHeader {
     pub ct1: G1Affine,

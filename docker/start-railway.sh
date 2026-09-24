@@ -2,6 +2,10 @@
 # Devnet-in-a-box: coordinator + trusted-dealer ceremony + 5 operator nodes +
 # Caddy edge, all in one container. v0 trust model, demo posture: the dealer
 # runs in-container. State lives under /bte-state (mount a volume to persist).
+# This is the scheme v0 ceremony stack, which is what the hosted committee
+# still runs. Scheme v1 (a DKG through the coordinator's relay, no dealer) is
+# proven locally by scripts/bte/v1-stack.sh; migrating this service to v1 is
+# spec/ROADMAP.md item 3.
 set -eu
 
 STATE_DIR="${BTE_STATE_DIR:-/bte-state}"

@@ -14,12 +14,15 @@ async function ensureVerifyWasm() {
 }
 
 /**
- * Verify one operator's 48-byte share against a frozen batch, entirely
- * client-side: e(pd_j, g_2) == sum_i e(ct_{i,0}, v_j^i).
+ * Verify one operator's share against a frozen batch, entirely client-side,
+ * with the scheme's pairing equation (v0: e(pd_j, g_2) == sum_i e(ct_{i,0},
+ * v_j^i); v1: e(pd_j, g_2) == e(pk_j, sum_i ct2_i) after checking every
+ * ciphertext's proof).
  *
  * @param paramsB64 committee params blob (GET /v0/committees/:id -> params_b64)
- * @param headersB64 packed B*48-byte header blob for the batch
- * @param shareB64 the operator's BTE_WIRE_V0 share
+ * @param headersB64 the batch's packed headers as the coordinator serves them
+ *   (v0: B*48-byte points; v1: framed 325-byte headers)
+ * @param shareB64 the operator's share, wire bytes
  */
 export async function verifyShare(
   paramsB64: string,

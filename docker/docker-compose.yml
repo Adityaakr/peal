@@ -1,5 +1,7 @@
 # bte dev network: 1 coordinator + trusted-dealer ceremony + 5 operator nodes.
 # v0 trust model: the ceremony container is the dealer. Dev only.
+# This is the scheme v0 ceremony stack. For scheme v1 (a DKG instead of a
+# ceremony, no Docker) run scripts/bte/v1-stack.sh (`just v1-demo`).
 
 x-node: &node
   image: bte:dev

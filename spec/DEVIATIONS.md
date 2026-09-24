@@ -53,3 +53,64 @@ eth_blockNumber polling); the reveal root is published by whichever process
 holds ANCHOR_PRIVATE_KEY — in the anchored demo, the demo script itself, via
 bte-sdk's anchorRevealRoot. Keeps heavyweight signing deps out of the
 coordinator; the onchain trust boundary (one authorized address) is unchanged.
+
+## v1: deliberate deviations from "DKG Is All You Need"
+
+Scheme v1 (`crates/bte-crypto/src/tbte/`, spec/index.md section 3b) follows
+the paper's Figure 1. Where it departs, on purpose:
+
+### v1.1 Message m = 0; the pad is a KEM secret
+
+The paper encrypts a group-element message with the pad `k^2 [sk]_T` (its
+`ct4`). We send `m = 0`, never transmit `ct4`, and use the pad itself as the
+KEM secret: the DEM key is `HKDF-SHA256(secret, ct1 || ct2 || ct3)` into
+ChaCha20-Poly1305 with a zero nonce (one key per ciphertext). Byte payloads
+of any length up to the cap ride in the AEAD body; a failed tag marks that
+slot only.
+
+### v1.2 A context commitment in the statement
+
+The proof's statement and the AEAD associated data carry a caller-supplied
+context hash (`context_hash`, tagged SHA-256 of the context bytes). Peal's
+coordinator uses `peal-condition:<condition id>`, so a ciphertext verifies
+under exactly one condition and cannot be copied into another one. The
+paper's statement has no such field; adding an unconstrained public variable
+to a sigma protocol does not change the relation, it only binds the proof.
+
+### v1.3 The parameter digest in the challenge, not just pk
+
+The Fiat-Shamir challenge is
+`H(params_digest || context_hash || ct1 || ct2 || ct3 || body_hash || A1 || A2 || A3)`.
+The paper binds `pk`; we bind the committee's parameter digest, which covers
+`pk`, every `pk_j`, and the DKG output (`setup_digest`). A reshared
+committee with the same `pk` is therefore a different statement, and a
+ciphertext verifies under one committee only.
+
+### v1.4 One coordinator decoy per batch
+
+Freeze adds exactly one coordinator-sealed decoy to every v1 condition. It
+is not a cryptographic requirement of the paper: it keeps `sum_i k_i != 0`
+against a sealer's own `(k, -k)` pair (which `check_batch` rejects
+otherwise) and lets an empty condition reveal. v0's fixed-B padding does not
+apply; v1 has no batch bound, only the `MAX_BATCH_SLOTS` = 4096 cap and one
+batch per condition (4095 real ciphertexts plus the decoy).
+
+### v1.5 Naive cross terms by default
+
+The paper's Section 4 evaluates the cross terms `U_i`, `W_i` in
+O(B log^2 B) group operations through a subproduct tree. That path is
+implemented (`tbte/poly.rs`, `CrossTermStrategy::Fast`) and `tests/tbte.rs`
+proves it equal to the naive path at every size tried. Measured with
+`examples/tbte_crossover.rs` (release, one thread), arkworks' group FFTs
+lose to `B` Pippenger MSMs of size `B` by 3.5x to 7x for every batch up to
+1024, so `CrossTermStrategy::Auto` takes the naive path below
+`FAST_PATH_MIN_BATCH` (32768, extrapolated, not measured at that size).
+The naive path's memory is O(B) per row, and the batch cap bounds its work.
+
+### v1.6 The N3f1 threshold rule
+
+The paper takes an arbitrary t-of-n. Our threshold is fixed by the DKG's
+fault model, Commonware's `N3f1` (`f = floor((n-1)/3)`, quorum `n - f`):
+the shared polynomial has degree `quorum - 1`, so `t = n - f` (three of
+four, four of five, five of seven). A 3-of-5 committee is not offered for
+v1 because the weaker model loses secrecy under asynchrony.

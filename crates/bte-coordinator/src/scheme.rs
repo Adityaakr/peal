@@ -278,7 +278,7 @@ impl Headers {
         self.len() == 0
     }
 
-    /// Packed for the wire: v0 bare 48-byte points, v1 framed 320-byte headers.
+    /// Packed for the wire: v0 bare 48-byte points, v1 framed 325-byte headers.
     pub fn pack(&self) -> Vec<u8> {
         match self {
             Headers::V0(h) => {
