@@ -1,7 +1,7 @@
 //! Where the quasi-linear cross terms overtake the naive MSM path.
 //!
 //! Prints wall-clock time for both at several batch sizes, single process.
-//! `NAIVE_THRESHOLD` in `tbte/poly.rs` is set from this table.
+//! `FAST_PATH_MIN_BATCH` in `tbte/poly.rs` is set from this table.
 //!
 //! cargo run --release -p bte-crypto --features full,dev-dealer --example tbte_crossover
 
@@ -29,17 +29,22 @@ fn main() {
     for b in sizes {
         let headers: Vec<CtHeader> = (0..b)
             .map(|i| {
-                seal(&params, format!("slot {i}").as_bytes(), &mut rng)
-                    .unwrap()
-                    .header()
+                seal(
+                    &params,
+                    b"crossover",
+                    format!("slot {i}").as_bytes(),
+                    &mut rng,
+                )
+                .unwrap()
+                .header()
             })
             .collect();
         let xs: Vec<_> = headers.iter().map(|h| x_of(&h.ct1)).collect();
         let t = Instant::now();
-        let (u_naive, w_naive) = cross_terms_naive(&headers, &xs);
+        let (u_naive, w_naive) = cross_terms_naive(&headers, &xs).unwrap();
         let naive = t.elapsed();
         let t = Instant::now();
-        let (u_fast, w_fast) = cross_terms_fast(&headers, &xs);
+        let (u_fast, w_fast) = cross_terms_fast(&headers, &xs).unwrap();
         let fast = t.elapsed();
         assert_eq!(u_naive, u_fast);
         assert_eq!(w_naive, w_fast);

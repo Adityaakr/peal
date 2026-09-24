@@ -24,7 +24,7 @@ pub use ark_std::rand;
 
 /// OS-entropy RNG matching simple-bte's rand version (works on native and
 /// wasm — getrandom picks the platform source).
-pub fn os_rng() -> impl rand::Rng {
+pub fn os_rng() -> impl rand::Rng + rand::CryptoRng {
     use rand::SeedableRng;
     let mut seed = [0u8; 32];
     getrandom::getrandom(&mut seed).expect("OS entropy unavailable");

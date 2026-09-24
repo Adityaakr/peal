@@ -22,15 +22,22 @@
 //!   (naive, the test oracle) or the Cauchy-transform evaluation of
 //!   Section 4 (`poly.rs`, quasi-linear).
 //!
-//! Domain separation: every hash carries a `PEAL-BTE-V1-*` tag, and the
-//! proof's challenge covers `pk`, so a ciphertext verifies under exactly one
-//! committee.
+//! Binding: the proof's challenge and the DEM's associated data cover the
+//! committee's parameter digest (which includes the DKG output, so a
+//! resharing with the same `pk` is a different committee) and a caller
+//! supplied context (the application's condition, chain, namespace), so a
+//! ciphertext verifies under exactly one committee and one context. Every
+//! derived value carries a `PEAL-BTE-V1-*` tag; content addresses
+//! (`Ciphertext::hash`, body hashes) are plain SHA-256 over wire bytes.
 
 pub mod nizk;
 pub mod wire;
 
 #[cfg(feature = "dev-dealer")]
 pub mod dev;
+
+#[cfg(feature = "dkg")]
+pub mod dkg;
 
 use crate::BteError;
 use ark_bls12_381::{Bls12_381, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
@@ -42,7 +49,7 @@ use ark_ec::{AffineRepr, CurveGroup, PrimeGroup};
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 use ark_ff::{Field, Zero};
 use ark_serialize::CanonicalSerialize;
-use ark_std::rand::Rng;
+use ark_std::rand::{CryptoRng, Rng};
 use ark_std::UniformRand;
 use chacha20poly1305::aead::{Aead, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, KeyInit, Nonce};
@@ -68,18 +75,23 @@ pub const SETUP_DOMAIN: &[u8] = b"PEAL-BTE-V1-SETUP";
 
 /// The AEAD tag appended to every DEM body.
 pub const DEM_TAG_BYTES: usize = 16;
+/// Hash tag for the caller's context bytes.
+const DST_CONTEXT: &[u8] = b"PEAL-BTE-V1-CONTEXT";
+/// Hard cap on the slots one batch may hold; the naive cross-term path is
+/// `B` MSMs of size `B`, so this bounds the decryptor's work and memory.
+pub const MAX_BATCH_SLOTS: usize = 4096;
 
 /// Public parameters of one v1 committee.
 #[derive(Clone, Debug)]
 pub struct PublicParams {
-    pub n: u16,
-    pub t: u16,
+    n: u16,
+    t: u16,
     /// `pk = [sk]_1`.
-    pub pk: G1Affine,
+    pk: G1Affine,
     /// `operator_keys[j - 1] = [sk_j]_1`, party indices are 1-based.
-    pub operator_keys: Vec<G1Affine>,
-    /// Provenance of the key: the DKG round summary (or the dev dealer's tag).
-    pub setup_digest: [u8; 32],
+    operator_keys: Vec<G1Affine>,
+    /// Provenance of the key: the DKG output digest (or the dev dealer's tag).
+    setup_digest: [u8; 32],
     digest: [u8; 32],
 }
 
@@ -119,6 +131,29 @@ impl PublicParams {
     pub fn digest(&self) -> [u8; 32] {
         self.digest
     }
+
+    pub fn n(&self) -> u16 {
+        self.n
+    }
+
+    pub fn t(&self) -> u16 {
+        self.t
+    }
+
+    /// `pk = [sk]_1`.
+    pub fn pk(&self) -> G1Affine {
+        self.pk
+    }
+
+    /// `[sk_j]_1` for every operator, index `j - 1`.
+    pub fn operator_keys(&self) -> &[G1Affine] {
+        &self.operator_keys
+    }
+
+    /// Provenance of the key: the DKG output digest (or the dev dealer's tag).
+    pub fn setup_digest(&self) -> [u8; 32] {
+        self.setup_digest
+    }
 }
 
 /// One operator's share of `sk`. Deliberately no Debug.
@@ -140,13 +175,24 @@ impl OperatorSecret {
     }
 }
 
-/// A sealed payload: the three KEM points, the proof of `k`, and the DEM body
-/// (ChaCha20-Poly1305 ciphertext plus tag).
+impl Drop for OperatorSecret {
+    fn drop(&mut self) {
+        // A volatile write the optimizer cannot elide.
+        // SAFETY: `share` is a valid, exclusively borrowed field.
+        unsafe { core::ptr::write_volatile(&mut self.share, Fr::zero()) };
+    }
+}
+
+/// A sealed payload: the three KEM points, the context it was sealed for,
+/// the proof of `k`, and the DEM body (ChaCha20-Poly1305 ciphertext plus tag).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Ciphertext {
     pub ct1: G1Affine,
     pub ct2: G2Affine,
     pub ct3: G1Affine,
+    /// `H(context)`: what the sealer bound this ciphertext to (a condition,
+    /// a chain, an application). The relay enforces it matches the slot.
+    pub context_hash: [u8; 32],
     pub proof: Proof,
     pub body: Vec<u8>,
 }
@@ -164,20 +210,31 @@ impl Ciphertext {
             ct1: self.ct1,
             ct2: self.ct2,
             ct3: self.ct3,
+            context_hash: self.context_hash,
             body_hash: Sha256::digest(&self.body).into(),
             proof: self.proof,
         }
     }
 }
 
-/// The public part of a ciphertext (288 bytes on the wire).
+/// The public part of a ciphertext (320 bytes on the wire).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CtHeader {
     pub ct1: G1Affine,
     pub ct2: G2Affine,
     pub ct3: G1Affine,
+    pub context_hash: [u8; 32],
     pub body_hash: [u8; 32],
     pub proof: Proof,
+}
+
+/// The tagged hash of a caller's context bytes.
+pub fn context_hash(context: &[u8]) -> [u8; 32] {
+    let mut h = Sha256::new();
+    h.update(DST_CONTEXT);
+    h.update((context.len() as u64).to_le_bytes());
+    h.update(context);
+    h.finalize().into()
 }
 
 /// One operator's partial decryption for a whole batch: one G1 point.
@@ -235,26 +292,36 @@ fn dem_key(secret: &PairingOutput<E>, ct1: &G1Affine, ct2: &G2Affine, ct3: &G1Af
     key
 }
 
-/// AAD binds the DEM body to the committee and the KEM points.
-fn dem_aad(params: &PublicParams, ct1: &G1Affine, ct2: &G2Affine, ct3: &G1Affine) -> Vec<u8> {
-    let mut aad = Vec::with_capacity(48 * 3 + 96);
-    aad.extend_from_slice(&compressed(&params.pk));
+/// AAD binds the DEM body to the committee, the context and the KEM points.
+fn dem_aad(
+    params: &PublicParams,
+    context_hash: &[u8; 32],
+    ct1: &G1Affine,
+    ct2: &G2Affine,
+    ct3: &G1Affine,
+) -> Vec<u8> {
+    let mut aad = Vec::with_capacity(64 + 48 * 2 + 96);
+    aad.extend_from_slice(&params.digest());
+    aad.extend_from_slice(context_hash);
     aad.extend_from_slice(&compressed(ct1));
     aad.extend_from_slice(&compressed(ct2));
     aad.extend_from_slice(&compressed(ct3));
     aad
 }
 
-/// Seal a payload under the committee's key. Takes no batch number and no
-/// position; the batch is whatever is frozen at the cue.
+/// Seal a payload under the committee's key for one context (the condition
+/// or application the ciphertext belongs to; the relay checks it). Takes no
+/// batch number and no position; the batch is whatever is frozen at the cue.
 pub fn seal(
     params: &PublicParams,
+    context: &[u8],
     payload: &[u8],
-    rng: &mut impl Rng,
+    rng: &mut (impl Rng + CryptoRng),
 ) -> Result<Ciphertext, BteError> {
     if payload.len() > crate::MAX_PAYLOAD_BYTES {
         return Err(BteError::PayloadTooLarge);
     }
+    let context_hash = context_hash(context);
     let mut k = Fr::rand(rng);
     while k.is_zero() {
         k = Fr::rand(rng);
@@ -266,7 +333,7 @@ pub fn seal(
     // S = k² · [sk]_T = e(k·pk, [k]_2).
     let secret = E::pairing(params.pk.into_group() * k, ct2);
     let key = dem_key(&secret, &ct1, &ct2, &ct3);
-    let aad = dem_aad(params, &ct1, &ct2, &ct3);
+    let aad = dem_aad(params, &context_hash, &ct1, &ct2, &ct3);
     let cipher = ChaCha20Poly1305::new((&key).into());
     // The key is unique per ciphertext (fresh k), so a fixed nonce is sound.
     let body = cipher
@@ -279,11 +346,19 @@ pub fn seal(
         )
         .map_err(|_| BteError::InvalidParams("DEM encryption failed".into()))?;
     let body_hash: [u8; 32] = Sha256::digest(&body).into();
-    let proof = nizk::prove(params, k, &ct1, &ct2, &ct3, &body_hash, rng);
+    let statement = nizk::Statement {
+        ct1: &ct1,
+        ct2: &ct2,
+        ct3: &ct3,
+        context_hash: &context_hash,
+        body_hash: &body_hash,
+    };
+    let proof = nizk::prove(params, k, &statement, rng);
     Ok(Ciphertext {
         ct1,
         ct2,
         ct3,
+        context_hash,
         proof,
         body,
     })
@@ -319,6 +394,12 @@ mod full {
         if batch.is_empty() {
             return Err(BteError::InvalidParams("empty batch".into()));
         }
+        if batch.len() > MAX_BATCH_SLOTS {
+            return Err(BteError::BatchSize {
+                expected: MAX_BATCH_SLOTS,
+                got: batch.len(),
+            });
+        }
         let mut seen = HashSet::with_capacity(batch.len());
         let mut xs = Vec::with_capacity(batch.len());
         for (i, h) in batch.iter().enumerate() {
@@ -334,6 +415,13 @@ mod full {
                 )));
             }
             xs.push(x);
+        }
+        // Σ k_i = 0 would make every honest partial the identity, which
+        // `verify_share` rejects; only a sealer's own (k, −k) pair does this.
+        if sum_ct1(batch).is_zero() {
+            return Err(BteError::InvalidCiphertext(
+                "batch randomness sums to zero".into(),
+            ));
         }
         Ok(xs)
     }
@@ -450,27 +538,30 @@ mod full {
     pub fn cross_terms_naive(
         batch: &[CtHeader],
         xs: &[Fr],
-    ) -> (Vec<G2Projective>, Vec<G1Projective>) {
+    ) -> Result<(Vec<G2Projective>, Vec<G1Projective>), BteError> {
         let b = batch.len();
-        // All pairwise differences x_j − x_i (j ≠ i), inverted in one pass.
-        let mut diffs = Vec::with_capacity(b * b);
-        for i in 0..b {
-            for j in 0..b {
-                diffs.push(if i == j { Fr::ONE } else { xs[j] - xs[i] });
-            }
+        if b == 0 || xs.len() != b || b > MAX_BATCH_SLOTS {
+            return Err(BteError::BatchSize {
+                expected: xs.len(),
+                got: b,
+            });
         }
-        batch_inversion(&mut diffs);
         let ct2s: Vec<G2Affine> = batch.iter().map(|h| h.ct2).collect();
         let ct3s: Vec<G1Affine> = batch.iter().map(|h| h.ct3).collect();
         let mut u = Vec::with_capacity(b);
         let mut w = Vec::with_capacity(b);
+        // One row of 1 / (x_j − x_i) at a time: O(B) memory.
+        let mut coeffs = vec![Fr::ONE; b];
         for i in 0..b {
-            let mut coeffs = diffs[i * b..(i + 1) * b].to_vec();
+            for j in 0..b {
+                coeffs[j] = if i == j { Fr::ONE } else { xs[j] - xs[i] };
+            }
+            batch_inversion(&mut coeffs);
             coeffs[i] = Fr::zero();
             u.push(G2Projective::msm(&ct2s, &coeffs).expect("msm inputs same length"));
             w.push(G1Projective::msm(&ct3s, &coeffs).expect("msm inputs same length"));
         }
-        (u, w)
+        Ok((u, w))
     }
 
     /// How the cross terms are computed. See `poly.rs` for the measurement
@@ -507,9 +598,9 @@ mod full {
             CrossTermStrategy::Fast => true,
         };
         let (u, w) = if fast {
-            crate::tbte::poly::cross_terms_fast(batch, &xs)
+            crate::tbte::poly::cross_terms_fast(batch, &xs)?
         } else {
-            cross_terms_naive(batch, &xs)
+            cross_terms_naive(batch, &xs)?
         };
         Ok(PrecomputedCrossTerms {
             u,
@@ -524,9 +615,13 @@ mod full {
         combined: &CombinedShare,
         header: &CtHeader,
         i: usize,
-    ) -> PairingOutput<E> {
-        let left = (combined.0 - pre.w[i]).into_affine();
-        E::multi_pairing([left, header.ct3], [header.ct2.into_group(), pre.u[i]])
+    ) -> Option<PairingOutput<E>> {
+        let (u, w) = (pre.u.get(i)?, pre.w.get(i)?);
+        let left = (combined.0 - w).into_affine();
+        Some(E::multi_pairing(
+            [left, header.ct3],
+            [header.ct2.into_group(), *u],
+        ))
     }
 
     /// Open every slot. A slot whose DEM tag fails is returned with
@@ -539,7 +634,7 @@ mod full {
         batch: &[Ciphertext],
     ) -> Result<Vec<crate::RecoveredPayload>, BteError> {
         let headers: Vec<CtHeader> = batch.iter().map(|ct| ct.header()).collect();
-        if pre.batch_hash != batch_hash(&headers) {
+        if pre.batch_hash != batch_hash(&headers) || pre.u.len() != batch.len() {
             return Err(BteError::InvalidParams(
                 "cross-terms were computed for a different batch".into(),
             ));
@@ -549,9 +644,14 @@ mod full {
             .zip(&headers)
             .enumerate()
             .map(|(i, (ct, h))| {
-                let secret = slot_secret(pre, combined, h, i);
+                let Some(secret) = slot_secret(pre, combined, h, i) else {
+                    return crate::RecoveredPayload {
+                        payload: Vec::new(),
+                        valid: false,
+                    };
+                };
                 let key = dem_key(&secret, &ct.ct1, &ct.ct2, &ct.ct3);
-                let aad = dem_aad(params, &ct.ct1, &ct.ct2, &ct.ct3);
+                let aad = dem_aad(params, &ct.context_hash, &ct.ct1, &ct.ct2, &ct.ct3);
                 let cipher = ChaCha20Poly1305::new((&key).into());
                 match cipher.decrypt(
                     &Nonce::default(),

@@ -19,6 +19,9 @@ fn rng() -> ChaCha20Rng {
     ChaCha20Rng::seed_from_u64(4242)
 }
 
+/// The context every fixture seals for (an application's condition id).
+const CTX: &[u8] = b"condition:test";
+
 #[allow(clippy::type_complexity)]
 fn fixture(
     n: u16,
@@ -37,7 +40,7 @@ fn fixture(
         .collect();
     let mut batch: Vec<Ciphertext> = payloads
         .iter()
-        .map(|p| seal(&params, p, &mut rng).unwrap())
+        .map(|p| seal(&params, CTX, p, &mut rng).unwrap())
         .collect();
     let by_hash = batch
         .iter()
@@ -57,7 +60,7 @@ fn dealer_shares_are_consistent_with_operator_keys() {
     let (params, secrets, _, _) = fixture(5, 3, 1);
     for (i, s) in secrets.iter().enumerate() {
         assert_eq!(s.party_index as usize, i + 1);
-        assert_eq!(s.public_key(), params.operator_keys[i]);
+        assert_eq!(s.public_key(), params.operator_keys()[i]);
     }
 }
 
@@ -194,7 +197,7 @@ fn proof_binds_points_body_and_committee() {
     let mut rng = rng();
     let (params, _) = deal(3, 2, &mut rng).unwrap();
     let (other, _) = deal(3, 2, &mut rng).unwrap();
-    let ct = seal(&params, b"bound", &mut rng).unwrap();
+    let ct = seal(&params, CTX, b"bound", &mut rng).unwrap();
     let h = ct.header();
     assert!(verify_ciphertext(&params, &h));
     // Same ciphertext under another committee.
@@ -204,7 +207,7 @@ fn proof_binds_points_body_and_committee() {
     mauled.body_hash[0] ^= 1;
     assert!(!verify_ciphertext(&params, &mauled));
     // Points swapped for another ciphertext's.
-    let ct2 = seal(&params, b"other", &mut rng).unwrap();
+    let ct2 = seal(&params, CTX, b"other", &mut rng).unwrap();
     let mut spliced = h;
     spliced.ct3 = ct2.ct3;
     assert!(!verify_ciphertext(&params, &spliced));
@@ -261,11 +264,12 @@ fn junk_body_opens_invalid_without_poisoning_the_batch() {
     let mut rng = rng();
     let (params, secrets) = deal(3, 2, &mut rng).unwrap();
     let honest: Vec<Ciphertext> = (0..3)
-        .map(|i| seal(&params, format!("honest {i}").as_bytes(), &mut rng).unwrap())
+        .map(|i| seal(&params, CTX, format!("honest {i}").as_bytes(), &mut rng).unwrap())
         .collect();
     let mut batch = honest.clone();
     batch.push(bte_crypto::tbte::dev::seal_with_raw_body(
         &params,
+        CTX,
         b"not an aead body at all, definitely",
         &mut rng,
     ));
@@ -304,14 +308,14 @@ fn junk_body_opens_invalid_without_poisoning_the_batch() {
 fn fast_cross_terms_equal_naive() {
     let mut rng = rng();
     let (params, _) = deal(3, 2, &mut rng).unwrap();
-    for b in [1usize, 2, 3, 5, 16, 17, 31, 64, 100, 300] {
+    for b in [1usize, 2, 3, 5, 16, 17, 31, 64, 100, 129] {
         let batch: Vec<Ciphertext> = (0..b)
-            .map(|i| seal(&params, format!("slot {i}").as_bytes(), &mut rng).unwrap())
+            .map(|i| seal(&params, CTX, format!("slot {i}").as_bytes(), &mut rng).unwrap())
             .collect();
         let hdrs = headers(&batch);
         let xs: Vec<_> = hdrs.iter().map(|h| x_of(&h.ct1)).collect();
-        let (u_naive, w_naive) = cross_terms_naive(&hdrs, &xs);
-        let (u_fast, w_fast) = bte_crypto::tbte::poly::cross_terms_fast(&hdrs, &xs);
+        let (u_naive, w_naive) = cross_terms_naive(&hdrs, &xs).unwrap();
+        let (u_fast, w_fast) = bte_crypto::tbte::poly::cross_terms_fast(&hdrs, &xs).unwrap();
         assert_eq!(u_naive, u_fast, "U mismatch at B={b}");
         assert_eq!(w_naive, w_fast, "W mismatch at B={b}");
     }
@@ -335,16 +339,79 @@ fn explicit_fast_strategy_opens_the_batch() {
 }
 
 #[test]
+fn proof_binds_the_context() {
+    let mut rng = rng();
+    let (params, secrets) = deal(3, 2, &mut rng).unwrap();
+    let ct = seal(&params, b"condition:A", b"for A", &mut rng).unwrap();
+    assert_eq!(
+        ct.context_hash,
+        bte_crypto::tbte::context_hash(b"condition:A")
+    );
+    let mut relabeled = ct.clone();
+    relabeled.context_hash = bte_crypto::tbte::context_hash(b"condition:B");
+    assert!(!verify_ciphertext(&params, &relabeled.header()));
+    // Even with the proof check bypassed, the DEM refuses another context.
+    let hdrs = vec![ct.header()];
+    let shares: Vec<Share> = secrets[..2]
+        .iter()
+        .map(|s| partial(&params, s, &hdrs).unwrap())
+        .collect();
+    let pre = pre_decrypt(&params, &hdrs).unwrap();
+    let combined = combine(&params, &shares).unwrap();
+    let ok = finalize(&params, &pre, &combined, std::slice::from_ref(&ct)).unwrap();
+    assert!(ok[0].valid);
+    let relabeled_pre = pre_decrypt(&params, &[relabeled.header()]);
+    assert!(
+        relabeled_pre.is_err(),
+        "admission refuses the relabeled ciphertext"
+    );
+}
+
+#[test]
+fn oversized_batch_is_refused_before_any_work() {
+    let (params, secrets, batch, _) = fixture(3, 2, 1);
+    let h = batch[0].header();
+    let big: Vec<CtHeader> = vec![h; bte_crypto::tbte::MAX_BATCH_SLOTS + 1];
+    assert!(matches!(
+        check_batch(&params, &big),
+        Err(BteError::BatchSize { .. })
+    ));
+    assert!(matches!(
+        partial(&params, &secrets[0], &big),
+        Err(BteError::BatchSize { .. })
+    ));
+    assert!(cross_terms_naive(&big, &[]).is_err());
+    assert!(bte_crypto::tbte::poly::cross_terms_fast(&[], &[]).is_err());
+}
+
+#[test]
+fn zero_sum_randomness_batch_is_refused() {
+    // Only a sealer who picks k and −k for its own two ciphertexts can make
+    // Σ k = 0; `partial` would then be the identity. Admission refuses it.
+    let mut rng = rng();
+    let (params, _) = deal(3, 2, &mut rng).unwrap();
+    let pair = bte_crypto::tbte::dev::seal_negated_pair(&params, CTX, &mut rng);
+    let hdrs: Vec<CtHeader> = pair.iter().map(|ct| ct.header()).collect();
+    for h in &hdrs {
+        assert!(verify_ciphertext(&params, h), "each half verifies alone");
+    }
+    match check_batch(&params, &hdrs) {
+        Err(BteError::InvalidCiphertext(msg)) => assert!(msg.contains("sums to zero")),
+        other => panic!("expected refusal, got {:?}", other.map(|v| v.len())),
+    }
+}
+
+#[test]
 fn payload_cap_enforced() {
     let mut rng = rng();
     let (params, _) = deal(3, 2, &mut rng).unwrap();
     let big = vec![0u8; bte_crypto::MAX_PAYLOAD_BYTES + 1];
     assert!(matches!(
-        seal(&params, &big, &mut rng),
+        seal(&params, CTX, &big, &mut rng),
         Err(BteError::PayloadTooLarge)
     ));
     let ok = vec![0u8; 4096];
-    assert!(seal(&params, &ok, &mut rng).is_ok());
+    assert!(seal(&params, CTX, &ok, &mut rng).is_ok());
 }
 
 #[test]
@@ -380,7 +447,7 @@ fn wire_sizes_and_roundtrips() {
     let secret_bytes = secrets[0].to_bytes();
     let back = OperatorSecret::from_bytes(&secret_bytes).unwrap();
     assert_eq!(back.party_index, 1);
-    assert_eq!(back.public_key(), params.operator_keys[0]);
+    assert_eq!(back.public_key(), params.operator_keys()[0]);
 }
 
 #[test]
@@ -394,12 +461,11 @@ fn wire_rejects_malformed() {
     let mut bytes = share.to_bytes();
     bytes.push(0);
     assert!(Share::from_bytes(&bytes).is_err());
+    // Flipping the top bit of a compressed point makes it an invalid
+    // encoding (compression flag cleared): rejected at parse time.
     let mut bytes = share.to_bytes();
-    bytes[7] ^= 0xff; // inside the point
-    assert!(
-        Share::from_bytes(&bytes).is_err()
-            || !verify_share(&params, &hdrs, &Share::from_bytes(&bytes).unwrap())
-    );
+    bytes[7] ^= 0x80;
+    assert!(Share::from_bytes(&bytes).is_err());
     let mut bytes = batch[0].to_bytes();
     bytes[4] = 0x02; // wrong type byte
     assert!(Ciphertext::from_bytes(&bytes).is_err());

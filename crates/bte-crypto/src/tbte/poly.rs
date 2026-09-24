@@ -26,6 +26,7 @@
 //! caller who asks for it (`CrossTermStrategy::Fast`).
 
 use super::CtHeader;
+use crate::BteError;
 use ark_bls12_381::{Fr, G1Projective, G2Projective};
 use ark_ec::AffineRepr;
 use ark_ff::{batch_inversion, Field, One, Zero};
@@ -294,10 +295,21 @@ where
         .collect()
 }
 
-/// `(U_i, W_i)` for every slot, computed in O(B log² B) group operations.
-pub fn cross_terms_fast(batch: &[CtHeader], xs: &[Fr]) -> (Vec<G2Projective>, Vec<G1Projective>) {
+/// `(U_i, W_i)` for every slot, computed in O(B log² B) group operations
+/// (the scalar evaluations of `F'` and `F''` below are Horner, O(B²) field
+/// multiplications, which is not what the bound counts and is negligible
+/// next to the group work).
+pub fn cross_terms_fast(
+    batch: &[CtHeader],
+    xs: &[Fr],
+) -> Result<(Vec<G2Projective>, Vec<G1Projective>), BteError> {
     let b = xs.len();
-    debug_assert_eq!(batch.len(), b);
+    if b == 0 || batch.len() != b || b > super::MAX_BATCH_SLOTS {
+        return Err(BteError::BatchSize {
+            expected: b,
+            got: batch.len(),
+        });
+    }
     let tree = Node::build(xs, 0, b);
     let f_prime = derivative_scalar(&tree.f);
     let f_second = derivative_scalar(&f_prime);
@@ -313,7 +325,7 @@ pub fn cross_terms_fast(batch: &[CtHeader], xs: &[Fr]) -> (Vec<G2Projective>, Ve
     let ct3s: Vec<G1Projective> = batch.iter().map(|h| h.ct3.into_group()).collect();
     let u = cauchy_transform(&tree, &ct2s, &c, &inv_f_prime);
     let w = cauchy_transform(&tree, &ct3s, &c, &inv_f_prime);
-    (u, w)
+    Ok((u, w))
 }
 
 #[cfg(test)]

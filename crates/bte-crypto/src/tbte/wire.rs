@@ -22,13 +22,14 @@ const TAG_BYTES: usize = 5;
 
 /// A framed header is always exactly this long, so batches pack headers
 /// back to back and split by this constant.
-pub const HEADER_BYTES: usize = TAG_BYTES + G1_BYTES + G2_BYTES + G1_BYTES + 32 + 2 * SCALAR_BYTES;
+pub const HEADER_BYTES: usize =
+    TAG_BYTES + G1_BYTES + G2_BYTES + G1_BYTES + 32 + 32 + 2 * SCALAR_BYTES;
 /// A framed share: tag, party index, one G1 point.
 pub const SHARE_BYTES: usize = TAG_BYTES + 2 + G1_BYTES;
 /// Fixed ciphertext overhead beyond the payload: framing, three points, the
 /// proof, the body length, and the AEAD tag.
 pub const CIPHERTEXT_OVERHEAD_BYTES: usize =
-    TAG_BYTES + G1_BYTES + G2_BYTES + G1_BYTES + 2 * SCALAR_BYTES + 4 + super::DEM_TAG_BYTES;
+    TAG_BYTES + G1_BYTES + G2_BYTES + G1_BYTES + 32 + 2 * SCALAR_BYTES + 4 + super::DEM_TAG_BYTES;
 
 fn wire_err(what: &str) -> BteError {
     BteError::Wire(what.to_string())
@@ -131,6 +132,7 @@ impl Ciphertext {
         put(&mut out, &self.ct1, G1_BYTES);
         put(&mut out, &self.ct2, G2_BYTES);
         put(&mut out, &self.ct3, G1_BYTES);
+        out.extend_from_slice(&self.context_hash);
         put_proof(&mut out, &self.proof);
         out.extend_from_slice(&(self.body.len() as u32).to_le_bytes());
         out.extend_from_slice(&self.body);
@@ -142,6 +144,7 @@ impl Ciphertext {
         let ct1 = r.g1()?;
         let ct2 = r.g2()?;
         let ct3 = r.g1()?;
+        let context_hash = r.bytes32()?;
         let proof = r.proof()?;
         let len = r.u32()? as usize;
         if len < super::DEM_TAG_BYTES {
@@ -156,6 +159,7 @@ impl Ciphertext {
             ct1,
             ct2,
             ct3,
+            context_hash,
             proof,
             body,
         })
@@ -169,6 +173,7 @@ impl CtHeader {
         put(&mut out, &self.ct1, G1_BYTES);
         put(&mut out, &self.ct2, G2_BYTES);
         put(&mut out, &self.ct3, G1_BYTES);
+        out.extend_from_slice(&self.context_hash);
         out.extend_from_slice(&self.body_hash);
         put_proof(&mut out, &self.proof);
         debug_assert_eq!(out.len(), HEADER_BYTES);
@@ -180,6 +185,7 @@ impl CtHeader {
         let ct1 = r.g1()?;
         let ct2 = r.g2()?;
         let ct3 = r.g1()?;
+        let context_hash = r.bytes32()?;
         let body_hash = r.bytes32()?;
         let proof = r.proof()?;
         r.finish()?;
@@ -187,6 +193,7 @@ impl CtHeader {
             ct1,
             ct2,
             ct3,
+            context_hash,
             body_hash,
             proof,
         })
@@ -242,11 +249,11 @@ impl PublicParams {
         let mut out =
             Vec::with_capacity(TAG_BYTES + 4 + 32 + G1_BYTES * (1 + self.operator_keys.len()));
         header(&mut out, TYPE_PUBLIC_PARAMS);
-        out.extend_from_slice(&self.n.to_le_bytes());
-        out.extend_from_slice(&self.t.to_le_bytes());
-        out.extend_from_slice(&self.setup_digest);
-        put(&mut out, &self.pk, G1_BYTES);
-        for key in &self.operator_keys {
+        out.extend_from_slice(&self.n().to_le_bytes());
+        out.extend_from_slice(&self.t().to_le_bytes());
+        out.extend_from_slice(&self.setup_digest());
+        put(&mut out, &self.pk(), G1_BYTES);
+        for key in self.operator_keys() {
             put(&mut out, key, G1_BYTES);
         }
         out

@@ -9,7 +9,7 @@ use super::{OperatorSecret, PublicParams, SETUP_DOMAIN};
 use crate::BteError;
 use ark_bls12_381::{Fr, G1Projective};
 use ark_ec::{CurveGroup, PrimeGroup};
-use ark_std::rand::Rng;
+use ark_std::rand::{CryptoRng, Rng};
 use ark_std::UniformRand;
 use sha2::{Digest, Sha256};
 
@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 pub fn deal(
     n: u16,
     t: u16,
-    rng: &mut impl Rng,
+    rng: &mut (impl Rng + CryptoRng),
 ) -> Result<(PublicParams, Vec<OperatorSecret>), BteError> {
     if n == 0 || t == 0 || t > n {
         return Err(BteError::InvalidParams("need 1 <= t <= n".into()));
@@ -60,8 +60,9 @@ use ark_ff::Zero;
 /// test that such a slot opens invalid on its own without touching others.
 pub fn seal_with_raw_body(
     params: &PublicParams,
+    context: &[u8],
     body: &[u8],
-    rng: &mut impl Rng,
+    rng: &mut (impl Rng + CryptoRng),
 ) -> super::Ciphertext {
     use ark_bls12_381::G2Projective;
     let mut k = Fr::rand(rng);
@@ -73,12 +74,70 @@ pub fn seal_with_raw_body(
     let x = super::x_of(&ct1);
     let ct3 = (super::ct3_base(params, x) * k).into_affine();
     let body_hash: [u8; 32] = Sha256::digest(body).into();
-    let proof = super::nizk::prove(params, k, &ct1, &ct2, &ct3, &body_hash, rng);
+    let context_hash = super::context_hash(context);
+    let statement = super::nizk::Statement {
+        ct1: &ct1,
+        ct2: &ct2,
+        ct3: &ct3,
+        context_hash: &context_hash,
+        body_hash: &body_hash,
+    };
+    let proof = super::nizk::prove(params, k, &statement, rng);
     super::Ciphertext {
         ct1,
         ct2,
         ct3,
+        context_hash,
         proof,
         body: body.to_vec(),
+    }
+}
+
+/// Two ciphertexts with randomness `k` and `−k`: what a sealer can do to
+/// make a batch's randomness sum to zero. Both verify alone.
+pub fn seal_negated_pair(
+    params: &PublicParams,
+    context: &[u8],
+    rng: &mut (impl Rng + CryptoRng),
+) -> [super::Ciphertext; 2] {
+    let mut k = Fr::rand(rng);
+    while k.is_zero() {
+        k = Fr::rand(rng);
+    }
+    [
+        seal_with_randomness(params, context, k, rng),
+        seal_with_randomness(params, context, -k, rng),
+    ]
+}
+
+fn seal_with_randomness(
+    params: &PublicParams,
+    context: &[u8],
+    k: Fr,
+    rng: &mut (impl Rng + CryptoRng),
+) -> super::Ciphertext {
+    use ark_bls12_381::G2Projective;
+    let context_hash = super::context_hash(context);
+    let ct1 = (G1Projective::generator() * k).into_affine();
+    let ct2 = (G2Projective::generator() * k).into_affine();
+    let x = super::x_of(&ct1);
+    let ct3 = (super::ct3_base(params, x) * k).into_affine();
+    let body = b"raw".to_vec();
+    let body_hash: [u8; 32] = Sha256::digest(&body).into();
+    let statement = super::nizk::Statement {
+        ct1: &ct1,
+        ct2: &ct2,
+        ct3: &ct3,
+        context_hash: &context_hash,
+        body_hash: &body_hash,
+    };
+    let proof = super::nizk::prove(params, k, &statement, rng);
+    super::Ciphertext {
+        ct1,
+        ct2,
+        ct3,
+        context_hash,
+        proof,
+        body,
     }
 }
