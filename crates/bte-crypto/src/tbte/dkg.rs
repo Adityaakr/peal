@@ -659,6 +659,16 @@ pub fn identity_key_of(identity: &Identity) -> IdentityKey {
     identity.public_key()
 }
 
+/// An identity key's 32 canonical bytes.
+pub fn identity_key_bytes(key: &IdentityKey) -> Vec<u8> {
+    key.encode().to_vec()
+}
+
+/// An identity's 32 secret seed bytes (for an encrypted keystore).
+pub fn identity_bytes(identity: &Identity) -> Vec<u8> {
+    identity.encode().to_vec()
+}
+
 /// A fresh identity from 32 bytes of our entropy (an ed25519 seed).
 pub fn generate_identity(rng: &mut impl ark_std::rand::Rng) -> Identity {
     let mut seed = [0u8; 32];

@@ -6,6 +6,7 @@ pub mod api;
 pub mod auction;
 pub mod currency;
 pub mod db;
+pub mod dkg;
 pub mod eip712;
 pub mod engine;
 pub mod intents;

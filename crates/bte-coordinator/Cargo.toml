@@ -25,6 +25,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 
 [dev-dependencies]
 bte-crypto = { workspace = true, features = ["dkg", "dev-dealer"] }
+bte-node = { path = "../bte-node" }
 rand_chacha = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.40.1", features = ["bundled"] }

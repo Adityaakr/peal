@@ -11,6 +11,9 @@ use crate::db;
 pub struct Config {
     pub reveal_timeout_secs: i64,
     pub dev: bool,
+    /// Bearer for operator actions (starting a DKG round). `BTE_ADMIN_TOKEN`;
+    /// with `BTE_DEV=1` the check is waived.
+    pub admin_token: Option<String>,
     /// Token bucket per IP: sustained requests/second and burst size.
     pub rate_rps: f64,
     pub rate_burst: f64,
@@ -75,6 +78,9 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(120),
             dev: std::env::var("BTE_DEV").is_ok_and(|v| v == "1"),
+            admin_token: std::env::var("BTE_ADMIN_TOKEN")
+                .ok()
+                .filter(|t| !t.is_empty()),
             rate_rps: std::env::var("BTE_RATE_RPS")
                 .ok()
                 .and_then(|v| v.parse().ok())

@@ -162,6 +162,8 @@ pub fn open(path: &str) -> Result<Connection> {
     // Private Actions (/v1). Additive: new tables only, so a devnet database
     // created before intents existed opens unchanged.
     conn.execute_batch(crate::intents::SCHEMA)?;
+    // The DKG relay (BTE v1 committees). Additive tables.
+    conn.execute_batch(crate::dkg::SCHEMA)?;
     Ok(conn)
 }
 

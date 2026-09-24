@@ -52,7 +52,8 @@ pub fn router(app: App) -> Router {
         .route("/activity", get(crate::activity::get_activity))
         .route("/x402", get(crate::x402::price))
         .route("/skill-installs", post(crate::activity::skill_installed))
-        .route("/healthz", get(|| async { Json(json!({"ok": true})) }));
+        .route("/healthz", get(|| async { Json(json!({"ok": true})) }))
+        .merge(crate::dkg::routes());
     Router::new()
         .nest("/v0", api)
         .nest("/v1", crate::intents::routes())

@@ -1,8 +1,11 @@
-//! bte-cli: trusted dealer ceremony, committee registration, dev helpers.
+//! bte-cli: v0 trusted dealer ceremony, v1 operator identities and DKG
+//! rounds, committee registration, dev helpers.
 
 use anyhow::{bail, Context, Result};
 use base64::Engine;
+use bte_crypto::tbte;
 use bte_crypto::{ceremony, seal, PublicParams};
+use bte_node::identity::{self, OperatorIdentity};
 use bte_node::keystore;
 use clap::{Parser, Subcommand};
 
@@ -29,6 +32,41 @@ enum Command {
         b: u32,
         #[arg(long)]
         out: std::path::PathBuf,
+    },
+    /// v1: a fresh operator identity (ed25519 + X25519), encrypted at rest,
+    /// with the public halves printed for whoever starts the DKG round.
+    IdentityNew {
+        #[arg(long)]
+        out: std::path::PathBuf,
+    },
+    /// v1: print the public halves of an identity file.
+    IdentityShow {
+        #[arg(long)]
+        file: std::path::PathBuf,
+    },
+    /// v1: start a DKG round on a coordinator's relay. Each --operator is
+    /// `identity_hex:box_hex` as printed by `identity new`. Needs
+    /// BTE_ADMIN_TOKEN unless the coordinator runs with BTE_DEV=1.
+    DkgInit {
+        #[arg(long)]
+        coordinator: String,
+        #[arg(long)]
+        tag: String,
+        #[arg(long = "operator", required = true)]
+        operators: Vec<String>,
+        /// Seconds dealers wait for acknowledgements before closing.
+        #[arg(long, default_value_t = 60)]
+        ack_timeout_secs: i64,
+        /// Block until the round settles (or fails), up to this many seconds.
+        #[arg(long)]
+        wait_secs: Option<u64>,
+    },
+    /// v1: show a DKG round.
+    DkgStatus {
+        #[arg(long)]
+        coordinator: String,
+        #[arg(long)]
+        round: String,
     },
     /// Register public params with a coordinator.
     CommitteeInit {
@@ -60,6 +98,16 @@ enum Command {
 async fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Ceremony { n, t, b, out } => run_ceremony(n, t, b, &out),
+        Command::IdentityNew { out } => identity_new(&out),
+        Command::IdentityShow { file } => identity_show(&file),
+        Command::DkgInit {
+            coordinator,
+            tag,
+            operators,
+            ack_timeout_secs,
+            wait_secs,
+        } => dkg_init(&coordinator, &tag, &operators, ack_timeout_secs, wait_secs).await,
+        Command::DkgStatus { coordinator, round } => dkg_status(&coordinator, &round).await,
         Command::CommitteeInit {
             coordinator,
             params,
@@ -114,11 +162,106 @@ fn run_ceremony(n: u16, t: u16, b: u32, out: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
+fn identity_new(out: &std::path::Path) -> Result<()> {
+    let pass = passphrase()?;
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let me = OperatorIdentity::generate();
+    identity::write_identity(out, &me.seal(&pass)?)?;
+    println!("identity written: {}", out.display());
+    println!("  identity: {}", me.key_hex());
+    println!("  box:      {}", me.box_hex());
+    println!("  operator: {}:{}", me.key_hex(), me.box_hex());
+    Ok(())
+}
+
+fn identity_show(file: &std::path::Path) -> Result<()> {
+    let f = identity::read_identity(file)?;
+    println!("identity: {}", f.identity);
+    println!("box:      {}", f.box_key);
+    println!("operator: {}:{}", f.identity, f.box_key);
+    Ok(())
+}
+
+async fn dkg_init(
+    coordinator: &str,
+    tag: &str,
+    operators: &[String],
+    ack_timeout_secs: i64,
+    wait_secs: Option<u64>,
+) -> Result<()> {
+    let mut entries = Vec::new();
+    for op in operators {
+        let (identity, bx) = op
+            .split_once(':')
+            .context("--operator must be identity_hex:box_hex")?;
+        entries.push(serde_json::json!({"identity": identity, "box": bx}));
+    }
+    let client = reqwest::Client::new();
+    let mut req = client
+        .post(format!("{coordinator}/v0/dkg/rounds"))
+        .json(&serde_json::json!({
+            "committee_tag": tag,
+            "operators": entries,
+            "ack_timeout_secs": ack_timeout_secs,
+        }));
+    if let Ok(token) = std::env::var("BTE_ADMIN_TOKEN") {
+        req = req.header("x-bte-admin", token);
+    }
+    let round: serde_json::Value = req.send().await?.error_for_status()?.json().await?;
+    let id = round["id"].as_str().context("no round id")?.to_string();
+    println!(
+        "dkg round {id}: n={} threshold={} quorum={} ack_deadline={}",
+        round["n"], round["threshold"], round["quorum"], round["ack_deadline"]
+    );
+    let Some(wait) = wait_secs else {
+        return Ok(());
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait);
+    loop {
+        let r: serde_json::Value = client
+            .get(format!("{coordinator}/v0/dkg/rounds/{id}"))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        match r["status"].as_str().unwrap_or("") {
+            "complete" => {
+                println!(
+                    "dkg complete: committee {} (n={} t={})",
+                    r["committee_id"].as_str().unwrap_or("?"),
+                    r["n"],
+                    r["threshold"]
+                );
+                return Ok(());
+            }
+            "failed" => bail!("dkg round failed: {}", r["error"]),
+            _ if std::time::Instant::now() > deadline => {
+                bail!("dkg round {id} did not settle in {wait}s")
+            }
+            _ => tokio::time::sleep(std::time::Duration::from_millis(1000)).await,
+        }
+    }
+}
+
+async fn dkg_status(coordinator: &str, round: &str) -> Result<()> {
+    let r: serde_json::Value = reqwest::Client::new()
+        .get(format!("{coordinator}/v0/dkg/rounds/{round}"))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    println!("{}", serde_json::to_string_pretty(&r)?);
+    Ok(())
+}
+
 async fn committee_init(coordinator: &str, params_path: &std::path::Path) -> Result<()> {
     let blob = std::fs::read(params_path)?;
     // Validate locally before shipping.
-    let params =
-        PublicParams::from_bytes(&blob).map_err(|e| anyhow::anyhow!("params file invalid: {e}"))?;
+    let (n, t, b) = describe_params(&blob)?;
     let client = reqwest::Client::new();
     let resp: serde_json::Value = client
         .post(format!("{coordinator}/v0/committees"))
@@ -129,11 +272,8 @@ async fn committee_init(coordinator: &str, params_path: &std::path::Path) -> Res
         .json()
         .await?;
     println!(
-        "committee registered: id={} (n={} t={} B={})",
+        "committee registered: id={} (n={n} t={t} B={b})",
         resp["id"].as_str().unwrap_or("?"),
-        params.n,
-        params.t,
-        params.b
     );
     Ok(())
 }
@@ -165,14 +305,12 @@ async fn e2e(
         }
     };
     let params_blob = B64.decode(committee["params_b64"].as_str().context("no params")?)?;
-    let params = PublicParams::from_bytes(&params_blob)
-        .map_err(|e| anyhow::anyhow!("bad params from coordinator: {e}"))?;
+    let keys = AnyParams::parse(&params_blob)?;
+    let (n, t, b) = describe_params(&params_blob)?;
     println!(
-        "e2e: committee {} (n={} t={} B={})",
+        "e2e: committee {} scheme={} (n={n} t={t} B={b})",
         &committee["id"].as_str().unwrap_or("?")[..16],
-        params.n,
-        params.t,
-        params.b
+        keys.scheme(),
     );
 
     let cond: serde_json::Value = client
@@ -191,12 +329,12 @@ async fn e2e(
         .collect();
     let mut rng = bte_crypto::os_rng();
     for p in &payloads {
-        let ct = seal(&params, p, &mut rng).map_err(|e| anyhow::anyhow!("seal: {e}"))?;
+        let sealed = keys.seal(&condition_id, p, &mut rng)?;
         client
             .post(format!("{coordinator}/v0/ciphertexts"))
             .json(&serde_json::json!({
                 "condition_id": condition_id,
-                "sealed_blob_b64": B64.encode(ct.to_bytes()),
+                "sealed_blob_b64": B64.encode(sealed),
             }))
             .send()
             .await?
@@ -264,4 +402,57 @@ async fn e2e(
         reveal["merkle_root"].as_str().unwrap_or("?")
     );
     Ok(())
+}
+
+/// Committee parameters of either scheme, for the dev commands.
+enum AnyParams {
+    V0(Box<PublicParams>),
+    V1(tbte::PublicParams),
+}
+
+impl AnyParams {
+    fn parse(blob: &[u8]) -> Result<AnyParams> {
+        match blob.get(..4) {
+            Some(b"BTE0") => Ok(AnyParams::V0(Box::new(
+                PublicParams::from_bytes(blob)
+                    .map_err(|e| anyhow::anyhow!("params invalid: {e}"))?,
+            ))),
+            Some(b"BTE1") => Ok(AnyParams::V1(
+                tbte::PublicParams::from_bytes(blob)
+                    .map_err(|e| anyhow::anyhow!("params invalid: {e}"))?,
+            )),
+            _ => bail!("unknown params magic"),
+        }
+    }
+
+    fn scheme(&self) -> &'static str {
+        match self {
+            AnyParams::V0(_) => "v0",
+            AnyParams::V1(_) => "v1",
+        }
+    }
+
+    fn seal(
+        &self,
+        condition_id: &str,
+        payload: &[u8],
+        rng: &mut (impl bte_crypto::rand::Rng + bte_crypto::rand::CryptoRng),
+    ) -> Result<Vec<u8>> {
+        Ok(match self {
+            AnyParams::V0(p) => seal(p, payload, rng)
+                .map_err(|e| anyhow::anyhow!("seal: {e}"))?
+                .to_bytes(),
+            AnyParams::V1(p) => tbte::seal(p, &tbte::condition_context(condition_id), payload, rng)
+                .map_err(|e| anyhow::anyhow!("seal: {e}"))?
+                .to_bytes(),
+        })
+    }
+}
+
+/// (n, t, B) of a params blob; B is the v1 batch stride.
+fn describe_params(blob: &[u8]) -> Result<(u16, u16, u32)> {
+    Ok(match AnyParams::parse(blob)? {
+        AnyParams::V0(p) => (p.n, p.t, p.b),
+        AnyParams::V1(p) => (p.n(), p.t(), tbte::MAX_BATCH_SLOTS as u32),
+    })
 }

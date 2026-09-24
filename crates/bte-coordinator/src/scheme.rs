@@ -143,10 +143,10 @@ impl Committee {
             Keys::V0 { params, .. } => Sealed::V0(
                 bte_crypto::seal(params, &payload, rng).expect("dummy payload is under the cap"),
             ),
-            Keys::V1 { params } => Sealed::V1(
+            Keys::V1 { params } => Sealed::V1(Box::new(
                 tbte::seal(params, &Self::context_for(condition_id), &payload, rng)
                     .expect("dummy payload is under the cap"),
-            ),
+            )),
         }
     }
 
@@ -174,7 +174,7 @@ impl Committee {
 #[derive(Clone)]
 pub enum Sealed {
     V0(bte_crypto::SealedCiphertext),
-    V1(tbte::Ciphertext),
+    V1(Box<tbte::Ciphertext>),
 }
 
 impl Sealed {
@@ -185,7 +185,7 @@ impl Sealed {
                 .map(Sealed::V0)
                 .map_err(|e| e.to_string()),
             Some(Scheme::V1) => tbte::Ciphertext::from_bytes(blob)
-                .map(Sealed::V1)
+                .map(|ct| Sealed::V1(Box::new(ct)))
                 .map_err(|e| e.to_string()),
             None => Err("unknown ciphertext magic (expected BTE0 or BTE1)".into()),
         }
@@ -397,7 +397,7 @@ pub fn finalize(
             let cts: Vec<tbte::Ciphertext> = cts
                 .iter()
                 .filter_map(|c| match c {
-                    Sealed::V1(ct) => Some(ct.clone()),
+                    Sealed::V1(ct) => Some((**ct).clone()),
                     Sealed::V0(_) => None,
                 })
                 .collect();

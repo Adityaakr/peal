@@ -44,6 +44,7 @@ pub async fn tick(app: &App) -> Result<()> {
     fire_at_block(app).await?;
     finalize_ready(app).await?;
     mark_stalled(app)?;
+    crate::dkg::tick(app)?;
     Ok(())
 }
 
