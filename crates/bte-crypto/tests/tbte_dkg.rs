@@ -33,20 +33,24 @@ struct Relay {
 fn setup(n: usize, seed: u64) -> (RoundConfig, Vec<Operator>, HashMap<IdentityKey, [u8; 32]>) {
     let mut rng = rng(seed);
     let identities: Vec<Identity> = (0..n).map(|_| generate_identity(&mut rng)).collect();
+    let box_secrets: Vec<BoxSecret> = (0..n).map(|_| BoxSecret::generate(&mut rng)).collect();
     let config = RoundConfig {
         committee_tag: b"committee:test".to_vec(),
         round: 0,
+        relay_round_id: format!("dkg_test_{seed}"),
         operators: identities
             .iter()
             .map(bte_crypto::tbte::dkg::identity_key_of)
             .collect(),
+        box_keys: box_secrets.iter().map(|b| b.public()).collect(),
     };
+    config.validate().unwrap();
     let mut operators = Vec::new();
     let mut boxes = HashMap::new();
-    for identity in identities {
-        let box_secret = BoxSecret::generate(&mut rng);
+    for (identity, box_secret) in identities.into_iter().zip(box_secrets) {
         let key = bte_crypto::tbte::dkg::identity_key_of(&identity);
         boxes.insert(key.clone(), box_secret.public());
+        assert_eq!(config.box_key_of(&key), Some(box_secret.public()));
         let mut dealer_seed = [0u8; 32];
         bte_crypto::rand::RngCore::fill_bytes(&mut rng, &mut dealer_seed);
         let round = OperatorRound::start(config.clone(), identity.clone(), dealer_seed).unwrap();

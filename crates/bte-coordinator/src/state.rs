@@ -11,9 +11,13 @@ use crate::db;
 pub struct Config {
     pub reveal_timeout_secs: i64,
     pub dev: bool,
-    /// Bearer for operator actions (starting a DKG round). `BTE_ADMIN_TOKEN`;
-    /// with `BTE_DEV=1` the check is waived.
+    /// Bearer for operator actions (starting a DKG round, registering a
+    /// committee): `BTE_ADMIN_TOKEN`.
     pub admin_token: Option<String>,
+    /// Waive the admin token: only with `BTE_DEV=1` AND a loopback listen
+    /// address (`BTE_LISTEN=127.0.0.1:...`). A hosted image built with
+    /// `BTE_DEV=1` binds `0.0.0.0` and therefore still needs the token.
+    pub admin_waiver: bool,
     /// Token bucket per IP: sustained requests/second and burst size.
     pub rate_rps: f64,
     pub rate_burst: f64,
@@ -81,6 +85,7 @@ impl Config {
             admin_token: std::env::var("BTE_ADMIN_TOKEN")
                 .ok()
                 .filter(|t| !t.is_empty()),
+            admin_waiver: std::env::var("BTE_DEV").is_ok_and(|v| v == "1") && listen_is_loopback(),
             rate_rps: std::env::var("BTE_RATE_RPS")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -158,25 +163,57 @@ impl App {
 
     /// Register a committee: persist + cache. Returns the id (digest hex).
     pub fn register_committee(&self, params_blob: &[u8]) -> Result<String> {
-        let id = self.cache_committee(params_blob)?;
-        let committee = self.committee(&id).expect("just cached");
-        let conn = self.0.db.lock().unwrap();
-        conn.execute(
-            "INSERT OR IGNORE INTO committees (id, params_blob, params_digest, n, t, b, scheme, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![
-                id,
-                params_blob,
-                id,
-                committee.n,
-                committee.t,
-                committee.b as i64,
-                committee.scheme.as_str(),
-                db::unix_now()
-            ],
-        )?;
+        self.register_committee_settled(params_blob, |_, _| Ok(true))
+    }
+
+    /// Register a committee together with whatever `settle` writes, in one
+    /// transaction; `settle` returning `Ok(false)` aborts both (the round was
+    /// no longer open) and the cache is left untouched.
+    pub fn register_committee_settled(
+        &self,
+        params_blob: &[u8],
+        settle: impl FnOnce(&rusqlite::Transaction<'_>, &str) -> rusqlite::Result<bool>,
+    ) -> Result<String> {
+        let committee = Committee::parse(params_blob)?;
+        let id = hex::encode(committee.digest);
+        {
+            let mut conn = self.0.db.lock().unwrap();
+            let tx = conn.transaction()?;
+            tx.execute(
+                "INSERT OR IGNORE INTO committees (id, params_blob, params_digest, n, t, b, scheme, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    id,
+                    params_blob,
+                    id,
+                    committee.n,
+                    committee.t,
+                    committee.b as i64,
+                    committee.scheme.as_str(),
+                    db::unix_now()
+                ],
+            )?;
+            if !settle(&tx, &id)? {
+                anyhow::bail!("round already settled");
+            }
+            tx.commit()?;
+        }
+        self.0
+            .committees
+            .write()
+            .unwrap()
+            .insert(id.clone(), Arc::new(committee));
         Ok(id)
     }
+}
+
+/// True when the configured listen address is loopback (dev stacks), so the
+/// admin waiver cannot apply to a publicly bound coordinator.
+fn listen_is_loopback() -> bool {
+    let addr = std::env::var("BTE_LISTEN").unwrap_or_default();
+    let host = addr.rsplit_once(':').map(|(h, _)| h).unwrap_or(&addr);
+    let host = host.trim_matches(|c| c == '[' || c == ']');
+    matches!(host, "127.0.0.1" | "localhost" | "::1")
 }
 
 pub fn new_id(prefix: &str) -> String {

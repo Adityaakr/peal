@@ -142,3 +142,34 @@ fn seal_with_randomness(
         body,
     }
 }
+
+/// Two valid ciphertexts under the same randomness `k` with different
+/// bodies: what a sealer who knows `k` can always produce. A relay must
+/// refuse the second under one condition (same KEM point).
+pub fn seal_twice_with_one_k(
+    params: &PublicParams,
+    context: &[u8],
+    rng: &mut (impl Rng + CryptoRng),
+) -> [super::Ciphertext; 2] {
+    let mut k = Fr::rand(rng);
+    while k.is_zero() {
+        k = Fr::rand(rng);
+    }
+    let mut first = seal_with_randomness(params, context, k, rng);
+    let mut second = seal_with_randomness(params, context, k, rng);
+    first.body = b"first body, not a dem output....".to_vec();
+    second.body = b"second body, not a dem output...".to_vec();
+    // Re-prove each over its own body.
+    for ct in [&mut first, &mut second] {
+        let body_hash: [u8; 32] = Sha256::digest(&ct.body).into();
+        let statement = super::nizk::Statement {
+            ct1: &ct.ct1,
+            ct2: &ct.ct2,
+            ct3: &ct.ct3,
+            context_hash: &ct.context_hash,
+            body_hash: &body_hash,
+        };
+        ct.proof = super::nizk::prove(params, k, &statement, rng);
+    }
+    [first, second]
+}

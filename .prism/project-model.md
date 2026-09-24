@@ -1248,3 +1248,13 @@ name carries "all run by us" beside it. Real operators replace the list once.
   Lesson: run the skeptic on the crypto core BEFORE wiring, it changed the
   wire format (context hash) once, cheaply.
 - Hosted committee is still v0. Migrating it is an operator action.
+- Attack-review lessons (2026-09-25, full fleet on the relay/intake/node):
+  a seed derived from identity + round digest was the worst bug (a relay
+  serving one configuration under two ids makes dealers re-deal one
+  polynomial); relays must never pick keys (box keys are self-signed);
+  anything an unauthenticated poster can trigger must be bounded before
+  work (operator index range, admitted share checks, cached headers, proof
+  checks outside the lock); "INSERT OR IGNORE" hides every UNIQUE
+  violation, use ON CONFLICT(col) DO NOTHING for the one you mean;
+  `BTE_DEV=1` in Dockerfile.railway is live, so dev waivers must also
+  require loopback. Do not weaken these when touching api.rs/dkg.rs.

@@ -245,15 +245,22 @@ async fn v1_intake_refuses_wrong_condition_bad_proof_and_duplicate_randomness() 
     let (status, _) = h.submit(&a, &mauled).await;
     assert_eq!(status, 400);
 
-    // The same randomness twice under one condition: second one refused,
-    // even though its content hash differs.
-    let pair = tbte::dev::seal_negated_pair(&h.params, &tbte::condition_context(&a), &mut rng);
-    let (status, _) = h.submit(&a, &pair[0]).await;
+    // The same randomness twice under one condition (a sealer who knows k
+    // can make two valid ciphertexts from it): the second is refused even
+    // though its content hash differs, with the reason named.
+    let twins = tbte::dev::seal_twice_with_one_k(&h.params, &tbte::condition_context(&a), &mut rng);
+    assert_ne!(twins[0].hash(), twins[1].hash());
+    let (status, _) = h.submit(&a, &twins[0]).await;
     assert_eq!(status, 200);
-    let mut same_k = pair[0].clone();
-    same_k.body.push(0);
-    let (status, resp) = h.submit(&a, &same_k).await;
+    let (status, resp) = h.submit(&a, &twins[1]).await;
     assert_eq!(status, 400, "{resp}");
+    assert!(
+        resp["error"].as_str().unwrap().contains("randomness"),
+        "{resp}"
+    );
+    // Replaying the very same ciphertext is a harmless no-op.
+    let (status, _) = h.submit(&a, &twins[0]).await;
+    assert_eq!(status, 200);
 
     // A v0 ciphertext is not accepted by a v1 committee.
     let (v0_params, _) = bte_crypto::ceremony(3, 2, 4, &mut rng).unwrap();
@@ -420,4 +427,68 @@ async fn v0_and_v1_committees_coexist() {
     let (status, reveal) = h.get(&format!("/v0/reveals/{c}")).await;
     assert_eq!(status, 200, "{reveal}");
     assert_eq!(reveal["slots"].as_array().unwrap().len(), 4, "v0 pads to B");
+}
+
+#[tokio::test]
+async fn garbage_shares_under_every_index_cannot_lock_honest_operators_out() {
+    // No operator authentication exists: the pairing check is the gate. A
+    // stranger posting a wire-valid wrong share under every index right after
+    // the freeze must not occupy the slots the honest shares need.
+    let h = harness().await;
+    let c = h.condition().await;
+    let ct = h.seal_for(&c, b"contested");
+    h.submit(&c, &ct).await;
+    engine::tick(&h.app).await.unwrap();
+    let (_, work) = h.get("/v0/work?operator=1").await;
+    let batch_id = work["batches"][0]["batch_id"].clone();
+    for j in 1..=5u16 {
+        let wrong = tbte::Share {
+            party_index: j,
+            value: h.params.pk(),
+        };
+        let (status, resp) = h
+            .post(
+                "/v0/shares",
+                json!({"batch_id": batch_id, "operator_id": j, "share_b64": B64.encode(wrong.to_bytes())}),
+            )
+            .await;
+        assert_eq!(status, 200);
+        assert_eq!(resp["verified"], json!(false));
+        assert_eq!(resp["duplicate"], json!(false));
+    }
+    // Out-of-range indices are refused before any work.
+    let (status, _) = h
+        .post(
+            "/v0/shares",
+            json!({"batch_id": batch_id, "operator_id": 9, "share_b64": B64.encode(tbte::Share { party_index: 9, value: h.params.pk() }.to_bytes())}),
+        )
+        .await;
+    assert_eq!(status, 400);
+    // Honest operators still see the work and their shares still count.
+    for op in &h.secrets[..3] {
+        assert_eq!(
+            h.work_and_share(op).await,
+            1,
+            "operator {} still has work",
+            op.party_index
+        );
+    }
+    engine::tick(&h.app).await.unwrap();
+    let (status, reveal) = h.get(&format!("/v0/reveals/{c}")).await;
+    assert_eq!(status, 200, "{reveal}");
+    let shares = reveal["shares"].as_array().unwrap();
+    assert_eq!(
+        shares
+            .iter()
+            .filter(|s| s["verified"] == json!(false))
+            .count(),
+        5
+    );
+    assert_eq!(
+        shares
+            .iter()
+            .filter(|s| s["verified"] == json!(true))
+            .count(),
+        3
+    );
 }

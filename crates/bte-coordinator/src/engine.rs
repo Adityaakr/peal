@@ -30,7 +30,7 @@ pub async fn tick(app: &App) -> Result<()> {
         let conn = app.0.db.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, committee_id FROM conditions
-             WHERE status = 'pending' AND kind = 'at_time' AND fires_at <= ?1",
+             WHERE status IN ('pending', 'freezing') AND kind = 'at_time' AND fires_at <= ?1",
         )?;
         let rows = stmt.query_map([now], |r| Ok((r.get(0)?, r.get(1)?)))?;
         rows.collect::<std::result::Result<_, _>>()?
@@ -56,7 +56,7 @@ async fn fire_at_block(app: &App) -> Result<()> {
         let conn = app.0.db.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, committee_id, chain_id, height FROM conditions
-             WHERE status = 'pending' AND kind = 'at_block'",
+             WHERE status IN ('pending', 'freezing') AND kind = 'at_block'",
         )?;
         let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?;
         rows.collect::<std::result::Result<_, _>>()?
@@ -122,9 +122,18 @@ async fn freeze_condition(app: &App, condition_id: &str, committee_id: &str) -> 
         .context("unknown committee for frozen condition")?;
     let b = committee.b;
 
-    // Sort real ciphertexts into position order.
+    // Close intake first, in the same lock scope as the read below, so no
+    // ciphertext accepted after this line can be left without a position.
+    // (`freezing` is momentary; a crash here is retried by the next tick.)
     let mut real: Vec<(String, Vec<u8>)> = {
         let conn = app.0.db.lock().unwrap();
+        let closed = conn.execute(
+            "UPDATE conditions SET status = 'freezing' WHERE id = ?1 AND status IN ('pending', 'freezing')",
+            [condition_id],
+        )?;
+        if closed != 1 {
+            anyhow::bail!("condition {condition_id} is not open for freezing");
+        }
         let mut stmt =
             conn.prepare("SELECT ct_hash, sealed_blob FROM ciphertexts WHERE condition_id = ?1")?;
         let rows = stmt.query_map([condition_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
@@ -149,6 +158,11 @@ async fn freeze_condition(app: &App, condition_id: &str, committee_id: &str) -> 
     }
 
     let ordered: Vec<(String, Vec<u8>)> = real.into_iter().chain(dummies.clone()).collect();
+    // Parsed once here for the header cache and the cross terms.
+    let parsed: Vec<Sealed> = ordered
+        .iter()
+        .map(|(_, blob)| Sealed::parse(blob).expect("stored blob is valid"))
+        .collect();
 
     let frozen_at = unix_now();
     let batch_ids: Vec<i64> = {
@@ -174,6 +188,16 @@ async fn freeze_condition(app: &App, condition_id: &str, committee_id: &str) -> 
                 rusqlite::params![condition_id, batch_index as i64, frozen_at],
             )?;
             ids.push(tx.last_insert_rowid());
+        }
+        // The packed headers every operator and verifier will ask for, so
+        // serving them never parses a ciphertext under the lock.
+        for (batch_index, batch_id) in ids.iter().enumerate() {
+            let slice = &parsed[batch_index * b..((batch_index + 1) * b).min(total)];
+            let headers = scheme::Headers::of(slice)?;
+            tx.execute(
+                "INSERT OR REPLACE INTO batch_headers (batch_id, slots, headers) VALUES (?1, ?2, ?3)",
+                rusqlite::params![*batch_id, headers.len() as i64, headers.pack()],
+            )?;
         }
         tx.execute(
             "UPDATE conditions SET status = 'frozen' WHERE id = ?1",
@@ -237,10 +261,7 @@ async fn freeze_condition(app: &App, condition_id: &str, committee_id: &str) -> 
     // Pipelining: cross-terms depend only on ciphertexts + params, so they are
     // computed now, before any share exists.
     for (batch_index, batch_id) in batch_ids.iter().enumerate() {
-        let cts: Vec<Sealed> = ordered[batch_index * b..((batch_index + 1) * b).min(total)]
-            .iter()
-            .map(|(_, blob)| Sealed::parse(blob).expect("stored blob is valid"))
-            .collect();
+        let cts: Vec<Sealed> = parsed[batch_index * b..((batch_index + 1) * b).min(total)].to_vec();
         run_pre_decrypt(app, *batch_id, committee_id, cts).await?;
     }
     Ok(())

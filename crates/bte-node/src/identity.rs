@@ -8,7 +8,7 @@ use crate::keystore::{open_bytes, seal_bytes, Encrypted};
 use anyhow::{bail, Context, Result};
 use bte_crypto::tbte::dkg::{
     generate_identity, identity_bytes, identity_from_bytes, identity_key_bytes, identity_key_of,
-    BoxSecret, Identity, IdentityKey,
+    sign_box_key, BoxSecret, Identity, IdentityKey,
 };
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +21,10 @@ pub struct IdentityFile {
     /// X25519 public key, hex.
     #[serde(rename = "box")]
     pub box_key: String,
+    /// The identity's signature over the box key, hex: what a round creator
+    /// passes on so no relay can substitute a box key of its own.
+    #[serde(default)]
+    pub box_sig: String,
     #[serde(flatten)]
     pub encrypted: Encrypted,
 }
@@ -54,6 +58,21 @@ impl OperatorIdentity {
         hex::encode(self.box_secret.public())
     }
 
+    /// The identity's signature over its box key, hex.
+    pub fn box_sig_hex(&self) -> String {
+        hex::encode(sign_box_key(&self.identity, &self.box_secret.public()))
+    }
+
+    /// `identity:box:box_sig`, what `bte-cli dkg-init --operator` takes.
+    pub fn operator_entry(&self) -> String {
+        format!(
+            "{}:{}:{}",
+            self.key_hex(),
+            self.box_hex(),
+            self.box_sig_hex()
+        )
+    }
+
     pub fn seal(&self, passphrase: &str) -> Result<IdentityFile> {
         let mut plain = identity_bytes(&self.identity);
         plain.extend_from_slice(&self.box_secret.to_bytes());
@@ -63,6 +82,7 @@ impl OperatorIdentity {
             kind: KIND.into(),
             identity: self.key_hex(),
             box_key: self.box_hex(),
+            box_sig: self.box_sig_hex(),
             encrypted,
         })
     }
@@ -92,8 +112,7 @@ impl OperatorIdentity {
 }
 
 pub fn write_identity(path: &std::path::Path, file: &IdentityFile) -> Result<()> {
-    std::fs::write(path, serde_json::to_vec_pretty(file)?)?;
-    Ok(())
+    crate::v1store::write_private(path, &serde_json::to_vec_pretty(file)?)
 }
 
 pub fn read_identity(path: &std::path::Path) -> Result<IdentityFile> {

@@ -79,11 +79,48 @@ pub struct RoundConfig {
     pub committee_tag: Vec<u8>,
     /// Increments for every attempt, failed ones included.
     pub round: u64,
+    /// The relay's own name for this round instance. Part of the digest so
+    /// the same (tag, round, operators) served under two ids are two rounds
+    /// and nothing signed for one verifies in the other.
+    pub relay_round_id: String,
     /// The operators' identity keys; order does not matter.
     pub operators: Vec<IdentityKey>,
+    /// Each operator's X25519 box key, same order as `operators`. Part of the
+    /// digest, and each one must carry the operator's own signature
+    /// (`sign_box_key`) before a dealer seals anything to it.
+    pub box_keys: Vec<[u8; 32]>,
+}
+
+/// Signature namespace an operator uses to vouch for its own box key.
+const BOX_KEY_NAMESPACE: &[u8] = b"PEAL-BTE-V1-DKG-BOX-KEY";
+
+/// An operator vouches for the box key dealers may seal to.
+pub fn sign_box_key(identity: &Identity, box_key: &[u8; 32]) -> Vec<u8> {
+    identity.sign(BOX_KEY_NAMESPACE, box_key).encode().to_vec()
+}
+
+/// Check an operator's vouching signature over a box key.
+pub fn verify_box_key(identity: &IdentityKey, box_key: &[u8; 32], signature: &[u8]) -> bool {
+    match IdentitySignature::decode(signature) {
+        Ok(sig) => identity.verify(BOX_KEY_NAMESPACE, box_key, &sig),
+        Err(_) => false,
+    }
 }
 
 impl RoundConfig {
+    /// Everything a round must satisfy before anyone acts on it: a sane
+    /// operator count, no duplicate identity, one box key per operator.
+    pub fn validate(&self) -> Result<(), BteError> {
+        self.operator_set()?;
+        if self.box_keys.len() != self.operators.len() {
+            return Err(err("one box key per operator"));
+        }
+        if self.relay_round_id.is_empty() || self.relay_round_id.len() > 128 {
+            return Err(err("relay round id must be 1..128 bytes"));
+        }
+        Ok(())
+    }
+
     fn operator_set(&self) -> Result<Set<IdentityKey>, BteError> {
         let n = self.operators.len();
         if !(1..=MAX_PARTICIPANTS.get() as usize).contains(&n) {
@@ -92,6 +129,14 @@ impl RoundConfig {
         let set = Set::try_from(self.operators.clone())
             .map_err(|_| err("duplicate operator identity"))?;
         Ok(set)
+    }
+
+    /// The box key an operator published for this round.
+    pub fn box_key_of(&self, operator: &IdentityKey) -> Option<[u8; 32]> {
+        self.operators
+            .iter()
+            .position(|o| o == operator)
+            .and_then(|i| self.box_keys.get(i).copied())
     }
 
     fn info(&self) -> Result<Info<MinPk, IdentityKey>, BteError> {
@@ -111,17 +156,34 @@ impl RoundConfig {
         .map_err(|e| err(format!("{e:?}")))
     }
 
-    /// Binds envelopes to one round.
+    /// Binds envelopes to one round instance: tag, round number, relay id,
+    /// and every operator's identity with its box key, in identity order.
+    /// An invalid configuration (see `validate`) still digests, over the
+    /// operators as given, so callers must validate before trusting it.
     pub fn digest(&self) -> [u8; 32] {
         let mut h = Sha256::new();
         h.update(NAMESPACE);
         h.update((self.committee_tag.len() as u32).to_le_bytes());
         h.update(&self.committee_tag);
         h.update(self.round.to_le_bytes());
-        if let Ok(set) = self.operator_set() {
-            for pk in set.iter() {
-                h.update(pk.encode());
-            }
+        h.update((self.relay_round_id.len() as u32).to_le_bytes());
+        h.update(self.relay_round_id.as_bytes());
+        let mut entries: Vec<(Vec<u8>, [u8; 32])> = self
+            .operators
+            .iter()
+            .enumerate()
+            .map(|(i, pk)| {
+                (
+                    pk.encode().to_vec(),
+                    self.box_keys.get(i).copied().unwrap_or([0u8; 32]),
+                )
+            })
+            .collect();
+        entries.sort();
+        h.update((entries.len() as u32).to_le_bytes());
+        for (pk, bx) in entries {
+            h.update(&pk);
+            h.update(bx);
         }
         h.finalize().into()
     }
@@ -288,6 +350,20 @@ pub struct RoundResult {
     pub output: Vec<u8>,
 }
 
+/// Parse and authenticate one signed dealer log for a round: the dealer it
+/// names, if the signature verifies for this round. A relay uses this to
+/// drop garbage before it can fail a round; players use it to refuse a
+/// published log set that does not check out.
+pub fn check_signed_log(config: &RoundConfig, bytes: &[u8]) -> Result<IdentityKey, BteError> {
+    let info = config.info()?;
+    let signed = SignedDealerLog::<MinPk, Identity>::decode_cfg(bytes, &MAX_PARTICIPANTS)
+        .map_err(|e| err(format!("signed log: {e}")))?;
+    let (dealer, _) = signed
+        .check(&info)
+        .ok_or_else(|| err("signed log: bad signature"))?;
+    Ok(dealer)
+}
+
 fn collect_logs(
     info: &Info<MinPk, IdentityKey>,
     signed_logs: &[Vec<u8>],
@@ -300,7 +376,9 @@ fn collect_logs(
         let (dealer, log): (IdentityKey, DealerLog<MinPk, IdentityKey>) = signed
             .check(info)
             .ok_or_else(|| err("signed log: bad signature"))?;
-        logs.record(dealer, log);
+        if logs.record(dealer, log) {
+            return Err(err("signed log: a dealer appears twice"));
+        }
     }
     Ok(logs)
 }

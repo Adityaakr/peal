@@ -804,35 +804,54 @@ async fn create_seal(
     })?;
     let id = hex::encode(ct.hash());
 
-    let conn = app.0.db.lock().unwrap();
-    let (status, committee_id): (String, String) = conn
-        .query_row(
-            "SELECT status, committee_id FROM conditions WHERE id = ?1",
-            [&round_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .map_err(|_| Problem::missing("round"))?;
-    if status != "pending" {
-        return Err(Problem::new(
+    let round_closed = || {
+        Problem::new(
             StatusCode::CONFLICT,
             "round_closed",
             "this round has already closed; nothing further can be sealed to it",
-        ));
+        )
+    };
+    let committee = {
+        let conn = app.0.db.lock().unwrap();
+        let (status, committee_id) = crate::api::condition_intake_state(&conn, &round_id)
+            .map_err(|_| Problem::missing("round"))?;
+        if status != "pending" {
+            return Err(round_closed());
+        }
+        app.committee(&committee_id)
+            .ok_or_else(|| Problem::internal("committee not cached"))?
+    };
+    // The proof check runs outside the lock.
+    let ct = tokio::task::spawn_blocking({
+        let committee = committee.clone();
+        let round_id = round_id.clone();
+        move || ct.admit(&committee, &round_id).map(|()| ct)
+    })
+    .await
+    .map_err(Problem::internal)?
+    .map_err(|e| {
+        Problem::new(StatusCode::UNPROCESSABLE_ENTITY, "invalid_ciphertext", e)
+            .field("ciphertext_b64")
+    })?;
+
+    let conn = app.0.db.lock().unwrap();
+    let (status, _) = crate::api::condition_intake_state(&conn, &round_id)
+        .map_err(|_| Problem::missing("round"))?;
+    if status != "pending" {
+        return Err(round_closed());
     }
-    let committee = app
-        .committee(&committee_id)
-        .ok_or_else(|| Problem::internal("committee not cached"))?;
-    crate::api::admit_ciphertext(&conn, &committee, &ct, &round_id).map_err(|e| {
+    crate::api::check_capacity(&conn, &committee, &round_id).map_err(|e| {
         Problem::new(StatusCode::UNPROCESSABLE_ENTITY, "invalid_ciphertext", e)
             .field("ciphertext_b64")
     })?;
 
     // The same ciphertext is the same seal: its id is its hash, so a retry
-    // cannot create a second row and does not need an idempotency key.
+    // cannot create a second row and does not need an idempotency key. A
+    // different ciphertext with the same KEM point is a conflict.
     let inserted = conn
         .execute(
-            "INSERT OR IGNORE INTO ciphertexts (ct_hash, condition_id, sealed_blob, is_dummy, created_at, code, kem_point)
-             VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6)",
+            "INSERT INTO ciphertexts (ct_hash, condition_id, sealed_blob, is_dummy, created_at, code, kem_point)
+             VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6) ON CONFLICT(ct_hash) DO NOTHING",
             rusqlite::params![
                 id,
                 round_id,

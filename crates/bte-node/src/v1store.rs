@@ -83,7 +83,28 @@ pub fn share_path(state_dir: &Path, committee_id: &str) -> PathBuf {
 }
 
 pub fn write_share(path: &Path, file: &ShareFile) -> Result<()> {
-    std::fs::write(path, serde_json::to_vec_pretty(file)?)?;
+    write_private(path, &serde_json::to_vec_pretty(file)?)
+}
+
+/// Write a file only its owner can read (0600), atomically: a temp file
+/// beside it, fsync, rename. Nothing half-written is ever loaded.
+pub fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("tmp");
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts
+        .open(&tmp)
+        .with_context(|| format!("creating {}", tmp.display()))?;
+    f.write_all(bytes)?;
+    f.sync_all()?;
+    drop(f);
+    std::fs::rename(&tmp, path).with_context(|| format!("renaming into {}", path.display()))?;
     Ok(())
 }
 
@@ -99,11 +120,19 @@ pub fn load_all(state_dir: &Path, passphrase: &str) -> Result<Vec<HeldCommittee>
         if !(name.starts_with("committee-") && name.ends_with(".share")) {
             continue;
         }
-        let file: ShareFile = serde_json::from_slice(&std::fs::read(&path)?)
-            .with_context(|| format!("parsing {}", path.display()))?;
-        held.push(
-            open_share(&file, passphrase).with_context(|| format!("opening {}", path.display()))?,
-        );
+        // One unreadable file must not keep the node from serving the others.
+        let parsed = std::fs::read(&path)
+            .map_err(|e| anyhow::anyhow!("{e}"))
+            .and_then(|bytes| {
+                serde_json::from_slice::<ShareFile>(&bytes).map_err(|e| anyhow::anyhow!("{e}"))
+            })
+            .and_then(|file| open_share(&file, passphrase));
+        match parsed {
+            Ok(share) => held.push(share),
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "skipping a share file that does not open")
+            }
+        }
     }
     Ok(held)
 }

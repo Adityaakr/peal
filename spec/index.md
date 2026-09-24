@@ -113,6 +113,15 @@ Deviations only via DEVIATIONS.md (section "v1").
 - Pipelining as in v0: cross terms depend only on ciphertexts, so
   `pre_decrypt` runs before any share exists; `finalize` opens every slot and
   a failed AEAD tag marks that slot only.
+- Relay hardening (2026-09-25 review): operators sign their box keys and a
+  round's `operators` entries carry `box_sig`; the round digest covers the
+  relay round id and the box keys; nodes keep a fresh dealer seed per
+  digest and refuse to deal one digest twice; signed logs are checked at
+  the door; `POST /v0/dkg/rounds` and `POST /v0/committees` need
+  `BTE_ADMIN_TOKEN` (the `BTE_DEV=1` waiver only on loopback); share slots
+  hold verified shares only (`rejected_shares` feeds the reveal's share
+  log); packed headers are cached per batch (`batch_headers`); round JSON
+  carries `server_time` for deadline comparisons.
 - Coordinator: v1 committees carry `scheme` (`GET /v0/committees/:id` returns
   `scheme` and `setup_digest`; `/v0/work` batches carry `scheme`,
   `committee_id`, `slots`; `/v1/parameters` returns `scheme`). Intake verifies

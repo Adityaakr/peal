@@ -157,6 +157,9 @@ struct V1Node {
     passphrase: String,
     held: Vec<HeldCommittee>,
     rounds: HashMap<String, RoundDriver>,
+    /// Rounds this node will not take part in (malformed, or already dealt
+    /// under another relay id).
+    refused: std::collections::HashSet<String>,
 }
 
 #[tokio::main]
@@ -221,6 +224,7 @@ async fn main() -> Result<()> {
                 passphrase: passphrase.clone(),
                 held,
                 rounds: HashMap::new(),
+                refused: std::collections::HashSet::new(),
             })
         }
         None => None,
@@ -367,14 +371,15 @@ async fn poll_v1(client: &reqwest::Client, cfg: &Config, node: &V1Node) -> Resul
 }
 
 /// DKG: pick up every round the relay names us in, drive it, and keep the
-/// share once it settles.
+/// share once it settles. A round that cannot be joined or stepped is logged
+/// and skipped; it never stops the others.
 async fn poll_dkg(node: &mut V1Node, relay: &Relay) -> Result<()> {
     let rounds = relay.rounds_for(&node.me.key_hex()).await?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs() as i64;
     for info in rounds {
-        if info.status == "failed" {
+        if info.status == "failed" || node.refused.contains(&info.id) {
             continue;
         }
         if let Some(committee_id) = &info.committee_id {
@@ -389,11 +394,26 @@ async fn poll_dkg(node: &mut V1Node, relay: &Relay) -> Result<()> {
                 status = info.status,
                 "joining dkg round"
             );
-            node.rounds
-                .insert(info.id.clone(), RoundDriver::new(&node.me, info.clone())?);
+            match RoundDriver::new(&node.me, info.clone(), &node.state_dir) {
+                Ok(driver) => {
+                    node.rounds.insert(info.id.clone(), driver);
+                }
+                Err(e) => {
+                    warn!(round = info.id, error = %e, "refusing dkg round");
+                    node.refused.insert(info.id.clone());
+                    continue;
+                }
+            }
         }
         let driver = node.rounds.get_mut(&info.id).expect("inserted");
-        match driver.step(&node.me, relay, now).await? {
+        let progress = match driver.step(&node.me, relay, now).await {
+            Ok(p) => p,
+            Err(e) => {
+                warn!(round = info.id, error = %e, "dkg step failed; will retry");
+                continue;
+            }
+        };
+        match progress {
             Progress::Done => {
                 let result = driver.result.as_ref().expect("done carries a result");
                 let secret = result

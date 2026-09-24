@@ -14,13 +14,12 @@ use crate::identity::OperatorIdentity;
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine;
 use bte_crypto::tbte::dkg::{
-    box_aad, identity_key_bytes, identity_key_from_bytes, open_box, seal_box, Envelope,
-    IdentityKey, Kind, OperatorRound, RoundConfig, RoundResult,
+    box_aad, identity_key_bytes, identity_key_from_bytes, open_box, seal_box, verify_box_key,
+    Envelope, IdentityKey, Kind, OperatorRound, RoundConfig, RoundResult,
 };
-use hkdf::Hkdf;
 use serde::Deserialize;
-use sha2::Sha256;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 
@@ -29,6 +28,10 @@ pub struct OperatorEntry {
     pub identity: String,
     #[serde(rename = "box")]
     pub box_key: String,
+    /// The operator's own signature over its box key. A dealer seals to a
+    /// box key only after checking it; a relay cannot substitute its own.
+    #[serde(default)]
+    pub box_sig: String,
 }
 
 /// A round as the relay describes it.
@@ -41,6 +44,10 @@ pub struct RoundInfo {
     pub digest: String,
     pub status: String,
     pub ack_deadline: i64,
+    /// The relay's clock when it answered; deadlines are compared against
+    /// it, not against the node's clock.
+    #[serde(default)]
+    pub server_time: Option<i64>,
     #[serde(default)]
     pub committee_id: Option<String>,
     #[serde(default)]
@@ -48,30 +55,38 @@ pub struct RoundInfo {
 }
 
 impl RoundInfo {
+    /// The round as the relay describes it, accepted only if every box key
+    /// is signed by its operator and the relay's digest is the one this
+    /// configuration produces.
     pub fn config(&self) -> Result<RoundConfig> {
         let mut operators = Vec::with_capacity(self.operators.len());
+        let mut box_keys = Vec::with_capacity(self.operators.len());
         for o in &self.operators {
             let raw = hex::decode(&o.identity).context("operator identity hex")?;
-            operators.push(identity_key_from_bytes(&raw).map_err(|e| anyhow!("{e}"))?);
+            let key = identity_key_from_bytes(&raw).map_err(|e| anyhow!("{e}"))?;
+            let bx: [u8; 32] = hex::decode(&o.box_key)
+                .context("box key hex")?
+                .try_into()
+                .map_err(|_| anyhow!("box key must be 32 bytes"))?;
+            let sig = hex::decode(&o.box_sig).context("box_sig hex")?;
+            if !verify_box_key(&key, &bx, &sig) {
+                bail!("box key of {} is not signed by that identity", o.identity);
+            }
+            operators.push(key);
+            box_keys.push(bx);
         }
         let config = RoundConfig {
             committee_tag: self.committee_tag.as_bytes().to_vec(),
             round: self.round,
+            relay_round_id: self.id.clone(),
             operators,
+            box_keys,
         };
+        config.validate().map_err(|e| anyhow!("{e}"))?;
         if hex::encode(config.digest()) != self.digest.to_lowercase() {
             bail!("relay's round digest does not match its configuration");
         }
         Ok(config)
-    }
-
-    fn box_key_of(&self, identity_hex: &str) -> Option<[u8; 32]> {
-        let entry = self
-            .operators
-            .iter()
-            .find(|o| o.identity.eq_ignore_ascii_case(identity_hex))?;
-        let raw = hex::decode(&entry.box_key).ok()?;
-        raw.try_into().ok()
     }
 }
 
@@ -191,21 +206,50 @@ pub struct RoundDriver {
     dealer_closed: bool,
     /// Log envelopes by seq, for finalization with the relay's chosen set.
     logs: HashMap<i64, Vec<u8>>,
+    /// Polls spent waiting for listed logs the relay has not served.
+    missing_logs_polls: u32,
     pub result: Option<RoundResult>,
 }
 
-/// The dealer's seed: a function of the identity and the round, so a
-/// restarted process deals the same polynomial again.
-fn dealer_seed(me: &OperatorIdentity, digest: &[u8; 32]) -> [u8; 32] {
-    let ikm = bte_crypto::tbte::dkg::identity_bytes(&me.identity);
-    let hk = Hkdf::<Sha256>::new(Some(b"PEAL-BTE-V1-DKG-DEALER-SEED"), &ikm);
+/// The dealer's seed: fresh entropy the first time a round digest is seen,
+/// kept in a private file so a restarted process deals the same polynomial
+/// again. A digest is dealt once: if the relay later serves the same
+/// (tag, round, operators) under another id, or a database reset replays
+/// round 0, the node refuses rather than reveal the same polynomial twice.
+fn dealer_seed(seed_dir: &Path, digest: &[u8; 32], relay_round_id: &str) -> Result<[u8; 32]> {
+    std::fs::create_dir_all(seed_dir)?;
+    let path = seed_dir.join(format!("dkg-{}.seed", hex::encode(digest)));
+    if let Ok(bytes) = std::fs::read(&path) {
+        let cut = bytes
+            .iter()
+            .position(|b| *b == b'\n')
+            .context("seed file format")?;
+        let (id, seed) = (&bytes[..cut], &bytes[cut + 1..]);
+        if id != relay_round_id.as_bytes() {
+            bail!(
+                "round digest {} was already dealt under relay round {}; refusing to deal it again",
+                hex::encode(digest),
+                String::from_utf8_lossy(id)
+            );
+        }
+        return seed.try_into().map_err(|_| anyhow!("seed file length"));
+    }
     let mut seed = [0u8; 32];
-    hk.expand(digest, &mut seed).expect("valid length");
-    seed
+    bte_crypto::rand::RngCore::fill_bytes(&mut bte_crypto::os_rng(), &mut seed);
+    let mut bytes = relay_round_id.as_bytes().to_vec();
+    bytes.push(b'\n');
+    bytes.extend_from_slice(&seed);
+    crate::v1store::write_private(&path, &bytes)?;
+    Ok(seed)
 }
 
+/// How many polls a settled round may sit with logs the relay lists but
+/// never serves before the node gives up on it.
+const MISSING_LOGS_PATIENCE: u32 = 30;
+
 impl RoundDriver {
-    pub fn new(me: &OperatorIdentity, info: RoundInfo) -> Result<RoundDriver> {
+    /// `seed_dir` keeps this node's dealer seeds (the state directory).
+    pub fn new(me: &OperatorIdentity, info: RoundInfo, seed_dir: &Path) -> Result<RoundDriver> {
         let config = info.config()?;
         let me_key = me.key();
         let me_hex = me.key_hex();
@@ -216,12 +260,9 @@ impl RoundDriver {
         {
             bail!("this identity is not an operator of round {}", info.id);
         }
-        let round = OperatorRound::start(
-            config.clone(),
-            me.identity.clone(),
-            dealer_seed(me, &config.digest()),
-        )
-        .map_err(|e| anyhow!("{e}"))?;
+        let seed = dealer_seed(seed_dir, &config.digest(), &info.id)?;
+        let round = OperatorRound::start(config.clone(), me.identity.clone(), seed)
+            .map_err(|e| anyhow!("{e}"))?;
         Ok(RoundDriver {
             info,
             config,
@@ -235,6 +276,7 @@ impl RoundDriver {
             posted_own: false,
             dealer_closed: false,
             logs: HashMap::new(),
+            missing_logs_polls: 0,
             result: None,
         })
     }
@@ -257,7 +299,8 @@ impl RoundDriver {
         Envelope::sign(&me.identity, self.config.digest(), kind, to, payload)
     }
 
-    /// One poll of the relay.
+    /// One poll of the relay. `now` is this node's clock and is used only
+    /// when the relay does not report its own.
     pub async fn step(
         &mut self,
         me: &OperatorIdentity,
@@ -272,6 +315,9 @@ impl RoundDriver {
         if latest.status == "failed" {
             return Ok(Progress::Failed(format!("round {} failed", self.info.id)));
         }
+        // Deadlines are the relay's; compare them against the relay's clock.
+        let now = latest.server_time.unwrap_or(now);
+        let ack_deadline = latest.ack_deadline;
         // A settled round takes no more envelopes; a restarted node only
         // replays what is there to rebuild its player and finalize.
         let can_post = latest.status == "open";
@@ -289,8 +335,8 @@ impl RoundDriver {
             for (player, plain) in round.private_messages() {
                 let player_hex = hex::encode(identity_key_bytes(&player));
                 let recipient_box = self
-                    .info
-                    .box_key_of(&player_hex)
+                    .config
+                    .box_key_of(&player)
                     .with_context(|| format!("no box key for operator {player_hex}"))?;
                 let sealed = seal_box(
                     &recipient_box,
@@ -382,7 +428,7 @@ impl RoundDriver {
 
         // Close our dealer log once everyone acknowledged or time is up.
         let everyone = self.acks_received.len() >= self.config.n() as usize;
-        if can_post && !self.dealer_closed && (everyone || now >= self.info.ack_deadline) {
+        if can_post && !self.dealer_closed && (everyone || now >= ack_deadline) {
             if let Some(round) = self.round.as_mut() {
                 let log = round.finalize_dealer().map_err(|e| anyhow!("{e}"))?;
                 relay
@@ -400,7 +446,16 @@ impl RoundDriver {
                 for seq in &seqs {
                     match self.logs.get(seq) {
                         Some(log) => chosen.push(log.clone()),
-                        None => return Ok(Progress::LogPosted),
+                        None => {
+                            self.missing_logs_polls += 1;
+                            if self.missing_logs_polls > MISSING_LOGS_PATIENCE {
+                                return Ok(Progress::Failed(format!(
+                                    "relay settled round {} on log {seq}, which it never served",
+                                    self.info.id
+                                )));
+                            }
+                            return Ok(Progress::LogPosted);
+                        }
                     }
                 }
                 let round = self.round.take().context("round already finalized")?;

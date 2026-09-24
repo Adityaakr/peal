@@ -278,6 +278,32 @@ impl Headers {
         self.len() == 0
     }
 
+    /// Parse a packed header blob of a known scheme.
+    pub fn unpack(scheme: Scheme, packed: &[u8]) -> Result<Headers> {
+        match scheme {
+            Scheme::V0 => {
+                if !packed.len().is_multiple_of(48) {
+                    return Err(anyhow!("v0 headers must be a multiple of 48 bytes"));
+                }
+                Ok(Headers::V0(
+                    packed
+                        .chunks(48)
+                        .map(bte_crypto::wire::header_from_bytes)
+                        .collect::<Result<_, _>>()?,
+                ))
+            }
+            Scheme::V1 => Ok(Headers::V1(tbte::wire::unpack_headers(packed)?)),
+        }
+    }
+
+    /// How many headers a packed blob holds, without parsing it.
+    pub fn packed_len(scheme: Scheme, packed: &[u8]) -> usize {
+        match scheme {
+            Scheme::V0 => packed.len() / 48,
+            Scheme::V1 => packed.len() / tbte::wire::HEADER_BYTES,
+        }
+    }
+
     /// Packed for the wire: v0 bare 48-byte points, v1 framed 325-byte headers.
     pub fn pack(&self) -> Vec<u8> {
         match self {
@@ -327,7 +353,13 @@ pub fn verify_share(committee: &Committee, headers: &Headers, share: &AnyShare) 
         (Keys::V0 { params, .. }, Headers::V0(h), AnyShare::V0(s)) => {
             bte_crypto::verify_share(params, h, s)
         }
-        (Keys::V1 { params }, Headers::V1(h), AnyShare::V1(s)) => tbte::verify_share(params, h, s),
+        // Every v1 ciphertext's proof was checked at intake and the batch was
+        // admitted (`check_batch`) when its cross terms were computed at
+        // freeze, so a share costs two pairings here, not a proof per slot:
+        // an unauthenticated poster cannot burn seconds of CPU per request.
+        (Keys::V1 { params }, Headers::V1(h), AnyShare::V1(s)) => {
+            tbte::verify_share_admitted(params, h, s)
+        }
         _ => false,
     }
 }

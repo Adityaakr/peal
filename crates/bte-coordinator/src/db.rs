@@ -164,6 +164,25 @@ pub fn open(path: &str) -> Result<Connection> {
     conn.execute_batch(crate::intents::SCHEMA)?;
     // The DKG relay (BTE v1 committees). Additive tables.
     conn.execute_batch(crate::dkg::SCHEMA)?;
+    // Shares that failed the pairing check are kept for the audit log but
+    // never under the (batch, operator) key an honest share needs, so a
+    // stranger posting garbage under every index cannot lock operators out.
+    // Packed batch headers are cached at freeze so serving work and reveals
+    // never re-parses ciphertexts under the database lock.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS rejected_shares (
+            batch_id     INTEGER NOT NULL REFERENCES batches(id),
+            operator_id  INTEGER NOT NULL,
+            share_blob   BLOB NOT NULL,
+            submitted_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_rejected_shares_batch ON rejected_shares(batch_id);
+         CREATE TABLE IF NOT EXISTS batch_headers (
+            batch_id INTEGER PRIMARY KEY REFERENCES batches(id),
+            slots    INTEGER NOT NULL,
+            headers  BLOB NOT NULL
+         );",
+    )?;
     Ok(conn)
 }
 

@@ -45,8 +45,9 @@ enum Command {
         file: std::path::PathBuf,
     },
     /// v1: start a DKG round on a coordinator's relay. Each --operator is
-    /// `identity_hex:box_hex` as printed by `identity new`. Needs
-    /// BTE_ADMIN_TOKEN unless the coordinator runs with BTE_DEV=1.
+    /// `identity_hex:box_hex:box_sig_hex` as printed by `identity-new` /
+    /// `identity-show`. Needs BTE_ADMIN_TOKEN unless the coordinator runs
+    /// with BTE_DEV=1 on loopback.
     DkgInit {
         #[arg(long)]
         coordinator: String,
@@ -172,15 +173,18 @@ fn identity_new(out: &std::path::Path) -> Result<()> {
     println!("identity written: {}", out.display());
     println!("  identity: {}", me.key_hex());
     println!("  box:      {}", me.box_hex());
-    println!("  operator: {}:{}", me.key_hex(), me.box_hex());
+    println!("  operator: {}", me.operator_entry());
     Ok(())
 }
 
 fn identity_show(file: &std::path::Path) -> Result<()> {
     let f = identity::read_identity(file)?;
+    if f.box_sig.is_empty() {
+        bail!("identity file predates box-key signatures; make a new one with identity-new");
+    }
     println!("identity: {}", f.identity);
     println!("box:      {}", f.box_key);
-    println!("operator: {}:{}", f.identity, f.box_key);
+    println!("operator: {}:{}:{}", f.identity, f.box_key, f.box_sig);
     Ok(())
 }
 
@@ -193,10 +197,11 @@ async fn dkg_init(
 ) -> Result<()> {
     let mut entries = Vec::new();
     for op in operators {
-        let (identity, bx) = op
-            .split_once(':')
-            .context("--operator must be identity_hex:box_hex")?;
-        entries.push(serde_json::json!({"identity": identity, "box": bx}));
+        let parts: Vec<&str> = op.split(':').collect();
+        let [identity, bx, sig] = parts.as_slice() else {
+            bail!("--operator must be identity_hex:box_hex:box_sig_hex (from identity-show)");
+        };
+        entries.push(serde_json::json!({"identity": identity, "box": bx, "box_sig": sig}));
     }
     let client = reqwest::Client::new();
     let mut req = client

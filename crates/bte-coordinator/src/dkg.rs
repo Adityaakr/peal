@@ -19,7 +19,8 @@ use axum::routing::get;
 use axum::{Json, Router};
 use base64::Engine;
 use bte_crypto::tbte::dkg::{
-    identity_key_bytes, identity_key_from_bytes, observe, Envelope, IdentityKey, Kind, RoundConfig,
+    check_signed_log, identity_key_bytes, identity_key_from_bytes, observe, verify_box_key,
+    Envelope, IdentityKey, Kind, RoundConfig,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -63,8 +64,23 @@ const DEFAULT_ACK_TIMEOUT_SECS: i64 = 60;
 /// After the ack deadline, how long the observer waits for the last logs
 /// before failing a round that is short of quorum.
 const LOG_GRACE_SECS: i64 = 120;
-/// Envelope size cap (a signed log for a large committee is a few KiB).
+/// Envelope payload caps per kind: a private dealing is one scalar, an
+/// acknowledgement one signature, a public commitment `quorum` G1 points,
+/// a signed log the commitment plus one result per player.
 const MAX_ENVELOPE_BYTES: usize = 1 << 20;
+fn payload_cap(kind: Kind, n: usize) -> usize {
+    match kind {
+        Kind::DealerPrivate => 256,
+        Kind::Ack => 256,
+        Kind::DealerPublic => 64 + 48 * (n + 1),
+        Kind::Log => 1024 + 48 * (n + 1) + 256 * n,
+    }
+}
+/// Page size for the envelope listing; clients continue with `since`.
+const ENVELOPE_PAGE: i64 = 512;
+/// Settle a round only this long after its deadline, so honest dealers with
+/// slightly slow clocks still get their logs in.
+const SETTLE_MARGIN_SECS: i64 = 5;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OperatorEntry {
@@ -73,6 +89,9 @@ pub struct OperatorEntry {
     /// X25519 box key, hex (32 bytes).
     #[serde(rename = "box")]
     pub box_key: String,
+    /// The operator's own signature over its box key (`sign_box_key`), hex.
+    /// Without it a relay could swap in a key it holds and read dealings.
+    pub box_sig: String,
 }
 
 pub fn routes() -> Router<App> {
@@ -90,26 +109,46 @@ fn bad(msg: impl Into<String>) -> ApiError {
     (StatusCode::BAD_REQUEST, Json(json!({"error": msg.into()})))
 }
 
-fn parse_operators(entries: &[OperatorEntry]) -> Result<Vec<IdentityKey>, String> {
+/// Identity keys and box keys, each box key vouched for by its operator.
+fn parse_operators(entries: &[OperatorEntry]) -> Result<(Vec<IdentityKey>, Vec<[u8; 32]>), String> {
     let mut keys = Vec::with_capacity(entries.len());
+    let mut boxes = Vec::with_capacity(entries.len());
     for e in entries {
         let raw = hex::decode(&e.identity).map_err(|_| "identity is not hex")?;
         let key = identity_key_from_bytes(&raw).map_err(|e| e.to_string())?;
-        let bx = hex::decode(&e.box_key).map_err(|_| "box key is not hex")?;
-        if bx.len() != 32 {
-            return Err("box key must be 32 bytes".into());
+        let bx: [u8; 32] = hex::decode(&e.box_key)
+            .map_err(|_| "box key is not hex")?
+            .try_into()
+            .map_err(|_| "box key must be 32 bytes")?;
+        let sig = hex::decode(&e.box_sig).map_err(|_| "box_sig is not hex")?;
+        if !verify_box_key(&key, &bx, &sig) {
+            return Err(format!(
+                "box key of {} is not signed by that identity",
+                e.identity
+            ));
         }
         keys.push(key);
+        boxes.push(bx);
     }
-    Ok(keys)
+    Ok((keys, boxes))
 }
 
-fn config_of(tag: &str, round: u64, entries: &[OperatorEntry]) -> Result<RoundConfig, String> {
-    Ok(RoundConfig {
+fn config_of(
+    tag: &str,
+    round: u64,
+    relay_round_id: &str,
+    entries: &[OperatorEntry],
+) -> Result<RoundConfig, String> {
+    let (operators, box_keys) = parse_operators(entries)?;
+    let config = RoundConfig {
         committee_tag: tag.as_bytes().to_vec(),
         round,
-        operators: parse_operators(entries)?,
-    })
+        relay_round_id: relay_round_id.to_string(),
+        operators,
+        box_keys,
+    };
+    config.validate().map_err(|e| e.to_string())?;
+    Ok(config)
 }
 
 /// A round row, as the API and the engine read it.
@@ -155,8 +194,9 @@ fn read_round(conn: &rusqlite::Connection, id: &str) -> rusqlite::Result<RoundRo
 }
 
 fn round_json(row: &RoundRow) -> Value {
-    let config = config_of(&row.committee_tag, row.round, &row.operators).ok();
+    let config = config_of(&row.committee_tag, row.round, &row.id, &row.operators).ok();
     json!({
+        "server_time": unix_now(),
         "id": row.id,
         "committee_tag": row.committee_tag,
         "round": row.round,
@@ -183,19 +223,21 @@ struct CreateRound {
     ack_timeout_secs: Option<i64>,
 }
 
-/// Starting a round is an operator action, not a public one: it needs the
-/// admin token (`BTE_ADMIN_TOKEN`), or the dev flag.
-fn require_admin(app: &App, headers: &HeaderMap) -> Result<(), ApiError> {
+/// Operator actions (starting a DKG round, registering a committee) need the
+/// admin token (`BTE_ADMIN_TOKEN`). The dev flag waives it only when the
+/// coordinator listens on loopback (`Config::admin_waiver`), so a hosted
+/// image built with `BTE_DEV=1` still demands the token.
+pub(crate) fn require_admin(app: &App, headers: &HeaderMap) -> Result<(), ApiError> {
     let presented = headers
         .get("x-bte-admin")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    match (&app.0.cfg.admin_token, app.0.cfg.dev) {
-        (Some(token), _) if !token.is_empty() && presented == token => Ok(()),
-        (_, true) => Ok(()),
+    match &app.0.cfg.admin_token {
+        Some(token) if !token.is_empty() && presented == token => Ok(()),
+        _ if app.0.cfg.admin_waiver => Ok(()),
         _ => Err((
             StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "starting a DKG round needs the admin token"})),
+            Json(json!({"error": "this action needs the admin token"})),
         )),
     }
 }
@@ -221,10 +263,10 @@ async fn create_round(
             |r| r.get(0),
         )
         .map_err(internal)?;
-    let config = config_of(&req.committee_tag, round as u64, &req.operators).map_err(bad)?;
+    let id = new_id("dkg");
+    let config = config_of(&req.committee_tag, round as u64, &id, &req.operators).map_err(bad)?;
     let mut operators = req.operators.clone();
     operators.sort_by(|a, b| a.identity.cmp(&b.identity));
-    let id = new_id("dkg");
     let now = unix_now();
     let ack_deadline = now
         + req
@@ -336,16 +378,19 @@ async fn list_envelopes(
     let mut stmt = conn
         .prepare(
             "SELECT seq, envelope FROM dkg_envelopes WHERE round_id = ?1 AND seq > ?2
-             ORDER BY seq ASC",
+             ORDER BY seq ASC LIMIT ?3",
         )
         .map_err(internal)?;
     let rows: Vec<Value> = stmt
-        .query_map(rusqlite::params![id, q.since.unwrap_or(0)], |r| {
-            Ok(json!({
-                "seq": r.get::<_, i64>(0)?,
-                "envelope_b64": B64.encode(r.get::<_, Vec<u8>>(1)?),
-            }))
-        })
+        .query_map(
+            rusqlite::params![id, q.since.unwrap_or(0), ENVELOPE_PAGE],
+            |r| {
+                Ok(json!({
+                    "seq": r.get::<_, i64>(0)?,
+                    "envelope_b64": B64.encode(r.get::<_, Vec<u8>>(1)?),
+                }))
+            },
+        )
         .map_err(internal)?
         .collect::<Result<_, _>>()
         .map_err(internal)?;
@@ -382,9 +427,22 @@ async fn post_envelope(
     if row.status != "open" {
         return Err(bad(format!("round is {}", row.status)));
     }
-    let config = config_of(&row.committee_tag, row.round, &row.operators).map_err(internal)?;
+    let config =
+        config_of(&row.committee_tag, row.round, &row.id, &row.operators).map_err(internal)?;
     if !envelope.verify(&config) {
         return Err(bad("envelope signature or membership check failed"));
+    }
+    if envelope.payload.len() > payload_cap(envelope.kind, row.operators.len()) {
+        return Err(bad("envelope payload too large for its kind"));
+    }
+    // A signed log is checked at the door: it must verify for this round and
+    // be the sender's own. One bad log then cannot fail the round later.
+    if envelope.kind == Kind::Log {
+        match check_signed_log(&config, &envelope.payload) {
+            Ok(dealer) if dealer == envelope.from => {}
+            Ok(_) => return Err(bad("signed log belongs to another dealer")),
+            Err(e) => return Err(bad(format!("signed log rejected: {e}"))),
+        }
     }
     let to_hex = envelope
         .to
@@ -408,8 +466,12 @@ async fn post_envelope(
     Ok(Json(json!({"accepted": inserted == 1})))
 }
 
-/// Signed dealer logs posted to a round, with their sequence numbers.
-fn round_logs(conn: &rusqlite::Connection, round_id: &str) -> Result<Vec<(i64, Vec<u8>)>> {
+/// Signed dealer logs posted to a round, one per distinct dealer.
+fn round_logs(
+    conn: &rusqlite::Connection,
+    round_id: &str,
+    config: &RoundConfig,
+) -> Result<Vec<(i64, Vec<u8>)>> {
     let mut stmt = conn.prepare(
         "SELECT seq, envelope FROM dkg_envelopes WHERE round_id = ?1 AND kind = ?2 ORDER BY seq ASC",
     )?;
@@ -417,10 +479,20 @@ fn round_logs(conn: &rusqlite::Connection, round_id: &str) -> Result<Vec<(i64, V
         Ok((r.get::<_, i64>(0)?, r.get::<_, Vec<u8>>(1)?))
     })?;
     let mut logs = Vec::new();
+    let mut dealers = std::collections::HashSet::new();
     for row in rows {
         let (seq, bytes) = row?;
-        let envelope = Envelope::from_bytes(&bytes)?;
-        logs.push((seq, envelope.payload));
+        let Ok(envelope) = Envelope::from_bytes(&bytes) else {
+            continue;
+        };
+        // Re-checked here as well as at the door: one unusable log is
+        // skipped, never fatal, and a dealer counts once.
+        match check_signed_log(config, &envelope.payload) {
+            Ok(dealer) if dealer == envelope.from && dealers.insert(dealer.clone()) => {
+                logs.push((seq, envelope.payload));
+            }
+            _ => tracing::warn!(round = round_id, seq, "skipping an unusable dealer log"),
+        }
     }
     Ok(logs)
 }
@@ -442,19 +514,19 @@ pub fn tick(app: &App) -> Result<()> {
 }
 
 fn settle_round(app: &App, id: &str) -> Result<()> {
-    let (row, logs) = {
+    let (row, config, logs) = {
         let conn = app.0.db.lock().unwrap();
         let row = read_round(&conn, id)?;
-        let logs = round_logs(&conn, id)?;
-        (row, logs)
+        let config = config_of(&row.committee_tag, row.round, &row.id, &row.operators)
+            .map_err(|e| anyhow::anyhow!(e))?;
+        let logs = round_logs(&conn, id, &config)?;
+        (row, config, logs)
     };
-    let config =
-        config_of(&row.committee_tag, row.round, &row.operators).map_err(|e| anyhow::anyhow!(e))?;
     let n = row.operators.len();
     let quorum = config.quorum() as usize;
     let now = unix_now();
     let all_in = logs.len() >= n;
-    let past_deadline = now >= row.ack_deadline;
+    let past_deadline = now >= row.ack_deadline + SETTLE_MARGIN_SECS;
     if logs.len() < quorum {
         if now >= row.ack_deadline + LOG_GRACE_SECS {
             fail_round(
@@ -479,20 +551,25 @@ fn settle_round(app: &App, id: &str) -> Result<()> {
     bte_crypto::rand::RngCore::fill_bytes(&mut bte_crypto::os_rng(), &mut seed);
     match observe(&config, &bytes, seed) {
         Ok(result) => {
+            // The committee row and the round's completion land in one
+            // transaction, and only for a round still open, so a crash or a
+            // racing tick cannot register a second committee from it.
             let committee_id = app
-                .register_committee(&result.params.to_bytes())
+                .register_committee_settled(&result.params.to_bytes(), |tx, committee_id| {
+                    let changed = tx.execute(
+                        "UPDATE dkg_rounds SET status = 'complete', committee_id = ?2,
+                                               output_b64 = ?3, logs_json = ?4
+                         WHERE id = ?1 AND status = 'open'",
+                        rusqlite::params![
+                            id,
+                            committee_id,
+                            B64.encode(&result.output),
+                            serde_json::to_string(&seqs).unwrap_or_default()
+                        ],
+                    )?;
+                    Ok(changed == 1)
+                })
                 .context("registering the DKG committee")?;
-            let conn = app.0.db.lock().unwrap();
-            conn.execute(
-                "UPDATE dkg_rounds SET status = 'complete', committee_id = ?2, output_b64 = ?3,
-                                       logs_json = ?4 WHERE id = ?1",
-                rusqlite::params![
-                    id,
-                    committee_id,
-                    B64.encode(&result.output),
-                    serde_json::to_string(&seqs)?
-                ],
-            )?;
             tracing::info!(
                 round = id,
                 committee = committee_id,
