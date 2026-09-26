@@ -286,26 +286,16 @@ async fn parameters(State(app): State<App>) -> Result<Json<Value>> {
         )
     })?;
     let conn = app.0.db.lock().unwrap();
-    let (blob, digest, n, t, b, scheme): (Vec<u8>, String, i64, i64, i64, String) = conn
+    let (blob, digest, n, t, b): (Vec<u8>, String, i64, i64, i64) = conn
         .query_row(
-            "SELECT params_blob, params_digest, n, t, b, scheme FROM committees WHERE id = ?1",
+            "SELECT params_blob, params_digest, n, t, b FROM committees WHERE id = ?1",
             [&id],
-            |r| {
-                Ok((
-                    r.get(0)?,
-                    r.get(1)?,
-                    r.get(2)?,
-                    r.get(3)?,
-                    r.get(4)?,
-                    r.get(5)?,
-                ))
-            },
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
         )
         .map_err(|_| Problem::missing("committee"))?;
     Ok(Json(json!({
         "id": id,
         "digest": digest,
-        "scheme": scheme,
         "parameters_b64": B64.encode(&blob),
         "operators": n,
         "threshold": t,
@@ -794,7 +784,7 @@ async fn create_seal(
     // Parsed, on curve and subgroup checked before it is stored. A round is a
     // public batch: one unopenable member would spoil the reveal for everyone
     // in it, so garbage is refused at the door rather than at decryption.
-    let ct = crate::scheme::Sealed::parse(&blob).map_err(|e| {
+    let ct = bte_crypto::SealedCiphertext::from_bytes(&blob).map_err(|e| {
         Problem::new(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_ciphertext",
@@ -804,75 +794,31 @@ async fn create_seal(
     })?;
     let id = hex::encode(ct.hash());
 
-    let round_closed = || {
-        Problem::new(
+    let conn = app.0.db.lock().unwrap();
+    let status: String = conn
+        .query_row(
+            "SELECT status FROM conditions WHERE id = ?1",
+            [&round_id],
+            |r| r.get(0),
+        )
+        .map_err(|_| Problem::missing("round"))?;
+    if status != "pending" {
+        return Err(Problem::new(
             StatusCode::CONFLICT,
             "round_closed",
             "this round has already closed; nothing further can be sealed to it",
-        )
-    };
-    let committee = {
-        let conn = app.0.db.lock().unwrap();
-        let (status, committee_id) = crate::api::condition_intake_state(&conn, &round_id)
-            .map_err(|_| Problem::missing("round"))?;
-        if status != "pending" {
-            return Err(round_closed());
-        }
-        app.committee(&committee_id)
-            .ok_or_else(|| Problem::internal("committee not cached"))?
-    };
-    // The proof check runs outside the lock.
-    let ct = tokio::task::spawn_blocking({
-        let committee = committee.clone();
-        let round_id = round_id.clone();
-        move || ct.admit(&committee, &round_id).map(|()| ct)
-    })
-    .await
-    .map_err(Problem::internal)?
-    .map_err(|e| {
-        Problem::new(StatusCode::UNPROCESSABLE_ENTITY, "invalid_ciphertext", e)
-            .field("ciphertext_b64")
-    })?;
-
-    let conn = app.0.db.lock().unwrap();
-    let (status, _) = crate::api::condition_intake_state(&conn, &round_id)
-        .map_err(|_| Problem::missing("round"))?;
-    if status != "pending" {
-        return Err(round_closed());
+        ));
     }
-    crate::api::check_capacity(&conn, &committee, &round_id).map_err(|e| {
-        Problem::new(StatusCode::UNPROCESSABLE_ENTITY, "invalid_ciphertext", e)
-            .field("ciphertext_b64")
-    })?;
 
     // The same ciphertext is the same seal: its id is its hash, so a retry
-    // cannot create a second row and does not need an idempotency key. A
-    // different ciphertext with the same KEM point is a conflict.
+    // cannot create a second row and does not need an idempotency key.
     let inserted = conn
         .execute(
-            "INSERT INTO ciphertexts (ct_hash, condition_id, sealed_blob, is_dummy, created_at, code, kem_point)
-             VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6) ON CONFLICT(ct_hash) DO NOTHING",
-            rusqlite::params![
-                id,
-                round_id,
-                blob,
-                unix_now(),
-                crate::state::new_share_code(),
-                ct.kem_point_hex()
-            ],
+            "INSERT OR IGNORE INTO ciphertexts (ct_hash, condition_id, sealed_blob, is_dummy, created_at, code)
+             VALUES (?1, ?2, ?3, 0, ?4, ?5)",
+            rusqlite::params![id, round_id, blob, unix_now(), crate::state::new_share_code()],
         )
-        .map_err(|e| match e {
-            rusqlite::Error::SqliteFailure(f, _)
-                if f.code == rusqlite::ErrorCode::ConstraintViolation =>
-            {
-                Problem::new(
-                    StatusCode::CONFLICT,
-                    "duplicate_randomness",
-                    "a ciphertext with this randomness is already sealed to this round",
-                )
-            }
-            other => Problem::internal(other),
-        })?;
+        .map_err(Problem::internal)?;
 
     let body = json!({
         "id": id,

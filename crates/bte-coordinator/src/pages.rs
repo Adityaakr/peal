@@ -73,7 +73,7 @@ pub const PAGES: &[Page] = &[
     Page {
         path: "",
         route: "#/",
-        title: "Peal. The privacy layer for onchain markets.",
+        title: "Peal. The programmable confidentiality layer for digital markets.",
         description:
             "One API to collect encrypted bids, offers, votes, commitments and agent intents, then reveal them only when predefined conditions are met. Nobody can read a submission early, including the operators. No wallet or gas for the people submitting.",
         // WebPage, not WebSite: the site-level WebSite node is declared once
@@ -94,7 +94,7 @@ pub const PAGES: &[Page] = &[
         index: true,
         image: Some(DEV_CARD),
         share: Some((
-            "The privacy layer for onchain markets.",
+            "The programmable confidentiality layer for digital markets.",
             "One API to collect encrypted bids, offers, votes, commitments and agent intents, \
              then reveal them only when predefined conditions are met.",
         )),
@@ -483,15 +483,15 @@ pub(crate) fn faqs_for(path: &str) -> Option<&'static [(&'static str, &'static s
     Some(match path {
         "" => &[
             ("What is Peal, in one sentence?",
-             "The privacy layer for onchain markets. You collect encrypted bids, offers, votes, commitments and agent intents, and they open only when a condition you set is met."),
+             "The programmable confidentiality layer for digital markets. You collect encrypted bids, offers, votes, commitments and agent intents, and they open only when a condition you set is met."),
             ("Do the people submitting need a wallet or any crypto?",
              "No. Sealing happens in their browser or in your own code and goes over ordinary HTTPS. No wallet, no account, no gas, and they never touch a chain. That is usually the difference between a mechanism you can ship to your users and one you can only ship to crypto users."),
             ("Who can read a submission before the deadline?",
-             "Nobody, and nobody has to be trusted for that: the decryption key is held by five independent operators, they do not combine their shares until the condition fires, and any group smaller than the threshold learns nothing (three of five on the hosted v0 committee, four of five on a v1 committee). A v0 committee had its shares dealt by a single ceremony, and that ceremony is its trust assumption; a v1 committee takes its key from a distributed key generation, with no dealer and no machine ever holding the whole key. Which one a committee runs is shown by its scheme, and the hosted committee is v0 today."),
+             "Nobody, and nobody has to be trusted for that: the decryption key is held by five independent operators, no three of them combine their shares until the condition fires, and two of them together learn nothing. In v0 the key shares were dealt by a single ceremony rather than a distributed key generation; that ceremony is the trust assumption that remains, and DKG replaces it."),
             ("What stops somebody refusing to reveal when they see they have lost?",
              "There is nothing for them to refuse. Opening a round is not a participant's move, so a losing bidder walking away costs everyone else nothing. That single difference is what separates this from every commit and reveal scheme, all of which break in exactly that spot."),
             ("What if an operator goes offline?",
-             "On the hosted v0 committee three of the five are enough, so two can be down, unreachable or actively refusing and the round still opens on time; a v1 committee of five needs four, so one can be down."),
+             "Three of the five are enough, so two can be down, unreachable or actively refusing and the round still opens on time."),
             ("How can someone start building using Peal?",
              "Fastest is the quickstart, which runs the three calls against the live network from the page itself, so you can watch a round open before you have written anything. If you build with an agent or a coding assistant, curl -fsSL https://peal.network/skill/install.sh | sh installs a skill carrying a reference for the API, the errors, timing, payments, verification and building the interface, and the assistant then knows the endpoints without you pasting documentation at it. There is an llms.txt at the root for any model that reads one, and peal.js if you would rather seal in the visitor's own browser with no build step. If none of that appeals, it is three HTTP calls with no key and no account, so curl is a perfectly good client."),
             ("What does it cost?",

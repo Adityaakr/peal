@@ -33,69 +33,29 @@ fn derive_key(passphrase: &str, salt: &[u8]) -> Result<[u8; 32]> {
     Ok(key)
 }
 
-/// The encrypted envelope every keystore kind shares: argon2id over the
-/// passphrase and a random salt, ChaCha20-Poly1305 under a random nonce.
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Encrypted {
-    pub kdf: String,
-    pub salt_b64: String,
-    pub nonce_b64: String,
-    pub ciphertext_b64: String,
-}
-
-pub fn seal_bytes(plaintext: &[u8], passphrase: &str) -> Result<Encrypted> {
+pub fn seal_keystore(secret: &OperatorSecret, passphrase: &str) -> Result<KeystoreFile> {
     use bte_crypto::rand::Rng;
     let mut rng = bte_crypto::os_rng();
     let mut salt = [0u8; 16];
     let mut nonce = [0u8; 12];
     rng.fill(&mut salt);
     rng.fill(&mut nonce);
+
     let key = derive_key(passphrase, &salt)?;
     let cipher = ChaCha20Poly1305::new((&key).into());
     let ciphertext = cipher
         .encrypt(
             &Nonce::try_from(&nonce[..]).expect("12-byte nonce"),
-            plaintext,
+            secret.to_bytes().as_slice(),
         )
         .map_err(|_| anyhow::anyhow!("keystore encryption failed"))?;
-    Ok(Encrypted {
+
+    Ok(KeystoreFile {
+        version: 1,
         kdf: "argon2id".into(),
         salt_b64: B64.encode(salt),
         nonce_b64: B64.encode(nonce),
         ciphertext_b64: B64.encode(ciphertext),
-    })
-}
-
-pub fn open_bytes(enc: &Encrypted, passphrase: &str) -> Result<Vec<u8>> {
-    if enc.kdf != "argon2id" {
-        bail!("unsupported keystore kdf");
-    }
-    let salt = B64.decode(&enc.salt_b64).context("bad salt encoding")?;
-    let nonce = B64.decode(&enc.nonce_b64).context("bad nonce encoding")?;
-    if nonce.len() != 12 {
-        bail!("keystore nonce must be 12 bytes");
-    }
-    let ct = B64
-        .decode(&enc.ciphertext_b64)
-        .context("bad ciphertext encoding")?;
-    let key = derive_key(passphrase, &salt)?;
-    let cipher = ChaCha20Poly1305::new((&key).into());
-    cipher
-        .decrypt(
-            &Nonce::try_from(nonce.as_slice()).expect("12-byte nonce"),
-            ct.as_slice(),
-        )
-        .map_err(|_| anyhow::anyhow!("keystore decryption failed (wrong passphrase?)"))
-}
-
-pub fn seal_keystore(secret: &OperatorSecret, passphrase: &str) -> Result<KeystoreFile> {
-    let enc = seal_bytes(&secret.to_bytes(), passphrase)?;
-    Ok(KeystoreFile {
-        version: 1,
-        kdf: enc.kdf,
-        salt_b64: enc.salt_b64,
-        nonce_b64: enc.nonce_b64,
-        ciphertext_b64: enc.ciphertext_b64,
         operator_id: secret.party_index,
     })
 }

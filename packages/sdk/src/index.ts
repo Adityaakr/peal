@@ -1,9 +1,6 @@
 // bte-sdk: seal now. reveal on cue.
 //
-// Two committee schemes: v0 (simple-bte, dealer-trusted ceremony, fixed
-// batch) and v1 (transparent setup from a DKG, no batch bound, every
-// ciphertext bound to its condition). The committee says which; the client
-// seals accordingly.
+// v0 trust model: the committee comes from a dealer-trusted ceremony.
 
 import { bytesToB64, b64ToBytes, ensureWasm } from './wasm.js';
 import type { Params } from './generated/seal/bte_wasm.js';
@@ -16,26 +13,16 @@ export * from './anchor.js';
  * http://localhost:8080. */
 export const DEVNET_URL = 'https://devnet.bte.invalid';
 
-/** Mirrors bte_crypto::MAX_PAYLOAD_BYTES. Policy, not a crypto limit: the
- * body is a keystream (v0) or an AEAD (v1), and threshold work is over
- * headers only. */
+/** Mirrors bte_crypto::MAX_PAYLOAD_BYTES. Policy, not a crypto limit: the FO
+ * body is a keystream XOR, and threshold work is over 48-byte headers only. */
 export const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
-
-export type CommitteeScheme = 'v0' | 'v1';
 
 export interface CommitteeInfo {
   id: string;
-  /** 'v0': simple-bte, dealer-trusted, fixed batch. 'v1': transparent setup
-   * from a DKG, no batch bound. */
-  scheme: CommitteeScheme;
   n: number;
   t: number;
-  /** v0: the fixed batch size. v1: the batch stride (one batch per condition,
-   * at most b - 1 ciphertexts plus one decoy). */
   b: number;
   digest: string;
-  /** v1 only: the DKG output digest the key came from. */
-  setupDigest?: string;
 }
 
 export interface ConditionStatus {
@@ -149,34 +136,20 @@ export class BteClient {
           this.request(`/v0/committees/${this.committeeId}`),
         ]);
         const params = new wasm.Params(b64ToBytes(body.params_b64));
-        const info = params.info() as {
-          scheme: CommitteeScheme;
-          n: number;
-          t: number;
-          b: number;
-          digest: string;
-          setup_digest?: string | null;
-        };
+        const info = params.info() as { n: number; t: number; b: number; digest: string };
         if (info.digest !== body.params_digest) {
           throw new Error(
             'committee params digest mismatch: coordinator served inconsistent params',
-          );
-        }
-        if (body.scheme && body.scheme !== info.scheme) {
-          throw new Error(
-            `committee scheme mismatch: coordinator says ${body.scheme}, params are ${info.scheme}`,
           );
         }
         return {
           params,
           info: {
             id: body.id,
-            scheme: info.scheme,
             n: info.n,
             t: info.t,
             b: info.b,
             digest: info.digest,
-            setupDigest: info.setup_digest ?? undefined,
           },
         };
       })();
@@ -219,10 +192,8 @@ export class BteClient {
   }
 
   /**
-   * Seal a payload (string or bytes, up to MAX_PAYLOAD_BYTES) to a condition.
-   * Encryption happens client-side in wasm; only the ciphertext leaves. A v1
-   * ciphertext is bound to the condition it is sealed for: the coordinator
-   * refuses it anywhere else.
+   * Seal a payload (string or bytes, max 4096 bytes) to a condition.
+   * Encryption happens client-side in wasm; only the ciphertext leaves.
    */
   async seal(
     payload: Uint8Array | string,
@@ -235,7 +206,7 @@ export class BteClient {
       throw new Error(`payload exceeds ${MAX_PAYLOAD_BYTES} bytes`);
     }
     const { params } = await this.ensureParams();
-    const sealed = params.seal_for(conditionId, bytes);
+    const sealed = params.seal(bytes);
     const sealedB64 = bytesToB64(sealed);
     const resp = await this.request('/v0/ciphertexts', {
       method: 'POST',

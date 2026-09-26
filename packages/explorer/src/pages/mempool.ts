@@ -82,9 +82,9 @@ const num = (s: string | number, dp = 4) =>
 /** Trust-building copy for the four Peal steps. No em-dashes (brand rule). */
 const FLOW_COPY = [
   `Your order is encrypted on your own device before it reaches the network. The amount, the direction, and the token stay sealed inside a ciphertext addressed to the committee's key. No relayer, no node, and no operator ever sees it in the clear.`,
-  `The ciphertext drops into a batch of the scheme's size: 64 fixed slots on the hosted v0 committee, no fixed size on v1. The other slots are indistinguishable decoys, so no observer can tell how many real orders are inside, or which slot is yours. Your size, your timing, and your intent disappear into the crowd.`,
-  `The power to open your batch is split across a committee of independent operators, none of them trusted. A threshold of them, t of n as the committee reports (any 3 of the 5 on the hosted v0 committee), can open it together, and only once the cue fires. No single operator, and no group smaller than the quorum, can read your order early.`,
-  `At the cue, a quorum of operators each return one constant-size share (48 bytes on v0). Together they open the whole batch at once, after the ordering is already fixed, so there is nothing left to front-run. Every share is checked with a public pairing equation, and the settlement contract re-derives the batch's merkle root and rejects any mismatch.`,
+  `The ciphertext drops into a fixed batch of 64 slots. The other slots are indistinguishable decoys, so no observer can tell how many real orders are inside, or which slot is yours. Your size, your timing, and your intent disappear into the crowd.`,
+  `The power to open your batch is split across a committee of independent operators, none of them trusted. Any 3 of the 5 can open it together, and only once the cue fires. No single operator, and no group smaller than the quorum, can read your order early.`,
+  `At the cue, a quorum of operators each return one 48-byte share. Together they open the whole batch at once, after the ordering is already fixed, so there is nothing left to front-run. Every share is checked with a public pairing equation, and the settlement contract re-derives the batch's merkle root and rejects any mismatch.`,
 ];
 
 /** The three moves of a sandwich, on the public lane. */
@@ -560,14 +560,12 @@ export function renderMempool(root: HTMLElement): () => void {
 
   /** Step 2: hidden inside a padded batch. */
   function fillStep2(
-    committee: { b: number; scheme?: string },
+    committee: { b: number },
     batch: { real: number; total: number } | null,
   ): void {
     const batchRow = batch
       ? proofRow('this batch', `<b>${batch.real}</b> real + <b>${batch.total - batch.real}</b> decoys = ${batch.total} slots`)
-      : committee.scheme === 'v0' && committee.b
-        ? proofRow('batch', `${committee.b} fixed slots, decoys included`)
-        : proofRow('batch', `no fixed size: the batch is whatever is sealed by the cue, plus one decoy`);
+      : proofRow('batch', `${committee.b} fixed slots, decoys included`);
     stepData(2).innerHTML =
       batchRow + proofRow('your slot', `indistinguishable from the rest`);
     markDone(2);
@@ -713,7 +711,7 @@ export function renderMempool(root: HTMLElement): () => void {
     fairWei: bigint,
     recvUnit: Sym,
     resEl: HTMLElement,
-    committee: { n: number; t: number; b: number; digest: string; scheme?: string },
+    committee: { n: number; t: number; b: number; digest: string },
   ): Promise<PealOut> {
     return new Promise((resolve) => {
       let firesAt = Math.floor(Date.now() / 1000) + ROUND_SECS;
@@ -724,9 +722,7 @@ export function renderMempool(root: HTMLElement): () => void {
           if (st.firesAt) firesAt = st.firesAt;
           // Live batch fill: how many real orders are queued with yours.
           if (st.ciphertextCount) {
-            // v0 pads to the fixed batch; v1 adds exactly one decoy.
-            const total = committee.scheme === 'v1' ? st.realCount + 1 : committee.b;
-            fillStep2(committee, { real: st.realCount, total });
+            fillStep2(committee, { real: st.realCount, total: committee.b });
           }
         } catch {
           /* transient */
@@ -853,7 +849,7 @@ function faqHtml(cfg: MempoolConfig): string {
     ],
     [
       "What's the honest gap today?",
-      `Two kinds of committee exist. A v0 committee was dealt by a single ceremony, so whoever ran it is trusted not to have kept the key; a v1 committee gets its key from a distributed key generation, with no dealer and no machine ever holding the whole key. Which one a committee runs is shown by its scheme, and the hosted committee is v0 today. On either, the operators do not yet verify the cue for themselves, so today a dishonest operator could read the sealed order early. That is the decentralisation work still on the roadmap. The cryptography and the settlement are real; the committee's trust model is not there yet.`,
+      `The committee is dealer-trusted and its operators do not yet verify the cue for themselves, so today a dishonest operator could read the sealed order early. That is the decentralisation work still on the roadmap. The cryptography and the settlement are real; the committee's trust model is not there yet.`,
     ],
   ];
   return items

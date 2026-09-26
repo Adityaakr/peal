@@ -6,7 +6,7 @@ license.workspace = true
 description = "bte operator node: poll work, compute partials, post shares"
 
 [dependencies]
-bte-crypto = { workspace = true, features = ["dkg"] }
+bte-crypto = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -21,10 +21,8 @@ clap = { workspace = true, features = ["derive"] }
 toml = "1.1.2"
 chacha20poly1305 = "0.11.0"
 argon2 = "0.5.3"
-hkdf = "0.12"
 ark-bls12-381.workspace = true
 ark-ec.workspace = true
 
 [dev-dependencies]
 rand_chacha = "0.3"
-bte-crypto = { workspace = true, features = ["dkg", "dev-dealer"] }

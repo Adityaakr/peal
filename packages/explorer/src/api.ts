@@ -13,11 +13,6 @@ export interface CommitteeDetail {
   params_b64: string;
   params_digest: string;
   created_at: number;
-  /** 'v0': simple-bte, dealt by a ceremony, fixed batch. 'v1': key from a DKG,
-   * no fixed batch size. Absent on a coordinator that predates the field. */
-  scheme?: 'v0' | 'v1';
-  /** v1 only: the digest of the DKG output the key came from. */
-  setup_digest?: string | null;
 }
 
 export interface ConditionSummary {

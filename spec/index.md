@@ -16,34 +16,22 @@ Trust model v0: single trusted dealer ceremony
 generates tau, Shamir-deals shares of each power tau^i, publishes public params,
 destroys tau. No DKG.
 
-Scheme v1 (section 3b) runs beside v0 with a transparent setup: the
-committee's secret comes from a DKG, no dealer, no batch bound. A committee
-names its `scheme`; v0 stays the default for existing committees and for the
-hosted coordinator until an operator runs a DKG there.
-
 ## 2. Components
 
 | component | role |
 |---|---|
-| `crates/bte-crypto` | the only crate touching group elements; v0 wraps simple-bte, v1 is `tbte/` (see API-MAP.md) |
-| `crates/bte-coordinator` | registry + condition engine + aggregator + REST (axum, /v0) + sqlite; DKG relay for v1 |
-| `crates/bte-node` | operator binary: poll work, compute partial, post share; encrypted keystore; v1: `--identity` + `--state-dir`, takes part in DKG rounds |
-| `crates/bte-cli` | `ceremony`, `committee init`, dev helpers; v1: `identity-new`, `identity-show`, `dkg-init`, `dkg-status` |
+| `crates/bte-crypto` | the only crate touching group elements; wraps simple-bte (see API-MAP.md) |
+| `crates/bte-coordinator` | registry + condition engine + aggregator + REST (axum, /v0) + sqlite |
+| `crates/bte-node` | operator binary: poll work, compute partial, post share; encrypted keystore |
+| `crates/bte-cli` | `ceremony`, `committee init`, dev helpers |
 | `packages/sdk` | `bte-sdk` npm package: TS + wasm (seal-only build of bte-crypto) |
 | `packages/explorer` | vite + TS explorer: committee, conditions, reveal detail |
 | `contracts/` | phase 7: `BteAnchor.sol` commit/revealRoot on Sepolia |
 
-Defaults: v0 committee n=5, t=3, batch B=64 (fixed at ceremony). A v1
-committee has no batch bound and its threshold follows the DKG's `N3f1` rule
-(t = n − ⌊(n−1)/3⌋): five operators give 4-of-5. Coordinator on :8080,
-explorer on :5173. Nodes are outbound-only. Payload cap 5 MiB, enforced at
-SDK and coordinator. Chainless core: sqlite + content-addressed ciphertexts;
-the store is swappable for calldata/blobs later.
-
-Local stacks: the docker compose files and `docker/start-railway.sh` run the
-v0 ceremony stack. `scripts/bte/v1-stack.sh demo` runs the v1 stack without
-Docker (coordinator + five node processes, a DKG round through the relay,
-seal → reveal).
+Defaults: committee n=5, t=3, batch B=64 (fixed at ceremony). Coordinator on
+:8080, explorer on :5173. Nodes are outbound-only. Payload cap 5 MiB,
+enforced at SDK and coordinator. Chainless core: sqlite + content-addressed
+ciphertexts; the store is swappable for calldata/blobs later.
 
 ## 3. Scheme (fidelity map — deviations only via DEVIATIONS.md)
 
@@ -67,95 +55,6 @@ seal → reveal).
 - Pipelining: cross-terms depend only on ciphertexts + public params ->
   `pre_decrypt` / `finalize` pair; an integration test asserts pre_decrypt
   completes before any share exists.
-
-## 3b. Scheme v1 (transparent setup from a DKG)
-
-Paper: "DKG Is All You Need" (Guru-Vamsi Policharla, Commonware, 2026),
-Figure 1. Code: `crates/bte-crypto/src/tbte/` (module docs carry the same
-map). Decision record: `docs/peal-links/decisions/0015-transparent-bte-from-a-dkg.md`.
-Deviations only via DEVIATIONS.md (section "v1").
-
-- Setup: no dealer, no powers of tau. The committee's whole secret is one
-  scalar `sk`, Shamir-shared by Commonware's Feldman/Desmedt DKG
-  (`commonware-cryptography` 2026.9.0, `bls12381::dkg::feldman_desmedt`,
-  Joint-Feldman GJKR99 with signed dealer logs and reveals). Public
-  parameters are n + 1 G1 points: `pk = [sk]_1` and `pk_j = [sk_j]_1`.
-  `g'` is a hash-to-curve G1 point with unknown discrete log. No batch bound.
-- DKG: operators hold ed25519 identities (`bte-cli identity-new`); every
-  operator is a dealer and a player; private dealings go in X25519 boxes;
-  the coordinator is an untrusted relay (`/v0/dkg/rounds`,
-  `/v0/dkg/rounds/{id}/envelopes`, `/v0/dkg/pending`). Fault model `N3f1`:
-  t = n − ⌊(n−1)/3⌋ (three of four, four of five, five of seven). Party
-  index j (1-based) is the operator's position in the sorted identity set
-  plus one, where the DKG evaluates its polynomial. Starting a round:
-  `bte-cli dkg-init --coordinator URL --tag TAG --operator identity_hex:box_hex ... --wait-secs N`
-  (needs `BTE_ADMIN_TOKEN`, or `BTE_DEV=1` on the coordinator).
-- Ciphertext: `ct = ([k]_1, [k]_2, k·(g' + x·pk))` with `x = H([k]_1)`; a
-  Fiat-Shamir sigma-protocol proof of `k` (`nizk.rs`) whose challenge covers
-  the parameter digest, the context hash, the three points and the body
-  hash; a context commitment (Peal's coordinator uses
-  `peal-condition:<condition id>`); and a ChaCha20-Poly1305 body keyed from
-  the pad `k²·[sk]_T` through HKDF-SHA256. The paper's message is `m = 0`, so
-  the pad is the KEM secret and `ct4` is never sent.
-- Admission (`check_batch`): every proof verifies, the `x_i` are pairwise
-  distinct, Σ ct1_i ≠ 0, at most `MAX_BATCH_SLOTS` = 4096 slots. Operators
-  run it before signing; the coordinator runs the proof check at intake.
-- One share per operator per batch: `pd_j = sk_j · Σ_i ct1_i`, one G1 point.
-- Public verifiability: `e(pd_j, [1]_2) == e(pk_j, Σ_i ct2_i)`.
-- t-of-n Lagrange combination at zero (`combine`).
-- Per-slot decryption: `S_i = e(pd − W_i, ct2_i) · e(ct3_i, U_i)` with cross
-  terms `U_i = Σ_{j≠i} ct2_j/(x_j − x_i)`, `W_i = Σ_{j≠i} ct3_j/(x_j − x_i)`.
-  Default is the naive path (B MSMs of size B). The paper's O(B log² B)
-  subproduct-tree path (`poly.rs`, `CrossTermStrategy::Fast`) is implemented
-  and tested equal, but measured 3.5x–7x slower in arkworks for every batch
-  up to 1024 (`crates/bte-crypto/examples/tbte_crossover.rs`), so `Auto`
-  takes the naive path below `FAST_PATH_MIN_BATCH`.
-- Pipelining as in v0: cross terms depend only on ciphertexts, so
-  `pre_decrypt` runs before any share exists; `finalize` opens every slot and
-  a failed AEAD tag marks that slot only.
-- Relay hardening (2026-09-25 review): operators sign their box keys and a
-  round's `operators` entries carry `box_sig`; the round digest covers the
-  relay round id and the box keys; nodes keep a fresh dealer seed per
-  digest and refuse to deal one digest twice; signed logs are checked at
-  the door; `POST /v0/dkg/rounds` and `POST /v0/committees` need
-  `BTE_ADMIN_TOKEN` (the `BTE_DEV=1` waiver only on loopback); share slots
-  hold verified shares only (`rejected_shares` feeds the reveal's share
-  log); packed headers are cached per batch (`batch_headers`); round JSON
-  carries `server_time` for deadline comparisons.
-- Coordinator: v1 committees carry `scheme` (`GET /v0/committees/:id` returns
-  `scheme` and `setup_digest`; `/v0/work` batches carry `scheme`,
-  `committee_id`, `slots`; `/v1/parameters` returns `scheme`). Intake verifies
-  the proof against the committee, requires the context to be the condition's,
-  refuses a second ciphertext with the same KEM point under a condition, and
-  caps the condition at one batch (4095 real ciphertexts plus one coordinator
-  decoy). Freeze adds exactly one decoy per v1 condition, which keeps
-  Σk ≠ 0 and lets an empty condition reveal.
-- SDK/wasm: `Params.info()` includes `scheme`; `Params.seal_for(conditionId,
-  payload)` works for both schemes; `Params.seal(payload)` is v0-only;
-  `verifyShare` dispatches on the scheme.
-- Security assumption DBSDH. The proof is a plain Fiat-Shamir sigma protocol;
-  straight-line extractability (the paper's SE-NIZK definition) is not
-  separately proven (SECURITY.md).
-
-Wire (`tbte/wire.rs`, magic `b"BTE1"` then a type byte; G1 48 B, G2 96 B,
-scalar 32 B, integers little-endian; deserialization is strict: curve and
-subgroup checks, canonical scalars, no trailing bytes):
-
-- `Ciphertext` (0x01): overhead beyond the payload is
-  `CIPHERTEXT_OVERHEAD_BYTES` = 5 + 48 + 96 + 48 + 32 + 64 + 4 + 16 = 313
-  bytes (tag, three points, context hash, proof, body length, AEAD tag).
-- `CtHeader` (0x05): `HEADER_BYTES` = 5 + 48 + 96 + 48 + 32 + 32 + 64 = 325
-  bytes (tag, three points, context hash, body hash, proof); batches pack
-  headers back to back.
-- `Share` (0x02): `SHARE_BYTES` = 5 + 2 + 48 = 55 bytes.
-- `PublicParams` (0x03): 5 + 4 + 32 + 48·(n+1) bytes (tag, n u16, t u16,
-  setup digest, pk, pk_1..pk_n).
-- `OperatorSecret` (0x04): tag, party index u16, one 32-byte scalar. Never
-  leaves the encrypted state dir.
-
-Tests: `crates/bte-crypto/tests/tbte.rs` (20), `tests/tbte_dkg.rs` (4),
-`crates/bte-coordinator/tests/tbte_v1.rs` (6), `tests/dkg_relay.rs` (3).
-Local multi-process proof: `scripts/bte/v1-stack.sh demo`.
 
 ## 4. Data flows
 

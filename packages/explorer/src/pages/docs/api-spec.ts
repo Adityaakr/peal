@@ -364,7 +364,7 @@ export const ENDPOINTS: Endpoint[] = [
   "threshold": 3,
   "batch_size": 64
 }`,
-    note: 'The client verifies the digest against the bytes it was served, so a coordinator handing out inconsistent parameters fails loudly rather than producing ciphertexts nobody can open. batch_size is the fixed batch of a v0 committee, which is what the hosted committee runs today; a v1 committee has no fixed size.',
+    note: 'The client verifies the digest against the bytes it was served, so a coordinator handing out inconsistent parameters fails loudly rather than producing ciphertexts nobody can open.',
   },
   {
     id: 'currencies',

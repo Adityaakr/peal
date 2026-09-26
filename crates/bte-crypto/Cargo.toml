@@ -11,21 +11,6 @@ default = ["full"]
 seal-only = []
 # full: ceremony, partial, verify_share, recover, pre_decrypt, finalize.
 full = []
-# dev-dealer: an in-process Shamir dealer for the v1 scheme, used ONLY by
-# tests and benches (the product path is the DKG). Never enabled by a binary.
-dev-dealer = []
-# dkg: the committee's key from Commonware's Feldman/Desmedt DKG (ed25519
-# operator identities) plus the sealed transport for private dealings.
-dkg = [
-    "full",
-    "dep:commonware-cryptography",
-    "dep:commonware-utils",
-    "dep:commonware-codec",
-    "dep:commonware-parallel",
-    "dep:rand_chacha_cw",
-    "dep:rand_core_cw",
-    "dep:x25519-dalek",
-]
 
 [dependencies]
 simple-bte = { workspace = true }
@@ -40,23 +25,10 @@ hex = { workspace = true }
 ark-poly = "0.6.0"
 rand_chacha = { version = "0.3", default-features = false }
 getrandom = "0.2"
-# v1 scheme DEM and KDF (RustCrypto, already in the lock via bte-node).
-chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["alloc"] }
-hkdf = "0.12"
-# DKG (feature `dkg`): the same Commonware release the ledger consensus pins.
-commonware-cryptography = { version = "=2026.9.0", optional = true }
-commonware-utils = { version = "=2026.9.0", optional = true }
-commonware-codec = { version = "=2026.9.0", optional = true }
-commonware-parallel = { version = "=2026.9.0", optional = true }
-# Commonware's rand generation (0.10), distinct from ark-std's rand 0.8.
-rand_chacha_cw = { package = "rand_chacha", version = "0.10", optional = true }
-rand_core_cw = { package = "rand_core", version = "0.10", optional = true }
-x25519-dalek = { version = "2.0", features = ["static_secrets"], optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
 rand_chacha = "0.3"
-bte-crypto = { path = ".", features = ["full", "dev-dealer", "dkg"] }
 
 [[bench]]
 name = "bte_ops"

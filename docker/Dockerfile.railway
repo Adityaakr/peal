@@ -3,7 +3,7 @@
 # serving the explorer and proxying /v0. v0 demo posture.
 
 # -- stage 1: rust binaries ---------------------------------------------------
-FROM rust:1.97-slim AS binaries
+FROM rust:1.95-slim AS binaries
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -14,7 +14,7 @@ COPY crates ./crates
 RUN cargo build --release -p bte-coordinator -p bte-node -p bte-cli
 
 # -- stage 2: wasm for the sdk ------------------------------------------------
-FROM rust:1.97-slim AS wasm
+FROM rust:1.95-slim AS wasm
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \

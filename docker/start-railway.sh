@@ -2,10 +2,6 @@
 # Devnet-in-a-box: coordinator + trusted-dealer ceremony + 5 operator nodes +
 # Caddy edge, all in one container. v0 trust model, demo posture: the dealer
 # runs in-container. State lives under /bte-state (mount a volume to persist).
-# This is the scheme v0 ceremony stack, which is what the hosted committee
-# still runs. Scheme v1 (a DKG through the coordinator's relay, no dealer) is
-# proven locally by scripts/bte/v1-stack.sh; migrating this service to v1 is
-# spec/ROADMAP.md item 3.
 set -eu
 
 STATE_DIR="${BTE_STATE_DIR:-/bte-state}"
@@ -13,16 +9,6 @@ export BTE_KEYSTORE_PASS="${BTE_KEYSTORE_PASS:-railway-devnet-v0}"
 export BTE_COORDINATOR_URL="http://localhost:8090"
 export DATABASE_URL="sqlite://${STATE_DIR}/bte.db"
 mkdir -p "$STATE_DIR/ceremony"
-# Operator actions (registering the committee at boot, starting DKG rounds)
-# need the admin token. The image ships BTE_DEV=1, but the coordinator binds
-# 0.0.0.0 behind Caddy, so the dev waiver does not apply here: set
-# BTE_ADMIN_TOKEN as a Railway secret to run DKG rounds from outside, or
-# let this boot mint one that only the in-container committee-init knows.
-if [ -z "${BTE_ADMIN_TOKEN:-}" ]; then
-  BTE_ADMIN_TOKEN="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-  echo "BTE_ADMIN_TOKEN not set: minted a per-boot token (DKG rounds need a configured one)"
-fi
-export BTE_ADMIN_TOKEN
 
 # Coordinator pinned to 8090 internally; Caddy owns the public port.
 BTE_LISTEN="0.0.0.0:8090" bte-coordinator &

@@ -13,9 +13,7 @@ Every word of that is defensible. Everything below bounds it.
 
 ## What it does NOT promise
 
-**Not trustless.** Peal's v0 committees use a trusted-dealer ceremony, not
-DKG, and the hosted peal.network committee is v0 until it is migrated. Scheme
-v1 (transparent setup from a DKG) exists in this repository; see below.
+**Not trustless.** Peal v0 uses a trusted-dealer ceremony, not DKG. See below.
 
 **Not funding privacy.** Quote-token escrow is an ordinary public ERC-20
 transfer. An observer sees *which address escrowed how much quote token*, which
@@ -49,15 +47,6 @@ cannot help: an attacker holding `tau` does not need the committee.
 
 Status: **local and testnet only.** A production AuctionKit requires DKG
 (roadmap item 1). See `production-readiness.md`.
-
-This row applies to **v0 committees only**. Scheme v1 ("DKG Is All You
-Need", `crates/bte-crypto/src/tbte/`, `spec/index.md` section 3b) has no
-dealer: the committee's one secret scalar comes from Commonware's
-Feldman/Desmedt DKG through the coordinator's relay, and its threshold
-follows the `N3f1` rule (five operators give 4-of-5). What is deployed for
-AuctionKit today is still a v0 committee; the hosted peal.network
-coordinator runs v0 until an operator runs a DKG there (roadmap item 3).
-Until that migration, read this document as written.
 
 ### 2. Threshold collusion
 
@@ -161,7 +150,7 @@ deployment gives it a gas key only.
 
 | assumption | if it fails |
 |---|---|
-| Dealer destroyed `tau` (v0 committees; v1 has no dealer) | every bid, every auction, decryptable by one party |
+| Dealer destroyed `tau` | every bid, every auction, decryptable by one party |
 | Fewer than 3 of 5 operators collude | early decryption; front-running of the auction |
 | Operators are independent | as above — colocated operators give no threshold security |
 | Fewer than 3 sign a false reveal root | auction can be halted (not stolen from) |

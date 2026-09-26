@@ -6,7 +6,7 @@ license.workspace = true
 description = "bte coordinator: registry + condition engine + aggregator + REST + sqlite"
 
 [dependencies]
-bte-crypto = { workspace = true, features = ["dkg"] }
+bte-crypto = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -24,9 +24,6 @@ k256.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
-bte-crypto = { workspace = true, features = ["dkg", "dev-dealer"] }
-bte-node = { path = "../bte-node" }
-tempfile = "3"
 rand_chacha = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.40.1", features = ["bundled"] }

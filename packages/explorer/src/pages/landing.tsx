@@ -760,12 +760,11 @@ function Committee() {
         never opens it, any three do.
       </p>
       <p className="peal-fine">
-        The key is held by five independent operators: {DEVNET_RING}, {DEVNET_RING_NOTE}. A v0
-        committee had its shares dealt by a trusted dealer; a v1 committee takes its key from a
-        distributed key generation, so there is no dealer and no machine ever holds the whole
-        key. Which one a committee runs is shown by its scheme, and the hosted committee is v0
-        today. The auction committee's signing keys are derivable from a published string, so
-        nothing here is custody and nothing here should hold value.
+        The key is held by five independent operators: {DEVNET_RING}, {DEVNET_RING_NOTE}. In v0
+        the shares were dealt by a trusted dealer, and the auction committee's signing keys are
+        derivable from a published string, so nothing here is custody and nothing here should
+        hold value. Distributed key generation replaces the dealer before the network carries
+        anything real.
       </p>
     </Section>
   );
@@ -870,11 +869,9 @@ function Mempool() {
       <p className="peal-fine">
         The demo is not a drawing. Both pools are real contracts on a public testnet, the searcher
         is a real bot, and the sealed order settles through <code>PealMempool.executeBatch</code>.
-        The hosted committee is still v0, so its keys come from a trusted dealer rather than a
-        distributed key generation, and the honest statement is that a dishonest operator could
-        read early today. A v1 committee takes its key from a DKG, with no dealer and no machine
-        ever holding the whole key; which one a committee runs is shown by its scheme. The
-        cryptography and the settlement are real. That part of the trust model is not finished.
+        The committee&rsquo;s keys still come from a trusted dealer rather than a distributed key
+        generation, so the honest statement is that a dishonest operator could read early today.
+        The cryptography and the settlement are real. That part of the trust model is not finished.
       </p>
     </Section>
   );
@@ -1134,7 +1131,7 @@ const FAQS: Array<[string, React.ReactNode]> = [
   [
     'What is Peal, in one sentence?',
     <>
-      The privacy layer for onchain markets. You collect encrypted bids,
+      The programmable confidentiality layer for digital markets. You collect encrypted bids,
       offers, votes, commitments and agent intents, and they open only when a condition you set is
       met.
     </>,
@@ -1150,7 +1147,7 @@ const FAQS: Array<[string, React.ReactNode]> = [
   [
     'Who can read a submission before the deadline?',
     <>
-      Nobody, and nobody has to be trusted for that: the decryption key is held by five independent operators, they do not combine their shares until the condition fires, and any group smaller than the threshold learns nothing (three of five on the hosted v0 committee, four of five on a v1 committee). A v0 committee had its shares dealt by a single ceremony, and that ceremony is its trust assumption; a v1 committee takes its key from a distributed key generation, with no dealer and no machine ever holding the whole key. Which one a committee runs is shown by its scheme, and the hosted committee is v0 today.
+      Nobody, and nobody has to be trusted for that: the decryption key is held by five independent operators, no three of them combine their shares until the condition fires, and two of them together learn nothing. In v0 the key shares were dealt by a single ceremony rather than a distributed key generation; that ceremony is the trust assumption that remains, and DKG replaces it.
     </>,
   ],
   [
@@ -1164,10 +1161,9 @@ const FAQS: Array<[string, React.ReactNode]> = [
   [
     'What if an operator goes offline?',
     <>
-      On the hosted v0 committee three of the five are enough, so two can be down, unreachable or
-      actively refusing and the round still opens on time; a v1 committee of five needs four, so
-      one can be down. The committee above is interactive, so you can see the threshold rule for
-      yourself; live share arrivals are on the activity dashboard.
+      Three of the five are enough, so two can be down, unreachable or actively refusing and the
+      round still opens on time. The committee above is interactive, so you can see the threshold
+      rule for yourself; live share arrivals are on the activity dashboard.
     </>,
   ],
   [

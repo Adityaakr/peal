@@ -13,10 +13,6 @@
 
 pub mod wire;
 
-/// BTE v1: the transparent-setup scheme ("DKG Is All You Need"). The v0
-/// simple-bte wrapper below stays for existing committees.
-pub mod tbte;
-
 /// Re-export of the rand version simple-bte's API is built against
 /// (ark-std 0.6 -> rand 0.8). Downstream crates should use this instead of
 /// depending on `rand` directly, so RNG trait versions can never diverge.
@@ -24,7 +20,7 @@ pub use ark_std::rand;
 
 /// OS-entropy RNG matching simple-bte's rand version (works on native and
 /// wasm — getrandom picks the platform source).
-pub fn os_rng() -> impl rand::Rng + rand::CryptoRng {
+pub fn os_rng() -> impl rand::Rng {
     use rand::SeedableRng;
     let mut seed = [0u8; 32];
     getrandom::getrandom(&mut seed).expect("OS entropy unavailable");
@@ -64,8 +60,6 @@ pub enum BteError {
     BatchSize { expected: usize, got: usize },
     #[error("not enough valid shares: need {need}, have {have}")]
     NotEnoughShares { need: usize, have: usize },
-    #[error("invalid ciphertext: {0}")]
-    InvalidCiphertext(String),
 }
 
 /// Public parameters for one committee. Carries ek, the punctured powers of h

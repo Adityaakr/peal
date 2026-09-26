@@ -1,5 +1,5 @@
 <h1 align="center">Peal</h1>
-<h3 align="center">The privacy layer for onchain markets</h3>
+<h3 align="center">The programmable confidentiality layer for digital markets</h3>
 
 <p align="center">
   <a href="https://peal.network">peal.network</a> ·
@@ -357,8 +357,6 @@ Measured with criterion at B=64, n=5, t=3 on a laptop:
 
 The reveal a user feels is the 37 ms, because the 245 ms was pipelined before the shares arrived. `BteAnchor.sol` records ciphertext commitments per condition and the reveal's merkle root; the SDK recomputes the root from revealed payloads and checks it against the chain (`verifyAnchor`). Sealed payloads are padded to fixed widths so a ciphertext's length says nothing about its value.
 
-The figures above are scheme v0 (simple-bte), whose committee comes from a trusted-dealer ceremony. **Scheme v1** runs beside it: the construction from "DKG Is All You Need" (Guru-Vamsi Policharla, Commonware, 2026), where the committee's whole secret is one scalar produced by Commonware's Feldman/Desmedt DKG (`commonware-cryptography`, `bls12381::dkg::feldman_desmedt`) over the coordinator acting as an untrusted relay, so no machine ever holds the key and there is no batch bound. The threshold follows the DKG's `N3f1` rule, t = n − ⌊(n−1)/3⌋: five operators give 4-of-5. Every ciphertext carries a proof that binds it to one committee and one condition, checked at intake and by every operator before signing. `scripts/bte/v1-stack.sh demo` proves it locally: a coordinator and five operator processes run a DKG round through the relay, then seal and reveal end to end. Status, honestly: the hosted peal.network committee is still v0 until an operator runs a DKG there; v1 is unaudited, like v0. Details in `spec/index.md` §3b, `SECURITY.md`, and `docs/peal-links/decisions/0015-transparent-bte-from-a-dkg.md`.
-
 ---
 
 ## How the private ledger works
@@ -434,14 +432,6 @@ just demo-byzantine   # operator 2 posts bad shares; they fail the pairing check
 pnpm -C packages/explorer dev   # the explorer, every condition live
 ```
 
-Those run the v0 ceremony stack. **Scheme v1** (a DKG instead of a ceremony), five operator processes, no Docker:
-
-```bash
-just v1-demo                        # scripts/bte/v1-stack.sh demo: DKG through the relay, seal, reveal, down
-scripts/bte/v1-stack.sh up          # leave it running on :8091
-just mempool-v1-demo                # the encrypted mempool on that committee: anvil, contracts, relayer, settler, headless driver
-```
-
 **Peal Private Links** on two local chains with three consensus validators:
 
 ```bash
@@ -489,10 +479,10 @@ No secrets live in the repository: signer keys, deployer keys and local state st
 
 | path | what |
 |---|---|
-| `crates/bte-crypto` | the only crate touching group elements; both schemes: v0 wraps simple-bte, v1 (`tbte/`) is the transparent scheme with the DKG |
+| `crates/bte-crypto` | the only crate touching group elements; wraps simple-bte |
 | `crates/bte-coordinator` | registry, condition engine, aggregator, REST, prerendered pages, sqlite |
 | `crates/bte-node` | operator binary: encrypted keystore, outbound only |
-| `crates/bte-cli` | ceremony, committee init, end-to-end driver; v1: `identity-new`, `identity-show`, `dkg-init`, `dkg-status` |
+| `crates/bte-cli` | ceremony, committee init, end-to-end driver |
 | `crates/bte-wasm` | wasm bindings for sealing and share verification |
 | `crates/peal-bonsai` | Bonsai private-payment core over the pinned ZK-Pari circuits |
 | `crates/peal-links-node` | the Peal Links node |
@@ -509,7 +499,6 @@ No secrets live in the repository: signer keys, deployer keys and local state st
 | `contracts/` | `BteAnchor`, `PealNames`, the mempool contracts, `links/PealLinksGateway`, `auctionkit/` |
 | `config/` | node profiles: local, Sepolia, Tempo, the hosted Sepolia profile |
 | `scripts/peal-links/` | `stack.sh` (local), `testnet.sh` (Sepolia, Tempo), `demo.sh` |
-| `scripts/bte/` | `v1-stack.sh` (the v1 committee as local processes: DKG through the relay, seal to reveal) |
 | `skills/` | the agent skill served at `/skill` |
 | `docker/`, `railway/` | images and Railway service configs |
 | `docs/` | product docs, decisions, build logs, deployment recipes |

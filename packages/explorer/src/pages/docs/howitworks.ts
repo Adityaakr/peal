@@ -8,13 +8,12 @@ export const howItWorks: DocsPage = {
 <h2>How it works</h2>
         <p>Your app encrypts locally with batched threshold encryption (BTE) and sends a
         ciphertext. The coordinator stores it and holds no key that opens it. When the moment
-        arrives, a threshold of the operators (three of the five on the hosted v0 committee)
-        each publish a decryption share, the whole batch opens at once, and everyone reads the
-        same result.</p>
+        arrives, three of the five operators each publish a decryption share, the whole batch
+        opens at once, and everyone reads the same result.</p>
 
         <figure class="dev-figure">
           <svg viewBox="0 0 920 352" role="img" class="sketch"
-               aria-label="Your app encrypts a payload locally and sends only ciphertext to the coordinator, which stores it unreadable until the condition fires, when a threshold of the operators open the whole batch at once for everyone.">
+               aria-label="Your app encrypts a payload locally and sends only ciphertext to the coordinator, which stores it unreadable until the condition fires, when three of five operators open the whole batch at once for everyone.">
             <defs>
               <marker id="dv-arrow" viewBox="0 0 10 10" refX="9" refY="5"
                       markerWidth="8" markerHeight="8" orient="auto-start-reverse">
@@ -171,8 +170,8 @@ export const howItWorks: DocsPage = {
               only if you anchor a root to one</td></tr>
               <tr><td>who holds the keys today</td><td>the League of Entropy, around two dozen named
               organisations</td><td>five independent operators, ${DEVNET_RING}, none of them
-              trusted; a v0 committee had its shares dealt by one ceremony, a v1 committee takes
-              its key from a DKG with no dealer, and the hosted committee is v0 today</td></tr>
+              trusted; in v0 their shares were dealt by one ceremony, and DKG replaces the
+              dealer</td></tr>
               <tr><td>post-quantum</td><td>no, and drand says so</td><td>no; the same pairings</td></tr>
             </tbody>
           </table>

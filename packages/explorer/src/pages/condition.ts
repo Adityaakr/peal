@@ -407,7 +407,7 @@ function boardTable(r: Reveal): string {
     padding.length > 0
       ? `<tr class="padding-note-row"><td colspan="3">
            <span class="muted">+ ${padding.length} padding slots keep the batch at ${r.slots.length},
-           fixed by the committee's parameters (v0: at the ceremony; v1: no fixed size). all ${r.slots.length} are committed in the merkle root.</span>
+           fixed by the ceremony. all ${r.slots.length} are committed in the merkle root.</span>
          </td></tr>`
       : '';
   return `<div class="table-wrap"><table>

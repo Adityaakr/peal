@@ -1,5 +1,5 @@
 # Multi-stage build: one image carrying all three bte binaries.
-FROM rust:1.97-slim AS builder
+FROM rust:1.95-slim AS builder
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates pkg-config \
     && rm -rf /var/lib/apt/lists/*

@@ -117,21 +117,13 @@ intent then expires unexecuted. It fails loudly; it does not hang silently.
 
 ### Trusted dealer — the biggest caveat
 
-**Peal v0 committees have no DKG.** A single trusted-dealer ceremony generates
-`tau`, Shamir-deals shares of each power, publishes the public parameters, and
-destroys `tau`. Anyone who held `tau` during that ceremony, or who captured it,
-can decrypt every batch under those parameters — alone, at any time, forever.
+**Peal v0 has no DKG.** A single trusted-dealer ceremony generates `tau`, Shamir
+-deals shares of each power, publishes the public parameters, and destroys
+`tau`. Anyone who held `tau` during that ceremony, or who captured it, can
+decrypt every batch under those parameters — alone, at any time, forever.
 
-Do not describe Peal as trustless while a v0 committee is in use.
-
-Scheme v1 removes the dealer: the committee's one secret scalar comes from
-Commonware's Feldman/Desmedt DKG through the coordinator's relay, its threshold
-follows the `N3f1` rule (five operators give 4-of-5, not 3-of-5), and the
-ciphertext proof binds each ciphertext to one committee and one condition. See
-`spec/index.md` section 3b and `SECURITY.md`. The hosted peal.network
-coordinator still runs a v0 committee until an operator runs a DKG there
-(`spec/ROADMAP.md` item 3); the 3-of-5 figures above describe that v0
-committee.
+Do not describe Peal as trustless while this is true. Replacing the dealer with
+a DKG is item 1 on `spec/ROADMAP.md`.
 
 ## What the receipt reveals
 
@@ -163,7 +155,7 @@ adapter name, error code, and the transaction hash once submitted.
 | assumption | consequence if wrong |
 |---|---|
 | Fewer than 3 of 5 operators collude | early decryption of an entire batch |
-| The dealer destroyed `tau` (v0 committees; v1 has no dealer) | permanent decryption of every batch |
+| The dealer destroyed `tau` | permanent decryption of every batch |
 | The executor commits ordering before requesting shares | reordering becomes possible |
 | The liquidity provider does not act on quote requests | front-running in the reveal-to-inclusion window |
 | The private submission provider does not leak | same |

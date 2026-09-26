@@ -1,8 +1,5 @@
 # bte production/devnet compose: coordinator + 5 nodes + Caddy edge (TLS,
 # reverse proxy, static explorer). See docs/devnet-runbook.md.
-# This runs the scheme v0 ceremony stack (trusted dealer). Scheme v1 replaces
-# the ceremony with a DKG through the coordinator's relay; the local proof is
-# scripts/bte/v1-stack.sh, and no v1 compose file exists yet.
 #
 # For a REAL deployment: run the ceremony on an offline machine and distribute
 # keystores to operator hosts (runbook section 1) instead of using the
@@ -30,7 +27,6 @@ services:
     command: bte-coordinator
     environment:
       DATABASE_URL: sqlite:///data/bte.db
-      BTE_ADMIN_TOKEN: ${BTE_ADMIN_TOKEN:-change-me-admin}
       REVEAL_TIMEOUT_SECS: "300"
       # Production rate limits: 5 req/s sustained, burst 30, per IP.
       BTE_RATE_RPS: "5"
@@ -60,8 +56,6 @@ services:
         fi
         bte-cli committee-init --coordinator http://coordinator:8080 --params /ceremony/params.bin
     environment:
-      # Registering the committee needs the coordinator's admin token.
-      BTE_ADMIN_TOKEN: ${BTE_ADMIN_TOKEN:-change-me-admin}
       BTE_KEYSTORE_PASS: ${BTE_KEYSTORE_PASS:-change-me-devnet}
     volumes:
       - ceremony:/ceremony
