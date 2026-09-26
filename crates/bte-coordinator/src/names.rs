@@ -803,9 +803,8 @@ mod tests {
         let html = page_html(SHELL, dev, Some("https://peal.network/developers"));
 
         // The card says what this is.
-        assert!(html.contains(
-            r#"property="og:title" content="The privacy layer for onchain markets.""#
-        ));
+        assert!(html
+            .contains(r#"property="og:title" content="The privacy layer for onchain markets.""#));
         assert!(html.contains(r#"property="og:description" content="One API to collect"#));
 
         // The document title stays its own, so it does not compete with the
