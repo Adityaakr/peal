@@ -73,7 +73,7 @@ pub const PAGES: &[Page] = &[
     Page {
         path: "",
         route: "#/",
-        title: "Peal. The programmable confidentiality layer for digital markets.",
+        title: "Peal. The privacy layer for onchain markets.",
         description:
             "One API to collect encrypted bids, offers, votes, commitments and agent intents, then reveal them only when predefined conditions are met. Nobody can read a submission early, including the operators. No wallet or gas for the people submitting.",
         // WebPage, not WebSite: the site-level WebSite node is declared once
@@ -94,7 +94,7 @@ pub const PAGES: &[Page] = &[
         index: true,
         image: Some(DEV_CARD),
         share: Some((
-            "The programmable confidentiality layer for digital markets.",
+            "The privacy layer for onchain markets.",
             "One API to collect encrypted bids, offers, votes, commitments and agent intents, \
              then reveal them only when predefined conditions are met.",
         )),
@@ -483,7 +483,7 @@ pub(crate) fn faqs_for(path: &str) -> Option<&'static [(&'static str, &'static s
     Some(match path {
         "" => &[
             ("What is Peal, in one sentence?",
-             "The programmable confidentiality layer for digital markets. You collect encrypted bids, offers, votes, commitments and agent intents, and they open only when a condition you set is met."),
+             "The privacy layer for onchain markets. You collect encrypted bids, offers, votes, commitments and agent intents, and they open only when a condition you set is met."),
             ("Do the people submitting need a wallet or any crypto?",
              "No. Sealing happens in their browser or in your own code and goes over ordinary HTTPS. No wallet, no account, no gas, and they never touch a chain. That is usually the difference between a mechanism you can ship to your users and one you can only ship to crypto users."),
             ("Who can read a submission before the deadline?",

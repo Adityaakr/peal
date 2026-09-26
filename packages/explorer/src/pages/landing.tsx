@@ -1131,7 +1131,7 @@ const FAQS: Array<[string, React.ReactNode]> = [
   [
     'What is Peal, in one sentence?',
     <>
-      The programmable confidentiality layer for digital markets. You collect encrypted bids,
+      The privacy layer for onchain markets. You collect encrypted bids,
       offers, votes, commitments and agent intents, and they open only when a condition you set is
       met.
     </>,

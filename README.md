@@ -1,5 +1,5 @@
 <h1 align="center">Peal</h1>
-<h3 align="center">The programmable confidentiality layer for digital markets</h3>
+<h3 align="center">The privacy layer for onchain markets</h3>
 
 <p align="center">
   <a href="https://peal.network">peal.network</a> ·
