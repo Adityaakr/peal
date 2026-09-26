@@ -804,7 +804,7 @@ mod tests {
 
         // The card says what this is.
         assert!(html.contains(
-            r#"property="og:title" content="The programmable confidentiality layer for digital markets.""#
+            r#"property="og:title" content="The privacy layer for onchain markets.""#
         ));
         assert!(html.contains(r#"property="og:description" content="One API to collect"#));
 

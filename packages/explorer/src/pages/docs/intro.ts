@@ -4,11 +4,11 @@ import { shown } from './runner';
 import { esc } from '../../util';
 
 export const intro: DocsPage = {
-  title: 'The programmable confidentiality layer for digital markets.',
+  title: 'The privacy layer for onchain markets.',
   lede: 'One API to collect encrypted bids, offers, votes, commitments and agent intents, then reveal them only when predefined conditions are met.',
   html: `
     <h2 id="what-peal-is">What Peal is</h2>
-    <p>Peal is a programmable confidentiality layer for time-bound digital markets. Bids, offers,
+    <p>Peal is the privacy layer for onchain markets. Bids, offers,
     votes, commitments and agent intents arrive encrypted and remain unreadable until a
     predefined condition is met. When that moment arrives, the entire set is revealed
     together. The primitive underneath every one of those is batched threshold encryption
