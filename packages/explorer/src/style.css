@@ -5848,39 +5848,6 @@ textarea.live-input {
   text-align: right;
 }
 
-.dev-limits {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
-  margin: 18px 0;
-}
-
-.dev-limits > div {
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
-
-.dev-limits span {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.dev-limits strong {
-  display: block;
-  margin: 4px 0 6px;
-  font-size: 22px;
-}
-
-.dev-limits p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
 /* The paragraph that says what this does NOT protect you from. Marked so it is
    read rather than skimmed past, because it is the most important one here. */
 .dev-caveat {

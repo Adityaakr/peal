@@ -220,17 +220,6 @@ pub const PAGES: &[Page] = &[
         share: None,
     },
     Page {
-        path: "developers/limits",
-        route: "#/developers/limits",
-        title: "Peal API limits and errors.",
-        description:
-            "What the server enforces: payload caps, page sizes, rate limits, batch size, and the error codes returned when you cross one.",
-        schema: "TechArticle",
-        index: true,
-        image: Some(DEV_CARD),
-        share: None,
-    },
-    Page {
         path: "developers/network",
         route: "#/developers/network",
         title: "Activity on the Peal network.",

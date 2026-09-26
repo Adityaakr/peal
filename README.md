@@ -406,7 +406,6 @@ The proof is verified by the node before any record is written, re-verified for 
 | [API reference](https://peal.network/developers/api) | every endpoint with a playground: rounds, seals, auctions, reference, and the private ledger's public reads |
 | [Metered calls (x402)](https://peal.network/developers/x402) | the 402 handshake, run live |
 | [Peal Private Links](https://peal.network/developers/links) · [SDK](https://peal.network/developers/links-sdk) · [API](https://peal.network/developers/links-api) | the private payment engine, end to end |
-| [Limits and errors](https://peal.network/developers/limits) | every code, every limit |
 | [Use it from an agent](https://peal.network/developers/agents) | the installable skill: sealed submissions and private payments, with recipes, verification scripts and the mistakes that produce code which looks right and is wrong |
 | [`/llms.txt`](https://peal.network/llms.txt) | the site for models |
 

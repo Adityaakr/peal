@@ -26,7 +26,6 @@ import { howItWorks } from './pages/docs/howitworks';
 import { auctions as auctionDocs } from './pages/docs/auctions';
 import { useCases } from './pages/docs/usecases';
 import { apiReference } from './pages/docs/api';
-import { limits as limitsDocs } from './pages/docs/limits';
 import { network as networkDocs } from './pages/docs/network';
 import { x402Page } from './pages/docs/x402';
 import { roadmap } from './pages/docs/roadmap';
@@ -152,7 +151,7 @@ function renderNamedAuction(root: HTMLElement, name: string): Cleanup {
 const PAGE_PATHS = new Set([
   'developers', 'developers/quickstart', 'developers/agents', 'developers/howitworks',
   'developers/auctions', 'developers/createauction', 'developers/usecases',
-  'developers/api', 'developers/x402', 'developers/limits', 'developers/network',
+  'developers/api', 'developers/x402', 'developers/network',
   'developers/roadmap', 'developers/links', 'developers/links-sdk', 'developers/links-api',
   'protocol', 'mempool', 'auction', 'stakeholder-tokens', 'execution', 'philosophy', 'create', 'app',
   'bonsai', 'bonsai/app',
@@ -350,8 +349,6 @@ function route(): void {
     cleanup = renderDocs(root, useCases, hash);
   } else if (hash === '#/developers/api') {
     cleanup = renderDocs(root, apiReference, hash);
-  } else if (hash === '#/developers/limits') {
-    cleanup = renderDocs(root, limitsDocs, hash);
   } else if (hash === '#/developers/x402') {
     cleanup = renderDocs(root, x402Page, hash);
   } else if (hash === '#/developers/network') {

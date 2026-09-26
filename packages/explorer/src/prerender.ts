@@ -19,7 +19,6 @@ import { howItWorks } from './pages/docs/howitworks';
 import { auctions } from './pages/docs/auctions';
 import { useCases } from './pages/docs/usecases';
 import { apiReference } from './pages/docs/api';
-import { limits } from './pages/docs/limits';
 import { network } from './pages/docs/network';
 import { x402Page } from './pages/docs/x402';
 import { roadmap } from './pages/docs/roadmap';
@@ -54,7 +53,6 @@ const PAGES: [string, DocsPage][] = [
   ['developers/usecases', useCases],
   ['developers/api', apiReference],
   ['developers/x402', x402Page],
-  ['developers/limits', limits],
   ['developers/network', network],
   ['developers/roadmap', roadmap],
   ['developers/links', privateLinks],

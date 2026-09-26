@@ -70,7 +70,6 @@ export const DOCS_NAV: DocsGroup[] = [
       { label: 'Metered calls (x402)', href: '#/developers/x402' },
       { label: 'Private Links SDK', href: '#/developers/links-sdk' },
       { label: 'Private Links API', href: '#/developers/links-api' },
-      { label: 'Limits and errors', href: '#/developers/limits' },
     ],
   },
   {

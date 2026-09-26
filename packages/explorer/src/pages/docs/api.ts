@@ -179,7 +179,6 @@ export const apiReference: DocsPage = {
   "detail": "the maximum cannot be below the reserve",
   "field":  "maximum_minor"
 }</code></pre>
-    <p>The full list is on <a href="#/developers/limits">limits and errors</a>.</p>
 
     <h2 id="rate-limits">Rate limits</h2>
     <p>50 requests a second per IP, bursting to 400. Every response carries
