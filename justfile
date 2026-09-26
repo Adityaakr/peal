@@ -22,6 +22,8 @@ lint:
 test:
     cargo test --workspace
 
+# Scheme v0 ceremony stack (docker/docker-compose.yml). Scheme v1 runs a DKG
+# instead of a ceremony: see `v1-demo` and scripts/bte/v1-stack.sh.
 # Bring up the full dev network: coordinator + fresh ceremony + 5 nodes.
 compose-up:
     docker compose -f docker/docker-compose.yml up -d --build
@@ -36,7 +38,16 @@ compose-down:
 test-e2e:
     cargo run --release -p bte-cli -- e2e --coordinator http://localhost:${BTE_PORT:-8080} --expect-verified-at-least 3
 
-# Local dev ceremony (writes gitignored .dev-ceremony/).
+# State under .dev-state/bte-v1 (gitignored). See scripts/bte/v1-stack.sh.
+# Scheme v1 end to end, no Docker: five operator processes, a DKG round through the relay, seal -> reveal.
+v1-demo:
+    scripts/bte/v1-stack.sh demo
+
+# The encrypted mempool on a v1 committee, locally: anvil + contracts + relayer + settler + the v1 stack, driven headless.
+mempool-v1-demo:
+    scripts/bte/mempool-v1-local.sh demo
+
+# Local dev ceremony for scheme v0 (writes gitignored .dev-ceremony/).
 ceremony:
     BTE_KEYSTORE_PASS=${BTE_KEYSTORE_PASS:-devnet-pass} cargo run --release -p bte-cli -- ceremony --n 5 --t 3 --b 64 --out .dev-ceremony
 

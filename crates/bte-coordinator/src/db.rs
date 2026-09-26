@@ -143,9 +143,46 @@ pub fn open(path: &str) -> Result<Connection> {
     conn.execute_batch(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_cts_code ON ciphertexts(code) WHERE code IS NOT NULL;",
     )?;
+    // BTE v1 (transparent setup from a DKG). A committee names its scheme;
+    // rows from before the column existed are v0. A v1 ciphertext's KEM
+    // point is unique per condition, so a sealer cannot enter the same
+    // randomness twice and make the batch's admission check fail for
+    // everyone.
+    conn.execute(
+        "ALTER TABLE committees ADD COLUMN scheme TEXT NOT NULL DEFAULT 'v0'",
+        [],
+    )
+    .ok();
+    conn.execute("ALTER TABLE ciphertexts ADD COLUMN kem_point TEXT", [])
+        .ok();
+    conn.execute_batch(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_cts_kem_point
+           ON ciphertexts(condition_id, kem_point) WHERE kem_point IS NOT NULL;",
+    )?;
     // Private Actions (/v1). Additive: new tables only, so a devnet database
     // created before intents existed opens unchanged.
     conn.execute_batch(crate::intents::SCHEMA)?;
+    // The DKG relay (BTE v1 committees). Additive tables.
+    conn.execute_batch(crate::dkg::SCHEMA)?;
+    // Shares that failed the pairing check are kept for the audit log but
+    // never under the (batch, operator) key an honest share needs, so a
+    // stranger posting garbage under every index cannot lock operators out.
+    // Packed batch headers are cached at freeze so serving work and reveals
+    // never re-parses ciphertexts under the database lock.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS rejected_shares (
+            batch_id     INTEGER NOT NULL REFERENCES batches(id),
+            operator_id  INTEGER NOT NULL,
+            share_blob   BLOB NOT NULL,
+            submitted_at INTEGER NOT NULL
+         );
+         CREATE INDEX IF NOT EXISTS idx_rejected_shares_batch ON rejected_shares(batch_id);
+         CREATE TABLE IF NOT EXISTS batch_headers (
+            batch_id INTEGER PRIMARY KEY REFERENCES batches(id),
+            slots    INTEGER NOT NULL,
+            headers  BLOB NOT NULL
+         );",
+    )?;
     Ok(conn)
 }
 

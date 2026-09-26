@@ -6,18 +6,18 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::Engine;
-use bte_crypto::wire::header_to_bytes;
-use bte_crypto::{verify_share, SealedCiphertext, Share};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use crate::db::{now_ms, unix_now};
+use crate::scheme::{self, AnyShare, Headers, Sealed};
 use crate::state::{new_id, new_share_code, App};
 
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
-/// Sealed wire blob cap: framing + 48 + 16 + payload cap, with headroom.
-const MAX_SEALED_BLOB: usize = bte_crypto::MAX_PAYLOAD_BYTES + 4096;
+/// Sealed wire blob cap: framing, points, proof and the payload cap, with
+/// headroom (v0 overhead is 73 bytes, v1 is 300).
+pub(crate) const MAX_SEALED_BLOB: usize = bte_crypto::MAX_PAYLOAD_BYTES + 4096;
 
 pub(crate) type ApiError = (StatusCode, Json<Value>);
 
@@ -52,7 +52,8 @@ pub fn router(app: App) -> Router {
         .route("/activity", get(crate::activity::get_activity))
         .route("/x402", get(crate::x402::price))
         .route("/skill-installs", post(crate::activity::skill_installed))
-        .route("/healthz", get(|| async { Json(json!({"ok": true})) }));
+        .route("/healthz", get(|| async { Json(json!({"ok": true})) }))
+        .merge(crate::dkg::routes());
     Router::new()
         .nest("/v0", api)
         .nest("/v1", crate::intents::routes())
@@ -445,35 +446,63 @@ async fn submit_ciphertext(
         return Err(bad_request("sealed blob too large"));
     }
     // Strict validation: parses, on-curve, subgroup-checked, payload cap.
-    let ct = SealedCiphertext::from_bytes(&blob)
-        .map_err(|e| bad_request(format!("invalid sealed ciphertext: {e}")))?;
+    let ct =
+        Sealed::parse(&blob).map_err(|e| bad_request(format!("invalid sealed ciphertext: {e}")))?;
     let ct_hash = hex::encode(ct.hash());
 
+    // Which committee, and is the condition open: a short read under the lock.
+    let committee = {
+        let conn = app.0.db.lock().unwrap();
+        let (status, committee_id) = condition_intake_state(&conn, &req.condition_id)?;
+        if status != "pending" {
+            return Err(bad_request(format!(
+                "condition is {status}; sealing is closed"
+            )));
+        }
+        app.committee(&committee_id)
+            .ok_or_else(|| internal("committee not cached"))?
+    };
+    // The proof check is milliseconds of pairing work: never under the lock.
+    let ct = tokio::task::spawn_blocking({
+        let committee = committee.clone();
+        let condition_id = req.condition_id.clone();
+        move || ct.admit(&committee, &condition_id).map(|()| ct)
+    })
+    .await
+    .map_err(internal)?
+    .map_err(bad_request)?;
+
     let conn = app.0.db.lock().unwrap();
-    let status: String = conn
-        .query_row(
-            "SELECT status FROM conditions WHERE id = ?1",
-            [&req.condition_id],
-            |r| r.get(0),
-        )
-        .map_err(|_| not_found("unknown condition"))?;
+    // Re-checked: the condition may have frozen while the proof was checked.
+    let (status, _) = condition_intake_state(&conn, &req.condition_id)?;
     if status != "pending" {
         return Err(bad_request(format!(
             "condition is {status}; sealing is closed"
         )));
     }
+    check_capacity(&conn, &committee, &req.condition_id).map_err(bad_request)?;
+    // Only a replay of the same ciphertext (same hash) is silently a no-op; a
+    // second ciphertext with the same KEM point is a constraint violation.
     conn.execute(
-        "INSERT OR IGNORE INTO ciphertexts (ct_hash, condition_id, sealed_blob, is_dummy, created_at, code)
-         VALUES (?1, ?2, ?3, 0, ?4, ?5)",
+        "INSERT INTO ciphertexts (ct_hash, condition_id, sealed_blob, is_dummy, created_at, code, kem_point)
+         VALUES (?1, ?2, ?3, 0, ?4, ?5, ?6) ON CONFLICT(ct_hash) DO NOTHING",
         rusqlite::params![
             ct_hash,
             req.condition_id,
             blob,
             unix_now(),
-            new_share_code()
+            new_share_code(),
+            ct.kem_point_hex()
         ],
     )
-    .map_err(internal)?;
+    .map_err(|e| match e {
+        rusqlite::Error::SqliteFailure(f, _)
+            if f.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
+            bad_request("a ciphertext with this randomness is already sealed to this condition")
+        }
+        other => internal(other),
+    })?;
     // OR IGNORE means a replayed seal keeps the original row, so read the code
     // back rather than returning the candidate we just generated. Rows written
     // before the code column existed get one backfilled here.
@@ -490,6 +519,44 @@ async fn submit_ciphertext(
         )
         .map_err(internal)?;
     Ok(Json(json!({"ct_hash": ct_hash, "code": code})))
+}
+
+/// The condition's status and committee, for intake.
+pub(crate) fn condition_intake_state(
+    conn: &rusqlite::Connection,
+    condition_id: &str,
+) -> Result<(String, String), ApiError> {
+    conn.query_row(
+        "SELECT status, committee_id FROM conditions WHERE id = ?1",
+        [condition_id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .map_err(|_| not_found("unknown condition"))
+}
+
+/// A v1 condition holds one batch, minus the decoy. Checked under the lock,
+/// right before the insert. (The scheme and proof checks, `Sealed::admit`,
+/// run before the lock is taken.)
+pub(crate) fn check_capacity(
+    conn: &rusqlite::Connection,
+    committee: &scheme::Committee,
+    condition_id: &str,
+) -> Result<(), String> {
+    if let Some(capacity) = committee.real_capacity() {
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM ciphertexts WHERE condition_id = ?1 AND is_dummy = 0",
+                [condition_id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if count as usize >= capacity {
+            return Err(format!(
+                "condition is full: a v1 condition holds at most {capacity} ciphertexts"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Resolve a short share code to the seal it names. The code is an opaque
@@ -526,7 +593,8 @@ struct WorkQuery {
 }
 
 /// Frozen batches still missing a share from this operator, headers in
-/// position order (B * 48 bytes, base64).
+/// position order (v0: B * 48 bytes; v1: framed 325-byte headers), base64.
+/// `scheme` and `committee_id` tell an operator which key to use.
 async fn get_work(
     State(app): State<App>,
     Query(q): Query<WorkQuery>,
@@ -534,49 +602,43 @@ async fn get_work(
     let conn = app.0.db.lock().unwrap();
     let mut stmt = conn
         .prepare(
-            "SELECT b.id, b.condition_id, b.batch_index, k.b
+            "SELECT b.id, b.condition_id, b.batch_index, k.b, k.id, k.scheme
              FROM batches b
              JOIN conditions c ON c.id = b.condition_id
              JOIN committees k ON k.id = c.committee_id
              WHERE b.finalized_at IS NULL
                AND NOT EXISTS (SELECT 1 FROM shares s
-                               WHERE s.batch_id = b.id AND s.operator_id = ?1)",
+                               WHERE s.batch_id = b.id AND s.operator_id = ?1
+                                 AND s.verified = 1)",
         )
         .map_err(internal)?;
-    let batch_rows: Vec<(i64, String, i64, i64)> = stmt
+    let batch_rows: Vec<(i64, String, i64, i64, String, String)> = stmt
         .query_map([q.operator], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+            ))
         })
         .map_err(internal)?
         .collect::<Result<_, _>>()
         .map_err(internal)?;
 
     let mut batches = Vec::new();
-    for (batch_id, condition_id, batch_index, b) in batch_rows {
-        let lo = batch_index * b;
-        let hi = lo + b;
-        let mut stmt = conn
-            .prepare(
-                "SELECT sealed_blob FROM ciphertexts
-                 WHERE condition_id = ?1 AND position >= ?2 AND position < ?3
-                 ORDER BY position ASC",
-            )
-            .map_err(internal)?;
-        let blobs: Vec<Vec<u8>> = stmt
-            .query_map(rusqlite::params![condition_id, lo, hi], |r| r.get(0))
-            .map_err(internal)?
-            .collect::<Result<_, _>>()
-            .map_err(internal)?;
-        let mut headers = Vec::with_capacity(blobs.len() * 48);
-        for blob in &blobs {
-            let ct = SealedCiphertext::from_bytes(blob).map_err(internal)?;
-            headers.extend_from_slice(&header_to_bytes(&ct.header()));
-        }
+    for (batch_id, condition_id, batch_index, b, committee_id, scheme_name) in batch_rows {
+        let packed = packed_batch_headers(&conn, batch_id, &condition_id, batch_index, b)?;
+        let scheme = scheme::Scheme::parse(&scheme_name).unwrap_or(scheme::Scheme::V0);
         batches.push(json!({
             "batch_id": batch_id,
             "condition_id": condition_id,
+            "committee_id": committee_id,
+            "scheme": scheme_name,
             "b": b,
-            "headers_b64": B64.encode(&headers),
+            "slots": scheme::Headers::packed_len(scheme, &packed),
+            "headers_b64": B64.encode(&packed),
         }));
     }
     Ok(Json(json!({"batches": batches})))
@@ -598,13 +660,14 @@ async fn submit_share(
     let blob = B64
         .decode(&req.share_b64)
         .map_err(|_| bad_request("share_b64 is not valid base64"))?;
-    let share = Share::from_bytes(&blob).map_err(|e| bad_request(format!("invalid share: {e}")))?;
-    if share.party_index != req.operator_id {
+    let share = AnyShare::parse(&blob).map_err(|e| bad_request(format!("invalid share: {e}")))?;
+    if share.party_index() != req.operator_id {
         return Err(bad_request("share party index does not match operator_id"));
     }
 
-    // Load batch headers + committee for verification (read lock scope).
-    let (condition_id, committee_id, headers) = {
+    // Load the batch's packed headers + committee (a short read under the
+    // lock; nothing is parsed or verified while it is held).
+    let (condition_id, committee, packed) = {
         let conn = app.0.db.lock().unwrap();
         let (condition_id, batch_index): (String, i64) = conn
             .query_row(
@@ -620,61 +683,64 @@ async fn submit_share(
                 |r| r.get(0),
             )
             .map_err(internal)?;
-        let b: i64 = conn
-            .query_row(
-                "SELECT b FROM committees WHERE id = ?1",
-                [&committee_id],
-                |r| r.get(0),
-            )
-            .map_err(internal)?;
+        let committee = app
+            .committee(&committee_id)
+            .ok_or_else(|| internal("committee not cached"))?;
+        // Nobody outside the committee gets pairing work done for them.
+        if req.operator_id == 0 || req.operator_id > committee.n {
+            return Err(bad_request(format!(
+                "operator_id must be 1..={}",
+                committee.n
+            )));
+        }
+        // Only a VERIFIED share occupies the (batch, operator) slot. A
+        // rejected one is remembered for the audit log and never blocks the
+        // honest share from the operator whose index it claimed.
         let existing: Option<i64> = conn
             .query_row(
-                "SELECT verified FROM shares WHERE batch_id = ?1 AND operator_id = ?2",
+                "SELECT verified FROM shares WHERE batch_id = ?1 AND operator_id = ?2 AND verified = 1",
                 rusqlite::params![req.batch_id, req.operator_id],
                 |r| r.get(0),
             )
             .ok();
-        if let Some(verified) = existing {
-            return Ok(Json(json!({"verified": verified != 0, "duplicate": true})));
+        if existing.is_some() {
+            return Ok(Json(json!({"verified": true, "duplicate": true})));
         }
-        let lo = batch_index * b;
-        let hi = lo + b;
-        let mut stmt = conn
-            .prepare(
-                "SELECT sealed_blob FROM ciphertexts
-                 WHERE condition_id = ?1 AND position >= ?2 AND position < ?3
-                 ORDER BY position ASC",
-            )
-            .map_err(internal)?;
-        let blobs: Vec<Vec<u8>> = stmt
-            .query_map(rusqlite::params![condition_id, lo, hi], |r| r.get(0))
-            .map_err(internal)?
-            .collect::<Result<_, _>>()
-            .map_err(internal)?;
-        let headers: Vec<bte_crypto::CtHeader> = blobs
-            .iter()
-            .map(|blob| SealedCiphertext::from_bytes(blob).map(|ct| ct.header()))
-            .collect::<Result<_, _>>()
-            .map_err(internal)?;
-        (condition_id, committee_id, headers)
+        let packed = packed_batch_headers(
+            &conn,
+            req.batch_id,
+            &condition_id,
+            batch_index,
+            committee.b as i64,
+        )?;
+        (condition_id, committee, packed)
     };
 
-    let committee = app
-        .committee(&committee_id)
-        .ok_or_else(|| internal("committee not cached"))?;
-    let params = committee.params.clone();
-    let verified = tokio::task::spawn_blocking(move || verify_share(&params, &headers, &share))
-        .await
-        .map_err(internal)?;
+    let verified = tokio::task::spawn_blocking(move || {
+        let headers = scheme::Headers::unpack(committee.scheme, &packed)?;
+        anyhow::Ok(scheme::verify_share(&committee, &headers, &share))
+    })
+    .await
+    .map_err(internal)?
+    .map_err(internal)?;
 
     {
         let conn = app.0.db.lock().unwrap();
-        conn.execute(
-            "INSERT OR IGNORE INTO shares (batch_id, operator_id, share_blob, verified, submitted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![req.batch_id, req.operator_id, blob, verified as i64, now_ms()],
-        )
-        .map_err(internal)?;
+        if verified {
+            conn.execute(
+                "INSERT OR IGNORE INTO shares (batch_id, operator_id, share_blob, verified, submitted_at)
+                 VALUES (?1, ?2, ?3, 1, ?4)",
+                rusqlite::params![req.batch_id, req.operator_id, blob, now_ms()],
+            )
+            .map_err(internal)?;
+        } else {
+            conn.execute(
+                "INSERT INTO rejected_shares (batch_id, operator_id, share_blob, submitted_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![req.batch_id, req.operator_id, blob, now_ms()],
+            )
+            .map_err(internal)?;
+        }
     }
     if !verified {
         tracing::warn!(
@@ -737,7 +803,12 @@ async fn get_reveal(
         .prepare(
             "SELECT s.batch_id, s.operator_id, s.verified, s.submitted_at, s.share_blob
              FROM shares s JOIN batches b ON b.id = s.batch_id
-             WHERE b.condition_id = ?1 ORDER BY s.submitted_at ASC",
+             WHERE b.condition_id = ?1
+             UNION ALL
+             SELECT r.batch_id, r.operator_id, 0, r.submitted_at, r.share_blob
+             FROM rejected_shares r JOIN batches b ON b.id = r.batch_id
+             WHERE b.condition_id = ?1
+             ORDER BY 4 ASC",
         )
         .map_err(internal)?;
     let share_log: Vec<Value> = stmt
@@ -778,15 +849,25 @@ async fn get_reveal(
             |r| r.get(0),
         )
         .map_err(internal)?;
+    let scheme: String = conn
+        .query_row(
+            "SELECT k.scheme FROM committees k JOIN conditions c ON c.committee_id = k.id
+             WHERE c.id = ?1",
+            [&condition_id],
+            |r| r.get(0),
+        )
+        .map_err(internal)?;
+    let scheme = scheme::Scheme::parse(&scheme).unwrap_or(scheme::Scheme::V0);
     let mut batches = Vec::with_capacity(batch_rows.len());
     for (batch_id, batch_index, predecrypt_ms, finalize_ms) in batch_rows {
-        let headers = batch_headers(&conn, &condition_id, batch_index, b)?;
+        let packed = packed_batch_headers(&conn, batch_id, &condition_id, batch_index, b)?;
         batches.push(json!({
             "batch_id": batch_id,
             "batch_index": batch_index,
             "predecrypt_ms": predecrypt_ms,
             "finalize_ms": finalize_ms,
-            "headers_b64": B64.encode(&headers),
+            "slots": scheme::Headers::packed_len(scheme, &packed),
+            "headers_b64": B64.encode(&packed),
         }));
     }
 
@@ -800,13 +881,42 @@ async fn get_reveal(
     })))
 }
 
-/// The batch's ciphertext headers, packed in position order (B * 48 bytes).
+/// The batch's packed headers: the cache written at freeze, or, for a batch
+/// frozen before the cache existed, parsed from the ciphertexts once and
+/// cached then. Reading the cache is one row; nothing is parsed under the
+/// lock on the hot path.
+fn packed_batch_headers(
+    conn: &rusqlite::Connection,
+    batch_id: i64,
+    condition_id: &str,
+    batch_index: i64,
+    b: i64,
+) -> Result<Vec<u8>, ApiError> {
+    if let Ok(packed) = conn.query_row(
+        "SELECT headers FROM batch_headers WHERE batch_id = ?1",
+        [batch_id],
+        |r| r.get::<_, Vec<u8>>(0),
+    ) {
+        return Ok(packed);
+    }
+    let headers = batch_headers(conn, condition_id, batch_index, b)?;
+    let packed = headers.pack();
+    conn.execute(
+        "INSERT OR IGNORE INTO batch_headers (batch_id, slots, headers) VALUES (?1, ?2, ?3)",
+        rusqlite::params![batch_id, headers.len() as i64, packed],
+    )
+    .map_err(internal)?;
+    Ok(packed)
+}
+
+/// The batch's ciphertext headers in position order, parsed from the
+/// stored ciphertexts (the slow path behind `packed_batch_headers`).
 fn batch_headers(
     conn: &rusqlite::Connection,
     condition_id: &str,
     batch_index: i64,
     b: i64,
-) -> Result<Vec<u8>, ApiError> {
+) -> Result<Headers, ApiError> {
     let lo = batch_index * b;
     let hi = lo + b;
     let mut stmt = conn
@@ -821,12 +931,12 @@ fn batch_headers(
         .map_err(internal)?
         .collect::<Result<_, _>>()
         .map_err(internal)?;
-    let mut headers = Vec::with_capacity(blobs.len() * 48);
-    for blob in &blobs {
-        let ct = SealedCiphertext::from_bytes(blob).map_err(internal)?;
-        headers.extend_from_slice(&header_to_bytes(&ct.header()));
-    }
-    Ok(headers)
+    let cts: Vec<Sealed> = blobs
+        .iter()
+        .map(|blob| Sealed::parse(blob))
+        .collect::<Result<_, _>>()
+        .map_err(internal)?;
+    Headers::of(&cts).map_err(internal)
 }
 
 fn default_committee(app: &App) -> Option<String> {
@@ -844,13 +954,23 @@ struct RegisterCommittee {
     params_b64: String,
 }
 
+/// Registering a committee is an operator action (it becomes the default
+/// for every sealer), so it needs the admin token; a v1 committee is only
+/// ever made by a DKG round, never posted, so its provenance is the round.
 async fn register_committee(
     State(app): State<App>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<RegisterCommittee>,
 ) -> Result<Json<Value>, ApiError> {
+    crate::dkg::require_admin(&app, &headers)?;
     let blob = B64
         .decode(&req.params_b64)
         .map_err(|_| bad_request("params_b64 is not valid base64"))?;
+    if blob.starts_with(b"BTE1") {
+        return Err(bad_request(
+            "v1 committees come from a DKG round (POST /v0/dkg/rounds), not from posted params",
+        ));
+    }
     let id = app
         .register_committee(&blob)
         .map_err(|e| bad_request(format!("invalid params: {e}")))?;
@@ -860,7 +980,7 @@ async fn register_committee(
 async fn list_committees(State(app): State<App>) -> Result<Json<Value>, ApiError> {
     let conn = app.0.db.lock().unwrap();
     let mut stmt = conn
-        .prepare("SELECT id, n, t, b, created_at FROM committees ORDER BY created_at DESC")
+        .prepare("SELECT id, n, t, b, created_at, scheme FROM committees ORDER BY created_at DESC")
         .map_err(internal)?;
     let rows: Vec<Value> = stmt
         .query_map([], |r| {
@@ -870,6 +990,7 @@ async fn list_committees(State(app): State<App>) -> Result<Json<Value>, ApiError
                 "t": r.get::<_, i64>(2)?,
                 "b": r.get::<_, i64>(3)?,
                 "created_at": r.get::<_, i64>(4)?,
+                "scheme": r.get::<_, String>(5)?,
             }))
         })
         .map_err(internal)?
@@ -881,11 +1002,18 @@ async fn list_committees(State(app): State<App>) -> Result<Json<Value>, ApiError
 #[derive(Serialize)]
 struct CommitteeDetail {
     id: String,
+    /// "v0" (simple-bte, dealer-trusted, fixed batch) or "v1" (transparent
+    /// setup from a DKG, no batch bound).
+    scheme: String,
     n: i64,
     t: i64,
+    /// v0: the fixed batch size. v1: the batch stride (one batch per
+    /// condition, at most b - 1 ciphertexts plus one decoy).
     b: i64,
     params_b64: String,
     params_digest: String,
+    /// v1: hex of the DKG output digest the key came from. Absent for v0.
+    setup_digest: Option<String>,
     created_at: i64,
 }
 
@@ -898,18 +1026,24 @@ async fn get_committee(
     } else {
         id
     };
+    let setup_digest = app.committee(&resolved).and_then(|c| match c.scheme {
+        scheme::Scheme::V1 => Some(hex::encode(c.setup_digest)),
+        scheme::Scheme::V0 => None,
+    });
     let conn = app.0.db.lock().unwrap();
     conn.query_row(
-        "SELECT id, n, t, b, params_blob, created_at FROM committees WHERE id = ?1",
+        "SELECT id, n, t, b, params_blob, created_at, scheme FROM committees WHERE id = ?1",
         [&resolved],
         |r| {
             Ok(CommitteeDetail {
                 id: r.get(0)?,
+                scheme: r.get(6)?,
                 n: r.get(1)?,
                 t: r.get(2)?,
                 b: r.get(3)?,
                 params_b64: B64.encode(r.get::<_, Vec<u8>>(4)?),
                 params_digest: r.get(0)?,
+                setup_digest,
                 created_at: r.get(5)?,
             })
         },

@@ -38,10 +38,10 @@ export function protocolHtml(): string {
         to build on it, and exactly what separates today's devnet from production.</p>
         <div class="facts" aria-label="protocol defaults">
           <div><span>committee</span><strong>n = 5</strong></div>
-          <div><span>threshold</span><strong>t = 3</strong></div>
-          <div><span>fixed batch</span><strong>B = 64</strong></div>
+          <div><span>threshold</span><strong>t = 3 (v0) &middot; 4 (v1)</strong></div>
+          <div><span>batch</span><strong>v0: B = 64 &middot; v1: no fixed size</strong></div>
           <div><span>crypto overhead</span><strong>64 bytes</strong></div>
-          <div><span>share size</span><strong>48 bytes</strong></div>
+          <div><span>share size (v0)</span><strong>48 bytes</strong></div>
           <div><span>stall timeout</span><strong>120 s</strong></div>
         </div>
       </header>
@@ -143,16 +143,19 @@ export function protocolHtml(): string {
               request</td><td>per-ciphertext work: n operators each touch every message, which
               is exactly what kills throughput at batch sizes that matter</td></tr>
               <tr><td>peal (batched)</td><td>a committee posts one constant-size share per
-              operator per batch</td><td>batches are fixed at B slots and a threshold of
-              operators must be live; the v0 ceremony still has a trusted dealer</td></tr>
+              operator per batch</td><td>a threshold of operators must be live; v0 batches are
+              fixed at B slots and the v0 ceremony has a trusted dealer, while v1 has no fixed
+              batch and takes its key from a DKG</td></tr>
             </tbody>
           </table>
         </div>
-        <p>The batching is the point. One 48-byte share per operator opens up to 64 payloads, so
-        the committee's work per reveal is constant while the batch fills. Wall-clock deadlines
-        stay wall-clock. And every share is publicly verifiable against published keys, so a
-        lying operator is caught by arithmetic, not by reputation. Detection is live today; the
-        remedy is not: replacing a caught operator currently means a new ceremony.</p>
+        <p>The batching is the point. One constant-size share per operator opens the whole batch
+        (up to 64 payloads on v0, up to 4095 plus a decoy on v1), so the committee's work per
+        reveal is constant while the batch fills. Wall-clock deadlines stay wall-clock. And every
+        share is publicly verifiable against published keys, so a lying operator is caught by
+        arithmetic, not by reputation. Detection is live today; the remedy is not: replacing a
+        caught operator currently means a new ceremony on v0, and resharing is not wired yet on
+        v1.</p>
         <h3 id="tlock">Why not drand tlock</h3>
         <p>tlock deserves its own paragraph because it is the closest neighbour, not a strawman. It
         is the same primitive family, threshold BLS over BLS12-381. It has run in production since
@@ -177,9 +180,10 @@ export function protocolHtml(): string {
         <p>Two things this comparison must not say. Neither scheme is post-quantum: both rest on
         pairings, and drand says so of tlock in its own docs. And batching saves coordination and
         bandwidth, not pairings: the paper is explicit that decryption costs a few pairings per
-        ciphertext in every scheme, its own included. What Peal does not have yet is distributed
-        key generation: until the dealer ceremony is replaced, tlock's trust model is the
-        stronger one.</p>
+        ciphertext in every scheme, its own included. On a v0 committee the key was dealt by a
+        ceremony, and for as long as the hosted committee is v0, tlock's trust model is the
+        stronger one; a v1 committee takes its key from a distributed key generation, with no
+        dealer. The hosted committee is v0 today.</p>
         <p class="fine">Sources: <a href="https://docs.drand.love/docs/timelock-encryption/" target="_blank" rel="noopener">drand, timelock encryption</a>
         (mechanism, the applications list, the stated limitations) ·
         <a href="https://github.com/drand/tlock" target="_blank" rel="noopener">drand/tlock</a> (round or
@@ -215,8 +219,8 @@ export function protocolHtml(): string {
           </div></li>
           <li><div>
             <h3>The cue fires, the batch freezes</h3>
-            <p>A wall-clock or block-height condition fires. The coordinator pads to 64 slots
-            with self-sealed dummies, sorts every ciphertext by hash, assigns positions, and
+            <p>A wall-clock or block-height condition fires. The coordinator pads the batch
+            with self-sealed dummies (to 64 slots on v0; one decoy on v1), sorts every ciphertext by hash, assigns positions, and
             makes the batch immutable. Positions are a pure function of the ciphertext set: two
             coordinators given the same seals produce the same board.</p>
             <span class="api">pending &rarr; frozen</span>
@@ -395,12 +399,22 @@ export function protocolHtml(): string {
         locally at startup, holds the share in memory, and speaks only outbound HTTP to the
         coordinator. The coordinator cannot reach into a node, and a stolen coordinator database
         contains ciphertexts and public data, not key material.</p>
+        <p>v1 key generation is a distributed key generation, the scheme from "DKG Is All You
+        Need" (Policharla, Commonware, 2026). The operators run Commonware's Feldman/Desmedt DKG
+        under ed25519 identities; the coordinator only relays signed envelopes between them and
+        never sees a share, so there is no dealer and no machine ever holds the whole key. The
+        committee id is still the digest of the public parameters, and a v1 committee also
+        publishes the <span class="mono">setup_digest</span> of the DKG it came from. Which
+        scheme a committee runs is reported as its <span class="mono">scheme</span>; the hosted
+        committee is v0 today, and a local v1 stack is
+        <span class="mono">scripts/bte/v1-stack.sh demo</span>.</p>
         <p>The dealer is the v0 compromise, stated plainly: whoever ran the ceremony could have
         kept <span class="mono">&tau;</span> and could decrypt everything early. That is
-        acceptable for a devnet and unacceptable for value. The production replacement is a
-        distributed key generation in which the trapdoor never exists on any single machine,
-        plus proactive resharing so operators can rotate without changing the public key
-        applications pinned.</p>
+        acceptable for a devnet and unacceptable for value. v1 removes the dealer, and what it
+        does not yet have is stated just as plainly: it is unaudited, the DKG's bounded-reveal
+        argument assumes synchrony, the relay can stall a round (visibly, not hidden), and
+        proactive resharing, so operators can rotate without changing the public key
+        applications pinned, is not wired yet.</p>
       </section>
 
       <section class="scroll-reveal">
@@ -626,14 +640,15 @@ console.log(slot.text);</code></pre>
         <h2 id="production">Production posture</h2>
         <p>The current stack runs a transparent public devnet: a real threshold committee,
         public share verification, durable state on a mounted volume, recovery after restart,
-        TLS, rate limiting, and honest stall states. The decisive blocker for real value is the
-        ceremony.</p>
+        TLS, rate limiting, and honest stall states. The decisive blocker for real value on the
+        hosted committee is the ceremony; a v1 committee removes it, and the rest of the table
+        still applies.</p>
         <div class="tcard">
           <table>
-            <thead><tr><th>layer</th><th>v0 today</th><th>production target</th></tr></thead>
+            <thead><tr><th>layer</th><th>today</th><th>production target</th></tr></thead>
             <tbody>
-              <tr><td>key generation</td><td>offline trusted dealer</td><td>audited DKG; no machine ever knows the whole trapdoor</td></tr>
-              <tr><td>operator lifecycle</td><td>new ceremony to replace one</td><td>proactive resharing and rotation under a stable public key</td></tr>
+              <tr><td>key generation</td><td>v0: offline trusted dealer; v1: Commonware DKG (done for v1)</td><td>audited DKG; no machine ever knows the whole trapdoor</td></tr>
+              <tr><td>operator lifecycle</td><td>v0: new ceremony to replace one; v1: resharing not wired yet</td><td>proactive resharing and rotation under a stable public key</td></tr>
               <tr><td>availability</td><td>coordinator database + volume</td><td>replicated store plus blob or calldata copies of ciphertexts</td></tr>
               <tr><td>accountability</td><td>invalid shares attributable</td><td>stake, slashing, signed work receipts</td></tr>
               <tr><td>verification</td><td>offchain pairing check, anchored root</td><td>EIP-2537 onchain verification of shares and combination</td></tr>
@@ -657,19 +672,21 @@ console.log(slot.text);</code></pre>
             </ul>
           </div>
           <div>
-            <h3>V0 still requires trust</h3>
+            <h3>Still requires trust</h3>
             <ul>
-              <li>the dealer did not retain or leak &tau;</li>
-              <li>fewer than three of the five operators collude</li>
+              <li>on v0, the dealer did not retain or leak &tau; (a v1 committee has no dealer)</li>
+              <li>fewer than t of the n operators collude (v0: 3 of 5; v1: 4 of 5 with five operators)</li>
+              <li>on v1, the DKG's synchrony assumption held while it ran, and the relay does not stall a round (a stall is visible, not hidden)</li>
               <li>at least t operators answer after the cue</li>
               <li>the coordinator includes every submitted ciphertext</li>
               <li>the deployment preserves ciphertext availability</li>
             </ul>
           </div>
         </div>
-        <p class="warning"><strong>v0 is dealer-trusted and unaudited.</strong> Use it for
-        testnets, demos, and integration work. DKG and an
-        independent audit are prerequisites for a stronger claim.</p>
+        <p class="warning"><strong>v0 is dealer-trusted; v1 has no dealer; both are
+        unaudited.</strong> Use them for testnets, demos, and integration work. The hosted
+        committee is v0 today, and an independent audit is a prerequisite for a stronger
+        claim.</p>
         <div class="article-links">
           <a class="link" href="https://eprint.iacr.org/2026/760" target="_blank" rel="noopener">the paper</a>
           <a class="link" href="https://github.com/commonwarexyz/simple-bte" target="_blank" rel="noopener">simple-bte</a>

@@ -346,7 +346,7 @@ export function sealbidLandingHtml(): string {
           <ul class="sl-list">
             <li>the scheme itself, from <b>"a simple batched threshold encryption scheme"</b>, guru-vamsi policharla (commonware), <a href="https://eprint.iacr.org/2026/760" target="_blank" rel="noopener">iacr eprint 2026/760</a>.</li>
             <li>every pairing operation, every group fft, and the fujisaki-okamoto transform, in <code>simple-bte</code>, used unmodified as a dependency and pinned to one commit.</li>
-            <li>thresholdization, built into <code>crs::setup</code>. we planned a shamir fallback and did not need it.</li>
+            <li>thresholdization: built into <code>crs::setup</code> for v0, and from a real dkg (commonware's feldman/desmedt) for v1. we planned a shamir fallback and did not need it.</li>
           </ul>
         </div>
         <div class="sl-research-col">
@@ -355,7 +355,7 @@ export function sealbidLandingHtml(): string {
             <li>wire formats with version tags and golden-file tests, so a byte that changes shape fails a test rather than a decryption.</li>
             <li>payload caps, per-slot validity, and an api shaped for a coordinator, an operator node, and a browser sdk.</li>
             <li>the rand version is re-exported from one place, so two crates can never disagree about which rng trait they are using.</li>
-            <li>a ceremony, a committee, a batching engine, and reveal plumbing. none of that is cryptography, and all of it is why the cryptography can be used by an application.</li>
+            <li>a ceremony (v0) or a dkg relay that never sees a share (v1), a committee, a batching engine, and reveal plumbing. none of that is cryptography, and all of it is why the cryptography can be used by an application.</li>
           </ul>
         </div>
       </div>

@@ -287,9 +287,9 @@ export function mempoolLandingHtml(): string {
       title: 'hidden inside a batch',
       chip: 'unlinkable',
       visual: slotGrid(),
-      body: 'the ciphertext drops into a fixed batch of 64 slots. the other slots are indistinguishable decoys, so no observer can tell how many real orders are inside, or which slot is yours. your size, your timing, and your intent disappear into the crowd.',
+      body: 'the ciphertext drops into a batch of the scheme\'s size: 64 fixed slots on the hosted v0 committee, no fixed size on v1. the other slots are indistinguishable decoys, so no observer can tell how many real orders are inside, or which slot is yours. your size, your timing, and your intent disappear into the crowd.',
       rows: [
-        { label: 'this batch', value: '1 real + 63 decoys = 64 slots' },
+        { label: 'this batch', value: '1 real + 63 decoys = 64 slots (v0)' },
         { label: 'your slot', value: 'indistinguishable from the rest' },
       ],
     },
@@ -298,9 +298,9 @@ export function mempoolLandingHtml(): string {
       title: 'sealed to a distributed committee',
       chip: 't-of-n',
       visual: committeeRing(5, 3, 2),
-      body: 'the power to open your batch is split across a committee of independent operators, none of them trusted. any 3 of the 5 can open it together, and only once the cue fires. no single operator, and no group smaller than the quorum, can read your order early.',
+      body: 'the power to open your batch is split across a committee of independent operators, none of them trusted. a threshold of them, t of n as the committee reports (any 3 of the 5 on the hosted v0 committee), can open it together, and only once the cue fires. no single operator, and no group smaller than the quorum, can read your order early.',
       rows: [
-        { label: 'committee', value: operatorDots(5, 3, 'any 3 of 5') },
+        { label: 'committee', value: operatorDots(5, 3, 'any 3 of 5 (v0)') },
         { label: 'params digest', value: hashCopy('1aab2c4871f09de3b52d6c797954', 8, 6) },
         { label: 'committed', value: hashCopy('0xecb511f534b2491c180d95a11f4b2b0fdc1d42ae07', 7, 4) },
       ],
